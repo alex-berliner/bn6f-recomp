@@ -1,71 +1,78 @@
 name: battleObject_initActorStateT4_80D4472
 address: '0x080D4472'
 kind: function
-previous_names:
-- sub_80D4472
-status: probable
-summary: 'Initialises a type-4 battle object''s running "actor" state: sets HP=1, reserves its panel,
-  marks collision present, switches to CUR_STATE_UPDATE with a 30-frame timer, or on init failure spawns
-  a default effect and frees the slot.'
-interface: '(r5 = BattleObject*) -> void ; side effects: EWRAM battle-object fields, panel reservation,
-  possible t4 EffectObject spawn'
-details: '1. Recomputes pixel X/Y from panel coords via object_setCoordinatesFromPanels.
-
-  2. Calls battleObject_initSpriteAndCollision_8011504 with sprite id 0x41f and collision data ptr 0xc0d0300.
-
-  3. If init returns 0 (failure path): copies 3 words from object+0x34 (Coords block: X, Y, Z), bumps
-  Z by 0x10:0000 (one panel upward in fixed point), and calls spawn_t1_0x0_EffectObject with r4=0x10:0000
-  (the Z bump). Then object_freeMemory is called and the function exits — the failed object is destroyed.
-
-  4. Success path: sets CollisionData.HitEffect = 0xa, HP = MaxHP = 1, and if Param1 == 4 forces CurAnim
-  = 4 then falls through with palette index 0.
-
-  5. sprite_setPalette(0) (palette 0), object_presentCollisionData() refreshes collision, ExtraVars[0]
-  is set to the object pointer itself.
-
-  6. object_reservePanel is called with the object''s PanelX/PanelY, Timer is set to 0x1e (30), and CurState
-  becomes CUR_STATE_UPDATE so the per-frame logic takes over.
+status: confirmed
+summary: 'Initializes a Type-4 battle actor: allocates sprite/collision, sets 1-HP health, configures palette and
+  animation, reserves its panel, and enters the update state (or spawns a destruction effect and frees the object
+  on allocation failure).'
+interface: void battleObject_initActorStateT4_80D4472(u32 r5 /*obj*/, u32 r6 /*panelX*/, u32 r7 /*panelY*/, u32
+  r8 /*collisionArg*/, u32 r10)
+details: 'Calls object_setCoordinatesFromPanels(r5) to convert panel grid (r6,r7) into on-screen coordinates stored
+  on the battle object. Then calls battleObject_initSpriteAndCollision_8011504 with fixed sprite ID 0x41F and tile-data
+  pointer 0xC0D0300 to allocate the sprite and collision box. On failure (r0 == 0): reads three u32 params from
+  obj+0x34, adds 0x100000 to the third, sets r4=0x14 (effect type), calls spawn_t1_0x0_EffectObject to emit a visual
+  effect, then calls object_freeMemory to release the object and returns. On success: sets collision hit-effect
+  ID to 0xA, writes HP and MaxHP to 1 (one-hit entities). Reads oBattleObject_Param1; if equal to 4, forces CurAnim=4
+  and palette=0; otherwise palette=Param1 and collision param is the value returned in r1 by initSpriteAndCollision.
+  Calls sprite_setPalette and object_presentCollisionData. Writes obj pointer into ExtraVars[0] (self-reference
+  for collision callbacks). Calls object_reservePanel with the object''s PanelX/PanelY bytes. Sets oBattleObject_Timer
+  to 0x1E (30 frames) and CurState to CUR_STATE_UPDATE so the main battle loop begins ticking the actor. Clobbers
+  r4,r0-r3,lr; preserves r4,r5,r6,r7 across the whole function except the failure path.
 
   '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `bl battleObject_initSpriteAndCollision_8011504` with literal `0x41f` (sprite id) and `0xc0d0300`
-    (collision data) from dword_80D46AC/dword_80D46B0. - `tst r0,r0 ; bne loc_80D449C` cleanly separates
-    init-failure from init-success. - Failure path: `mov r0,#0x34 ; add r0,r0,r5 ; ldmia r0!,{r1-r3}`
-    pulls X/Y/Z; `add r3,r3,r4` with `r4 = 0x10 << 16` is a 1.0 fixed-point Z bump passed to `spawn_t1_0x0_EffectObject`
-    (its Param3 = Z). - `bl object_freeMemory` after the spawn is a clear "destroy this failed object"
-    trail. - Success path: `mov r0,#0xa ; bl object_setCollisionHitEffect` writes HitEffect 0xa. - `mov
-    r0,#1 ; strh r0,[r5,#oBattleObject_HP] ; strh r0,[r5,#oBattleObject_MaxHP]` sets HP = MaxHP = 1 (typical
-    of a 1-HP obstacle/character). - `cmp r0,#4 ; bne loc_80D44B4` checks Param1; if 4 sets CurAnim=4
-    (the alternate init anim). - `bl sprite_setPalette` with palette index 0 (r0 set just before fall-through).
-    - `bl object_presentCollisionData` and `ldr r0,[r5,#oBattleObject_ExtraVars] ; str r5,[r0]` stores
-    the object pointer in its own ExtraVars[0]. - `ldrb r0,[r5,#oBattleObject_PanelX] ; ldrb r1,[r5,#oBattleObject_PanelY]
-    ; bl object_reservePanel` claims the panel under the object. - `mov r0,#0x1e ; strh r0,[r5,#oBattleObject_Timer]`
-    sets a 30-frame timer. - `mov r0,#CUR_STATE_UPDATE ; strb r0,[r5,#oBattleObject_CurState]` advances
-    the state machine. - callee `spawn_t1_0x0_EffectObject` (0x080e05f6) description says it spawns a
-    type-4 battle object with effect type 0, matching the failure-path "spawn default effect" behaviour.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s
-  reproduce: 'python3 tools/asmcat.py 0x080D4472
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_initActorStateT4_80D4472
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_initActorStateT4_80D4472
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_initActorStateT4_80D4472
+    ./wf verify --function battleObject_initActorStateT4_80D4472 --snapshots build-snapshots'
+  result: 'captured calls: 32 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_initActorStateT4_80D4472
 
-    '
-open_questions:
-- The specific chip/actor this function belongs to cannot be told from this snippet alone (no caller shown,
-  no readable sprite-id naming); would settle it by checking the only callers and the sprite/collision
-  constants `0x41f` and `0xc0d0300` in bn6f data tables.
-sources:
-- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_initActorStateT4_80D4472 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_initActorStateT4_80D4472
+
+    ./wf verify --function battleObject_initActorStateT4_80D4472 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d4472 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 7d779321
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80D4472 -> battleObject_initActorStateT4_80D4472
-  where: bn6f 7ddd2238
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What game entity uses Type-4 actors with HP=1 and sprite 0x41F (e.g. a projectile, a decoy, a one-turn summon)?
+- What is the meaning of Param1==4 forcing animation 4 and palette 0; which specific Type-4 variant does this represent?
+- What does tile-data pointer 0xC0D0300 correspond to (which sprite graphics sheet)?
+- Why is 0x100000 added to the third effect-object param at obj+0x38 before spawning?
+- What does r8 (the collisionArg) represent in object_presentCollisionData for Type-4 actors?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

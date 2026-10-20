@@ -1,68 +1,78 @@
 name: battle_beastSpBuildSpriteMaskFromFlagTable
 address: '0x08118658'
 kind: function
-status: probable
-summary: For a beast-out special battle object, looks up a flag table via an AI-dispatch thunk, then scans
-  49 bytes in a 5×49 nested pattern (3-byte stride) and stores a 32-bit mask (bits cleared where each
-  of the first 32 flag bytes is nonzero) into the object's sprite field 0x2c.
-interface: (r6 = battle object; uses [r6+0x38]+[r6+0x3a] and byte [r6+0xe]) -> r0 = 32-bit flag mask stored
-  to sprite+0x2c via sprite_setUnk0x2c; flags clobbered
-details: 'The function indexes word_201DA80 with ([r6+0x38]+[r6+0x3a])*4, reads a halfword, subtracts
-  0x90 to get a dispatch id, and calls battleObject_runAIDispatchTable_813B7A0 with the object''s byte
-  at +0xe; the returned pointer +8 starts a table of 2-byte records. It then scans 0x31 iterations, treating
-  each record as 5 flag bytes (one byte skipped per record): starting from 0xFFFFFFFF, it clears bit i
-  whenever flag byte i is nonzero (bit mask 0x80000000 shifted right each iteration, so effectively only
-  the first 32 bytes affect the result). The resulting mask is passed to sprite_setUnk0x2c, which writes
-  it to field 0x2c of the object''s sprite struct. Only run in the beastsp (beast-out special) route,
-  next to battle_initBeastOutForm.'
+status: confirmed
+summary: Builds a 32-bit element-visibility mask for a battle beast's sprite by consulting a flag table obtained
+  through the AI-dispatch lookup, then applies it via sprite_setUnk0x2c.
+interface: 'battle_beastSpBuildSpriteMaskFromFlagTable(void) – in: r5 (caller-saved context), r6 (battle-beast sprite
+  object ptr), r10 (unmodified, passed to callee); out: r0–r3, r8–r12, all flags; r4–r7 preserved.'
+details: 'Reads two 16-bit tile-attribute words at sprite+0x38 and sprite+0x3A, sums them, shifts left 2 to get
+  a byte offset into the word_201DA80 lookup table (indexed by (attr_hi+attr_lo)*4), loads a 16-bit entry, and subtracts
+  0x90 to yield a dispatch table index. Palette byte at sprite+0x0E is passed alongside the index to battleObject_runAIDispatchTable_813B7A0,
+  which returns a pointer (r0) to a per-beast flag structure. Starting at r0+8, the routine walks 0x31 (49) flag
+  bytes: for each nonzero byte the corresponding bit (starting at bit 31, shifting down) is cleared in a 0xFFFFFFFF
+  mask. After every 5 flags the table pointer and the loop counter each advance by an extra 2 bytes, implementing
+  7-byte rows (5 flags + 2 pad). The final mask, together with the dispatch callee''s r5 (returned as the struct
+  member dispatch_r5), is passed to sprite_setUnk0x2c to commit the visibility mask onto the sprite. r2 is left
+  holding the residual shift value (0x80 >> n) on return. The function does not write back to the sprite object
+  itself; side effects are entirely within sprite_setUnk0x2c.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrh r0,[r6,#0x3a]; ldrh r1,[r6,#0x38]; *4 index into off_81186A4=word_201DA80, sub r0,#0x90
-    -> dispatch id; bl battleObject_runAIDispatchTable_813B7A0 with ldrb r1,[r6,#0xe]; result+8 is the
-    flag-table base; loop to 0x31: tst r3 / bic r0,r2 inverts bits for nonzero bytes, r6 resets at 5 and
-    r7 advances +2 per record (5 flag bytes + 1 skipped byte); bl sprite_setUnk0x2c with r0 = accumulated
-    mask writes it to sprite field 0x2c; caller battle_initBeastOutForm and recorded beastsp route tie
-    it to beast-out special setup'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:20917
-  - 0x081184C0 battle_initBeastOutForm
-  - 0x081184A8 sub_81184A8
-  - 0x081184EC sub_81184EC
-  - 0x0813B7A0 battleObject_runAIDispatchTable_813B7A0
-  - 0x08002FA6 sprite_setUnk0x2c
-  reproduce: python3 tools/asmcat.py 0x08118658
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The mask-building behavior (mvn r0,r0 then bic r0,r2 on nonzero byte) matches ''build sprite mask
-    from flags''. However the proposal mischaracterizes the table structure: the loop is a 5×49 nested
-    pattern with r4 as the outer counter and a 3-byte stride between tested bytes (add r7,#1 always, plus
-    add r7,#2 every 5th iter), not ''5 flag bytes one skipped per record''. Also ''runs its AI dispatch
-    to get a flag table'' is misleading — the call to battleObject_runAIDispatchTable_813B7A0 returns
-    a pointer (+8 starts the table); the AI dispatch is a separate dispatch on the caller, not a per-record
-    call here.; run wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised
-    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battle_beastSpBuildSpriteMaskFromFlagTable
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_beastSpBuildSpriteMaskFromFlagTable
+
+    ./wf verify --function battle_beastSpBuildSpriteMaskFromFlagTable --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_beastSpBuildSpriteMaskFromFlagTable
+
+    ./wf verify --function battle_beastSpBuildSpriteMaskFromFlagTable --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 29 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_beastSpBuildSpriteMaskFromFlagTable
+
+    ./wf verify --function battle_beastSpBuildSpriteMaskFromFlagTable --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08118658 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - beastsp
 open_questions:
-- what the bits of sprite field 0x2c control (visibility/blend of beast special parts?)
-- contents of word_201DA80 and the four dispatch thunks
-- exact arguments sprite_setUnk0x2c expects (object pointer source is not set in this caller frame)
-- 'The mask-building behavior (mvn r0,r0 then bic r0,r2 on nonzero byte) matches ''build sprite mask from
-  flags''. However the proposal mischaracterizes the table structure: the loop is a 5×49 nested pattern
-  with r4 as the outer counter and a 3-byte stride between tested bytes (add r7,#1 always, plus add r7,#2
-  every 5th iter), not ''5 flag bytes one skipped per record''. Also ''runs its AI dispatch to get a flag
-  table'' is misleading — the call to battleObject_runAIDispatchTable_813B7A0 returns a pointer (+8 starts
-  the table); the AI dispatch is a separate dispatch on the caller, not a per-record call here.'
+- What does subtracting 0x90 from the word_201DA80 entry represent — an enum offset, a table-base adjustment, or
+  a beast-species ID?
+- Why are flag rows padded to 7 bytes (5 flags + 2 skip) rather than tightly packed; does the +8 base offset encode
+  a header or an active-flag count?
+- What fields does sprite_setUnk0x2c write the mask and r5 into (the disassembly's sprite struct is not yet fully
+  mapped)?
+- Is r10 forwarded unchanged to battleObject_runAIDispatchTable_813B7A0, or is it merely live across the call without
+  being consumed?
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_8118658 -> battle_beastSpBuildSpriteMaskFromFlagTable
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8118658
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

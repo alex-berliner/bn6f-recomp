@@ -1,68 +1,76 @@
 name: battle_aiSnakeArmTickStep_8112A78
 address: '0x08112A78'
 kind: function
-previous_names:
-- sub_8112A78
-status: probable
-summary: 'AI tick for SnakeArm-style battle object: counts down Unk_08 then fires two stage checks (0x74/0x7F/0x84
-  and 0x64/0x7F/0x84) before deciding whether to schedule attack 0xB (or fall through to attack 0xA)'
-interface: (r4 = AIData ptr, r5 = BattleObject ptr, r6 = AIState ptr, r7 = AIAttackVars ptr, r10 = toolkit)
-  -> flags; writes AIData.Version_16 into AttackVars.Unk_03 and several AttackVars fields
-details: "- Always clears BattleObject.ExtraVars+0x14 to 0 (str r0,[r5,#oBattleObject_ExtraVars+0x14]).\n\
-  \  - Reads AIState.Unk_08 (u16). If it is not 0xFF it is decremented; if the result is zero the function\n\
-  \    installs `sub_8112B06+1` into AIAttackVars.Unk_28 and calls `object_setAttack0(0xA)`, then zeroes\n\
-  \    AIState.Unk_00 and returns. So Unk_08 is a \"ready countdown\" — when it ticks to 0 the actor switches\n\
-  \    to attack 0xA.\n  - Otherwise reads BattleObject.ExtraVars[0]; if zero, returns. If non-zero, that\
-  \ slot is cleared and\n    `FindBattleActorsWithNonzeroParam_ReturnCountAndSum` is called twice:\n \
-  \     1) args (0x74, 0x7F, 0x84): looks for allied actors with that param mask, return==0 is required.\n\
-  \      2) args (0x64, 0x7F, 0x84): looks for enemy actors with that mask, return==0 is required.\n \
-  \ - If either scan finds anything the function bails (locret_8112B04). Otherwise it checks\n    `object_getFlag`\
-  \ against 0x8000 (OBJECT_FLAGS_CONFUSED) — if confused, still bails.\n  - Only on a clean pass does\
-  \ it set ExtraVars+0x14=1 and populate the AttackVars record from a\n    per-version table (AIData.Version_16\
-  \ is the index): Unk_03, Unk_10, Unk_12, Unk_18, Damage,\n    Unk_0a=0x0A, Unk_0c=0x64, Unk_0d=0x68.\
-  \ ExtraVars+8..+0x10 are zeroed and `object_setAttack0(0xB)`\n    is invoked to start the \"big\" attack.\n\
-  \  - Return type is void; callees preserve r4-r7, lr. The sub_8112B06 routine that gets installed in\n\
-  \    Unk_28 is presumably the per-version attack-action handler.\n"
+status: confirmed
+summary: 'Per-frame AI tick for Snake Arm: counts down the attack timer, validates row occupancy, loads difficulty-scaled
+  dash parameters, and kicks off attacks 0xA (panel choice) and 0xB (dash).'
+interface: u32 battle_aiSnakeArmTickStep_8112A78(u32 ai_data /*r4*/, u32 obj /*r5*/, u32 ai_state /*r6*/, u32 attack_vars
+  /*r7*/, /*r10*/); -> r1; clobbers r0 r2 r3; preserves r4 r5 r6 r7; flags n z c v destroyed.
+details: 'Two sub-phases selected by oAIState_Timer value. Phase 1 (timer != 0xFF): decrement timer; when it hits
+  0, set oAIAttackVars_PanelChooseCallback to ai_pickRandomPanelExcludingSelf, call object_setAttack0(0xA) to enter
+  the random-panel selection attack, and clear oAIState_ScriptId. Phase 2 (trigger flag at ExtraVars+0x14 was set):
+  if ExtraVars+0 is nonzero, disarm it, then scan for enemy actors on the Snake Arm''s own row (0x74) and the player''s
+  row (0x64) in the 0x7F–0x84 parameter window via FindBattleActorsWithNonzeroParam_ReturnCountAndSum; reject if
+  either scan returns a nonzero count. Also reject if object_getFlag bit 0x8000 is set. If all pass, set ExtraVars+0x14=1,
+  read the AI difficulty tier from oAIData_Version_16, and index four per-tier byte tables (byte_81129DC, byte_81129E2,
+  byte_81129E8, byte_81129D0) to fill oAIAttackVars_StepTimer, _ChargeCycles, _AttackDuration, _Damage. Hard-code
+  _ExtraDamage=0xA, _AttackBoost2=0x64, _TimerOrCycles=0x68. Clear ExtraVars+0x8/+0xC/+0x10 (dash sub-state) and
+  call object_setAttack0(0xB) to begin the Snake Arm dash. Output r1 carries the second-register result of the most
+  recent setAttack0 or FindBattleActors call.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `str r0,[r5,#oBattleObject_ExtraVars+0x14]` immediately after entry zeroes the "active" flag.
-    - `ldrh r0,[r6,#oAIState_Unk_08]; sub r0,#1; strh r0,[r6,...]` is the visible countdown decrement.
-    - `beq`/`bne` after the decrement only fire the install+`object_setAttack0(0xA)` branch when the post-decrement
-    value is zero, i.e. this is a "fire when timer expires" gate. - Two back-to-back `bl FindBattleActorsWithNonzeroParam_ReturnCountAndSum`
-    calls with mask 0x7F and values 0x74/0x64 plus common param 0x84 — symmetry suggests friend vs. foe
-    panel/param checks whose count must be zero to proceed. - `bl object_getFlag; ldr r1,=0x8000; tst
-    r0,r1` is the standard "not confused" gate (bit 15 = OBJECT_FLAGS_CONFUSED). - The `ldrb r1,[r4,#oAIData_Version_16]`
-    then a chain of `ldrb r0,[r1,<table>]; strh r0,[r7,#...]` is plainly a version-keyed lookup filling
-    AIAttackVars before scheduling attack 0xB (`mov r0,#0xb; bl object_setAttack0`).'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x08112A78
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battle_aiSnakeArmTickStep_8112A78
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_aiSnakeArmTickStep_8112A78
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_aiSnakeArmTickStep_8112A78 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_aiSnakeArmTickStep_8112A78
+
+    ./wf verify --function battle_aiSnakeArmTickStep_8112A78 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 92 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_aiSnakeArmTickStep_8112A78
+
+    ./wf verify --function battle_aiSnakeArmTickStep_8112A78 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^08112a78 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- Exact meaning of FindBattleActorsWithNonzeroParam args (0x74/0x64 paired with 0x7F and 0x84) —
-- the param-bit patterns look like alliance/element checks but the project does not document them.
-- The semantic role of "snake arm" is inferred from sub_8112B06 being grouped with this code;
-- no in-function string confirms the actor identity. Naming `battle_aiSnakeArmTickStep_*` is a
-- hypothesis pending the matching sub_8112A64 wrapper which presumably dispatches per attack
-- state.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08112a78 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 78d5a37f
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_8112A78 -> battle_aiSnakeArmTickStep_8112A78
-  where: bn6f d34dcc4e
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What exactly does attack index 0xB represent visually—does it include the wind-up freeze and the full-length dash
+  across all rows, or just one row?
+- Are byte_81129DC/9E2/9E8/9D0 indexed by tier 0–7 (GBA BN6 has ~8 difficulties), and do the tables extend past
+  8 entries?
+- Does the 0x7F/0x84 param-range in FindBattleActorsWithNonzeroParam_ReturnCountAndSum correspond to HP or a specific
+  status word?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

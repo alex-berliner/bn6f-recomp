@@ -1,64 +1,74 @@
 name: battle_collectKeyItemSurplus
 address: '0x08135E6C'
 kind: function
-status: probable
-summary: Scans a 4-entry ID table and, for each ID, subtracts the number of toolkit-array references (entries
-  whose first halfword + 0x90 matches the ID) from CheckKeyItem(id); if a surplus remains and the battle-object
-  descriptor's byte 3 is nonzero, appends a {id, surplus} 4-byte record to the caller-provided buffer.
-interface: (r6 = output buffer pointer) -> r0 = clobbered; writes 4-byte {id:halfword, count:halfword}
-  records into buffer, advancing past the last one written
-details: Iterates over an inline table of four IDs (0xC4, 0x11C, 0x120, 0x14C). For each, r7 = CheckKeyItem(id);
-  it then walks the 25 8-byte entries of the array pointed to by oToolkit_Unk2004190_Ptr, decrementing
-  r7 once for every entry whose first halfword + 0x90 equals the table ID. If the surplus r7 is nonzero,
-  it looks up the battle-object descriptor at index (id - 0x90) via battleObject_getByIndex and requires
-  byte 3 to be nonzero before appending the record {id, surplus} to the buffer whose pointer arrives in
-  r6 (callee-saved, set by the caller) and is kept in [sp], advanced by 4 per record. The pools off_8135ECC/ED0/ED4
-  referencing word_201DA80, 0x14C and 0xBC are unreferenced by this code. Returns no value.
+status: confirmed
+summary: Builds a list of surplus key-item IDs (and their surplus counts) for the 4 battle-relevant key items, accounting
+  for copies consumed by toolkit entries.
+interface: u32 battle_collectKeyItemSurplus(u32 outList /* r6, output write cursor; returns advanced pointer in
+  r6 */); /* r10 = toolkit base, read via callee; clobbers r0,r1,nzcv; r2,r3,r5 also set by callees */
+details: "Iterates a hard-coded table of 4 key-item IDs at off_8135EDC: {0xC4, 0x11C, 0x120, 0x14C}.\nFor each ID:\n\
+  \  1. Calls CheckKeyItem(id) -> r0 = surplus count; skips if zero.\n  2. Scans 0x19 toolkit entries via toolkit_getUnk2004190EntryPtr_813B9FC(e);\
+  \ each entry whose halfword at offset 0 (reinterpreted as ID+0x90) equals the current key_id decrements surplus\
+  \ by one. This accounts for copies already referenced by toolkit slots.\n  3. If surplus remains, calls battleObject_getByIndex_813B780(id\
+  \ - 0x90) and requires byte +3 of that battle-object structure to be non-zero (likely an \"active/available\"\
+  \ flag); skips otherwise.\n  4. Appends a 4-byte record {u16 key_id, u16 surplus} to the caller-provided output\
+  \ list at r6 and advances r6 by 4.\nReturns the updated write cursor in r6 so callers can chain appends or check\
+  \ termination.\nStack usage: 8 bytes (saved r6 at [sp], scratch [sp+4] for current key_id).\nThe 4 IDs in off_8135EDC\
+  \ are the only ones checked; word_201DA80 at off_8135ECC is referenced in the literal pool but not used by this\
+  \ function directly.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'off_8135EDC: .word 0xC4,0x11C,0x120,0x14C — fixed table looped r4=0..0x10 step 4; bl CheckKeyItem
-    then ''sub r7,#1'' per matching Unk2004190 entry (ldrh r1,[r0]; add r1,#0x90; cmp r1,r2); sub r0,#0x90;
-    bl battleObject_getByIndex_813B780; ldrb r1,[r0,#3] gates the write; ldr r0,[sp]; strh r6,[r0]; strh
-    r7,[r0,#2]; add r0,#4 — appends {id,surplus} pair and advances buffer'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm36.s:12241
-  - 0x08135D9C sub_8135D9C
-  - 0x0813B780 battleObject_getByIndex_813B780
-  - 0x0813B9FC toolkit_getUnk2004190EntryPtr_813B9FC
-  - 0x0803CE28 CheckKeyItem
-  reproduce: python3 tools/asmcat.py 0x08135E6C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary and interface are accurate: the code at loc_8135E76/86/98/EBE scans four IDs from off_8135EDC,
-    walks 25 (cmp r6,#0x19) 8-byte toolkit entries subtracting from r7 when first halfword+0x90 matches,
-    and appends {id,count} 4-byte records to the [sp] buffer via strh/strh/add. However the name ''battle_collectMissingKeyItemIds''
-    is misleading because the function doesn''t only collect ''missing'' items—it collects every key item
-    whose CheckKeyItem count exceeds how many copies are referenced in the toolkit array, and it gates
-    the append on battleObject_getByIndex byte[3]!=0, so ''Missing'' misrepresents the criterion.; run
-    wf investigate investigate-20261018-182231; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
-    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battle_collectKeyItemSurplus
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_collectKeyItemSurplus
+
+    ./wf verify --function battle_collectKeyItemSurplus --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_collectKeyItemSurplus
+
+    ./wf verify --function battle_collectKeyItemSurplus --snapshots build-snapshots'
+  result: 62 compared, 0 differed, 34 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_collectKeyItemSurplus
+
+    ./wf verify --function battle_collectKeyItemSurplus --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08135e6c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm36.c
 coverage:
 - beastsp
 open_questions:
-- What CheckKeyItem actually returns for these large IDs (count vs flag) and what these four IDs denote
-- What the 25-entry oToolkit_Unk2004190 array holds and what its first halfword means
-- Meaning of byte 3 in the 0x10-byte battle descriptor and how sub_8135D9C consumes the output records
-- 'The summary and interface are accurate: the code at loc_8135E76/86/98/EBE scans four IDs from off_8135EDC,
-  walks 25 (cmp r6,#0x19) 8-byte toolkit entries subtracting from r7 when first halfword+0x90 matches,
-  and appends {id,count} 4-byte records to the [sp] buffer via strh/strh/add. However the name ''battle_collectMissingKeyItemIds''
-  is misleading because the function doesn''t only collect ''missing'' items—it collects every key item
-  whose CheckKeyItem count exceeds how many copies are referenced in the toolkit array, and it gates the
-  append on battleObject_getByIndex byte[3]!=0, so ''Missing'' misrepresents the criterion.'
+- What is the byte +3 flag on the battle-object structure (availability, animation-ready, or something else)?
+- Is the surplus count from CheckKeyItem inclusive of the toolkit entries subtracted here, or does it already exclude
+  them, making the loop a double-check?
+- Are the 4 hardcoded key IDs (0xC4, 0x11C, 0x120, 0x14C) specific to Falzar, or shared with Gregar? Are there other
+  key items that could be surplus?
+- What consumes the output list built here (battle UI display, sub-chip availability, or item-use restriction)?
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_8135E6C -> battle_collectKeyItemSurplus
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8135E6C
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

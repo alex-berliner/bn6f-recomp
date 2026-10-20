@@ -1,74 +1,75 @@
 name: ai_falzarAttackSpawnStep
 address: '0x0811219C'
 kind: function
-status: probable
-summary: 'AI step for Falzar boss attack: increments StepTimer; on reaching 0x19 spawns an attack via
-  sub_80D1442 at panelX+frontDir and plays sound effects 0x1A6 and 0x1A7; when the current sprite frame''s
-  attribute bit 0x80 is set, reloads StepTimer from AttackDuration and writes 8 to HitElement to transition
-  to the next AI phase.'
-interface: (r7 = battle object AI vars struct, r5 = battle object) -> void; updates oAIAttackVars_StepTimer/HitElement,
-  spawns attack via sub_80D1442
-details: r7 points to an object's oAIAttackVars block; the function increments StepTimer each frame. When
-  it reaches 0x19 it calls object_getFrontDirection, adds it to oBattleObject_PanelX, and invokes sub_80D1442(panelX+dir,
-  AttackStepIndex, 4, 0x800, AttackBoost2&0xFFFF, Damage, PanelChooseCallback) — evidently a battle helper
-  that places/spawns the attack on the target panel, carrying damage and a panel-choice callback. It then
-  plays sound effects 0x1A6 and 0x1A7. Every frame it reads the current sprite frame's attribute byte
-  via sprite_getFrameParameters; when bit 0x80 is set it reloads StepTimer from oAIAttackVars_AttackDuration
-  and writes 8 to oAIAttackVars_HitElement, presumably ending/switching the attack phase. It sits in the
-  AI state-handler jump table off_81121F0 alongside sub_8112278 and sub_81120E4, so it is one step of
-  a multi-stage boss attack routine; the nearby byte tables (per-level damage/timing bytes) appear to
-  belong to those sibling steps.
+status: confirmed
+summary: 'Per-tick step of Falzar''s attack-projectile spawn animation: at tick 25 spawns a linked object-66 projectile
+  in the front panel and plays two SFX; on hit-active sprite frames resets the timer to the attack duration and
+  stamps electric (8) as the hit element.'
+interface: void ai_falzarAttackSpawnStep(u32 battle_obj /*r5*/, u32 attack_vars /*r7*/); reads/writes nzcv, clobbers
+  r0 r2 r3 lr; preserves r4 r5 r6 r7 r10; returns r1=0x80 (flag to caller's AI step dispatcher)
+details: 'Advances the 16-bit oAIAttackVars_StepTimer each tick. When it reaches 0x19 (25 frames) the function computes
+  a spawn x-panel from object_getFrontDirection + oBattleObject_PanelX, gathers oAIAttackVars_AttackStepIndex, oAIAttackVars_AttackBoost2
+  (byte-extracted via lsl/lsr 8), oAIAttackVars_Damage, and oAIAttackVars_PanelChooseCallback, then calls battle_spawnObject66Linked
+  (with hard-coded y=4, flag=0x80000) to place the projectile object linked to the caster. Two Falzar-specific sound
+  effects (IDs 0x1A6, 0x1A7) are played sequentially. After the spawn block (or when the timer has not yet hit 25)
+  the function calls sprite_getFrameParameters on the battle object and tests bit 0x80 (hit-active) of r0; if set
+  it overwrites oAIAttackVars_StepTimer with oAIAttackVars_AttackDuration and writes HitElement=8 (electric) so
+  the damage handler knows the element. A small jump table at off_81121F0 lists the AI-state dispatch helpers this
+  step sits among. The trailing byte arrays (0x112224–0x112272) are attack- pattern lookup tables (panel sequences,
+  damage tiers, timing frames) used by sibling AI-step functions rather than by this one directly.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrh r0,[r7,#oAIAttackVars_StepTimer]; add r0,#1 ... cmp r0,#0x19 — frame counter with a 25-frame
-    trigger; bl object_getFrontDirection then add r0,r0,r1 (PanelX) — attack placed on the panel the object
-    faces; bl sub_80D1442 with r2=4, r3=0x800 and stack args AttackBoost2, Damage, PanelChooseCallback
-    — spawns the attack with damage data; PlaySoundEffect 0x1A6 and 0x1A7 fired together at the spawn
-    step; sprite_getFrameParameters; tst r0,#0x80 sets StepTimer=AttackDuration and HitElement=8 — attack-phase
-    handoff on animation flag
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:8498
-  - 0x080005CC PlaySoundEffect
-  - 0x0800E2CA object_getFrontDirection
-  - 0x08002DEA sprite_getFrameParameters
-  reproduce: python3 tools/asmcat.py 0x0811219C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary is mostly accurate but misorders arguments: r0 is pushed then r1-r3,r4,r6,r7 are loaded
-    afterward, so the call to sub_80D1442 receives (panelX+dir=0x52? no—r0=panelX+dir, r1=AttackStepIndex,
-    r2=4, r3=0x40000 shift = 0x80000 not 0x800), not (panelX+dir, ... ,0x800). Also ldr r3,=#4<<16 actually
-    loads 0x40000 not 0x800; the ''0x800'' in the proposal is wrong. Two sound IDs are 0x1A7 and 0x1A8
-    not 0x1A6/0x1A7 (line `mov r0,#0xa7; add r0,#0xff` = 0x1A6, then `mov r0,#0xa8; add r0,#0xff` = 0x1A7).
-    It also doesn''t end on the attribute bit; it reloads StepTimer and sets HitElement to 8 (transitioning),
-    which the summary glosses over.; run wf investigate investigate-20261018-182231; proposed by Hyper
-    glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c ai_falzarAttackSpawnStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_falzarAttackSpawnStep
+
+    ./wf verify --function ai_falzarAttackSpawnStep --snapshots build-snapshots'
+  result: 'captured calls: 11 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 250 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_falzarAttackSpawnStep
+
+    ./wf verify --function ai_falzarAttackSpawnStep --snapshots build-snapshots'
+  result: 16 compared, 0 differed, 80 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_falzarAttackSpawnStep
+
+    ./wf verify --function ai_falzarAttackSpawnStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0811219c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- What sub_80D1442 does with (panelX, stepIndex, 4, 0x800, boost, damage, callback) — likely attack spawning,
-  needs its body to confirm
-- Which boss/attack this belongs to (routes 'battlesweep'/'beastsp' suggest a SP beast boss) and what
-  HitElement=8 means to the dispatcher
-- No direct caller known; only captured route executions identify where in the AI state machine it is
-  invoked
-- 'The summary is mostly accurate but misorders arguments: r0 is pushed then r1-r3,r4,r6,r7 are loaded
-  afterward, so the call to sub_80D1442 receives (panelX+dir=0x52? no—r0=panelX+dir, r1=AttackStepIndex,
-  r2=4, r3=0x40000 shift = 0x80000 not 0x800), not (panelX+dir, ... ,0x800). Also ldr r3,=#4<<16 actually
-  loads 0x40000 not 0x800; the ''0x800'' in the proposal is wrong. Two sound IDs are 0x1A7 and 0x1A8 not
-  0x1A6/0x1A7 (line `mov r0,#0xa7; add r0,#0xff` = 0x1A6, then `mov r0,#0xa8; add r0,#0xff` = 0x1A7).
-  It also doesn''t end on the attribute bit; it reloads StepTimer and sets HitElement to 8 (transitioning),
-  which the summary glosses over.'
+- What exactly does the 0x80000 spawn flag mean in battle_spawnObject66Linked (panel-lock, no-pierce, linked-despawn)?
+- Are byte_8112224 / byte_811223C per-wave panel offsets consumed by a later step in the same Falzar attack chain?
+- Does the caller treat the returned r1=0x80 as a 'still attacking' sentinel or does it mask further bits?
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_811219C -> ai_falzarAttackSpawnStep
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_811219C
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

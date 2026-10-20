@@ -1,0 +1,118 @@
+name: CgbSound
+address: '0x0814F508'
+kind: function
+status: confirmed
+summary: 'Per-tick GB APU emulation: advances the 14-step frame sequencer, processes all four sound channels (pulse/wave/noise)
+  for trigger, length, envelope, timer, and frequency modulation, then writes the emulated hardware registers NRxx
+  to drive the GBA''s CGB sound mixer.'
+interface: void cgbSound_tick(void); /* no in/out registers; clobbers r0-r3, flags; preserves r4-r10 */
+details: "Reads a global sound-state pointer from byte_3007FF0 (SRAM, 0x3007FF0).\nThe state struct holds:\n  +0x0A\
+  \  frame-sequencer step counter (counts down; wraps to 14 = 0x0E)\n  +0x1C  pointer to the 4-channel array (stride\
+  \ 0x40 bytes per channel)\n\nChannel struct fields (r4-relative, 0x40-byte stride):\n  +0x00 ctrl   status/control\
+  \ (bit7=halt, bit6=trigger-pending, bits0-1=seq mode)\n  +0x01 stepF  frame-sequencer enable flags (bit3 = envelope/length\
+  \ step for ch1-3)\n  +0x04 length length counter\n  +0x05 lenRL  length reload value\n  +0x06 envDir envelope\
+  \ direction (0=decay, 1=raise)\n  +0x07 envRL  envelope reload (initial volume)\n  +0x09 envVol current envelope\
+  \ volume / timer\n  +0x0A envPer envelope period (divisor)\n  +0x0B timer  envelope/timer counter\n  +0x0C envDiv\
+  \ envelope divisor for length reload calc\n  +0x0D frameStep frame-sequencer per-channel countdown\n  +0x19 envStep\
+  \ mode-1/2 step target (signed)\n  +0x1A volume  DAC/volume shadow\n  +0x1B leftVol  left speaker volume (NR51\
+  \ nibble)\n  +0x1C rightVol right speaker volume (NR51 nibble)\n  +0x1D flags   bit0=stereo-pending, bit1=freq-pending,\
+  \ bit2=wave-pending\n  +0x1E waveAct wave-active / trigger byte\n  +0x1F sweepPer sweep period (ch1 NR10)\n  +0x20\
+  \ freqShadow frequency shadow (ch4 also holds shift/divisor)\n  +0x24 wavePtr  pointer to wave/noise pattern source\
+  \ data\n  +0x28 lastWave last-copied wave bank pointer (ch3 RAM copy dedup)\n\nProcessing order per tick:\n  1.\
+  \ Decrement (or wrap) frame-sequencer step at state+0x0A.\n  2. Loop ch=1..4; skip if (ctrl & 0xC7)==0.\n  3.\
+  \ Set up hardware-register target addresses for the channel\n     (NR10/NR11+NR12/NR13+NR14, NR21-NR24, NR30-NR34,\
+  \ NR41-NR44).\n  4. Bit7 of ctrl set → halt/trigger init path:\n     - bit6 set → call soundStartChannel_814F44C\
+  \ (re-arm), zero ctrl.\n     - bit6 clear → initialize channel, call soundChannel_tickPanVolume_814F4A0,\n   \
+  \    copy wave RAM (ch3), set NRxx bytes from state.\n  5. Bit7 clear → running path:\n     - Check NR52 global-enable\
+  \ bit for the channel.\n     - Decrement frameStep; on expiry call soundStartChannel_814F44C.\n     - Process\
+  \ trigger (NR10/NR24/NR34/NR44 bit7): reload envelope & length.\n     - Envelope/length tick by mode (0=decay,\
+  \ 1=raise-to-step, 2=raise-until-limit, 3=inc):\n       call soundChannel_tickPanVolume_814F4A0 for pan/volume.\n\
+  \     - On envelope exhaustion call soundStartChannel_814F44C.\n     - Length-expired path: reload timer from\
+  \ envDiv*length+0xFF>>8.\n     - Frequency write: apply PWM micro-tuning (SoundPWMControl), mask to\n       0x7FC/0x7FE\
+  \ depending on PWM range; write NR14/NR24/NR34/NR44 low byte.\n     - Stereo/volume write: combine left/right\
+  \ volumes into NR51; for ch3\n       use a 16-entry volume LUT at byte_81C067C; set DAC-enable bit in NRxx.\n\
+  \  6. Clear per-channel flags (state+0x1D = 0).\n\nCalls made:\n  soundChannel_tickPanVolume_814F4A0 (returns\
+  \ envelope volume in r4)\n  soundStartChannel_814F44C (re-arms channel; takes channel number 1-4 in r0)\n\nExternal\
+  \ register targets (I/O mapped or emulated SRAM):\n  Channel1Sweepregister_NR10_, Channel1Duty_Length_Envelope_NR11_NR12_,\n\
+  \  Channel1Frequency_Control_NR13_NR14_, Channel2Duty_Length_Envelope_NR21_NR22_,\n  Channel2Frequency_Control_NR23_NR24_,\
+  \ Channel3Stop_WaveRAMselect_NR30_,\n  Channel3Length_Volume_NR31_NR32_, Channel3Frequency_Control_NR33_NR34_,\n\
+  \  Channel4Length_Envelope_NR41_NR42_, Channel4Frequency_Control_NR43_NR44_,\n  Channel3WavePatternRAM_2banks___,\
+  \ ControlSoundon_off_NR52_,\n  ControlStereo_Volume_Enable_NR50_NR51_, SoundPWMControl.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/libs.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c CgbSound
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CgbSound
+
+    ./wf verify --function CgbSound --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CgbSound
+
+    ./wf verify --function CgbSound --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CgbSound
+
+    ./wf verify --function CgbSound --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battle, battles1, battles2, battlesweep, beastsp, chips, fuzz, maps, menus2, menus3, story1,
+    story2, story3, story4, story5, story6, story7, story8, story9, wander.'
+  reproduce: grep -l '^0814f508 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/libs.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/libs.c
+coverage:
+- battle
+- battles1
+- battles2
+- battlesweep
+- beastsp
+- chips
+- fuzz
+- maps
+- menus2
+- menus3
+- story1
+- story2
+- story3
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+- wander
+open_questions:
+- 'byte_3007FF0 (state ptr) and the 0x40-byte channel layout: confirm they match the BGB CGB core''s internal CgbSound
+  / sndstate_t exactly or are a trimmed variant.'
+- The 16-entry volume LUT at byte_81C067C is used only for ch3; what builds it and does ch3 volume here differ from
+  a standard NR32 mapping?
+- 'SoundPWMControl micro-tuning thresholds (0x3F / 0x7F) and the 0x7FC/0x7FE masks: is this a GBA-specific PWM correction
+  for the CGB sound hardware or a general emulator artifact?'
+- soundChannel_tickPanVolume_814F4A0 is called but its internals are not shown here; does it handle the envelope-step
+  state machine or merely compute volume from period/divisor?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

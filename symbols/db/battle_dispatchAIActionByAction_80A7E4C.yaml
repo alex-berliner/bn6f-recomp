@@ -1,68 +1,70 @@
 name: battle_dispatchAIActionByAction_80A7E4C
 address: '0x080A7E4C'
 kind: function
-previous_names:
-- sub_80A7E4C
-status: probable
-summary: Indirect tail-call dispatch on battle object AIData by current action byte (r5->+9), invoking one of three
-  action handlers.
-interface: '(r0 = AIData base via r5, r1 = log2 of step?, r2 = ?, r3 = saved ptr) -> r0 = new r0 written by callee
-  (varies: 0x4, 0x1d, 0x14, 0x13, 0x12, 0x11, ...); side effects: jumps via tail-call into one of sub_80A7E6C /
-  sub_80A7EA4 / sub_80A7EBE; no other stack use'
-details: "The function is a thin trampoline: it pushes r4-r7 and lr, then loads a table pointer off_80A7E5C, indexes\
-  \ it by the byte at [r5+9] (which, given r5 holds a battle object per the \"beastsp\" snapshot context, is the\
-  \ CurAction field per oBattleObject:0x9), loads the corresponding function pointer, and bx's into it with lr=pc;\
-  \ control returns via the matching pop which restores r4-r7 and pc, i.e. the chosen handler is tail-called.\n\
-  \  The handler table at off_80A7E60 has three entries (three sub_80A7E6C/sub_80A7EA4/sub_80A7EBE), suggesting\
-  \ an action-byte dispatch for 3 distinct CurAction values (e.g. initiative states / counter / parry / chase, but\
-  \ that is speculation; only the values 0,1,2 are dispatched).\n  Captured r0 returns range 0x04..0x1d across many\
-  \ snapshots, consistent with each action handler returning a per-frame u8 state code; the dispatch itself doesn't\
-  \ write to them.\n  The function does not modify any callee-saved state beyond lr; r5 (the battle object/AIData\
-  \ base) is preserved by being in the saved set. r1 (=0x04) and r2 (=0x0c) appear to be parameters passed through\
-  \ to the selected handler.\n"
+status: confirmed
+summary: Jump-table dispatcher that routes an in-battle AI object to one of three per-frame action handlers based
+  on the byte at [object+9].
+interface: battle_dispatchAIActionByAction_80A7E4C(r5 = object, r7 = ?, r10 = ?) -> r5, r8-r12; clobbers r0-r3,
+  nzcv, lr; preserves r4-r7
+details: "Loads the address of a 3-entry jump table (off_80A7E60, at 0x080A7E60).\nReads a single byte from [r5+9];\
+  \ that byte is a literal table byte-offset\n(0, 4, or 8), not a divided index.  Uses it to fetch a Thumb handler\n\
+  address and branches with \"mov lr, pc / bx r0\".\n\nThe three dispatch slots (entry 0 / 1 / 2) point to:\n  0\
+  \  ow_animWaitStep+1          – animation wait-step tick\n  1  object_waitThenSetAnim+1   – countdown then set\
+  \ a new animation\n  2  sub_80A7EBE+1             – (unidentified third action handler)\n\nr4-r7 are saved/restored\
+  \ by the push/pop prologue-epilogue; r5 is both an\ninput (object pointer) and an output (unchanged).  The handler's\
+  \ live\nregister side-effects land in r8-r12, which the caller must read back.\nr6 is saved because the push covers\
+  \ r4-r7 but a raw guest-call wrapper\nwould not protect it; the readable-C form explicitly saves/restores r4\n\
+  and r6 around the GUEST_CALL_ADDR.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `push {r4-r7,lr}` / `pop {r4-r7,pc}` (asm29.s:5668-5669 and 5673) show this is a pure dispatcher saving
-    only callee-saved regs plus lr, returning by restoring pc. - `ldrb r1, [r5,#9]` (asm29.s:5669) reads the action
-    byte from offset 0x9 of the r5-based object, matching oBattleObject.CurAction at 0x9. - `ldr r0, off_80A7E5C;
-    ldr r0, [r0,r1]; mov lr, pc; bx r0` (asm29.s:5670-5673) is the textbook Thumb switch-table tail call into one
-    of three handlers. - Caller `lr=080a7e20` (from snap_beastsp_0180000_*.bin entries) sits just before this function
-    at 0x80a7e20, consistent with a single in-battle caller. - Captured entry r0=080a7e4d / r1=4 / r2=0xc and exit
-    r0 values stepping 4,0x1d,0x14,0x13,0x12,0x11 across snapshots show the three handlers can each produce a variety
-    of u8 result codes (state machine outputs).'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080A7E4C
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battle_dispatchAIActionByAction_80A7E4C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_dispatchAIActionByAction_80A7E4C
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_dispatchAIActionByAction_80A7E4C --snapshots build-snapshots'
+  result: 'captured calls: 32 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 298 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_dispatchAIActionByAction_80A7E4C
+
+    ./wf verify --function battle_dispatchAIActionByAction_80A7E4C --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 44 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_dispatchAIActionByAction_80A7E4C
+
+    ./wf verify --function battle_dispatchAIActionByAction_80A7E4C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^080a7e4c '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- Which three AI/CurAction values map to the three handlers (we only know the table has 3 entries and the index
-  is the live byte at [r5+9]).
-- Whether the handlers are class-specific AI behaviors (initiative, counter-attack, dodge) versus animation/event
-  steps; both fit the byte ranges seen in exit r0.
-- Whether r5 really points to a BattleObject or to an AIData struct (offset 0x9 in AIData is `Unk_09`, less semantically
-  meaningful than CurAction on BattleObject); settling this would require the r5 value at the call site at 0x80a7e20.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a7e4c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f c951b1b4
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80A7E4C -> battle_dispatchAIActionByAction_80A7E4C
-  where: bn6f 66c2a27e
-  tool: tools/rename_symbol.py
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f d20a8fa3
-  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- What does the byte at [object+9] mean semantically – is it an enum set by the object's spawn/init code?
+- sub_80A7EBE is unnamed; does it correspond to a distinct third AI action (e.g. idle, attack windup)?
+- Are r7 and r10 parameters meaningful to the handlers, or merely carried in live registers?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

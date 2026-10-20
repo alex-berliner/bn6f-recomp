@@ -1,62 +1,74 @@
 name: battleObject_tryStartChipAttack_8112600
 address: '0x08112600'
 kind: function
-previous_names:
-- sub_8112600
-status: probable
-summary: If the AI's battle object has a chip selected and the battle is past the opening phase, performs
-  the chip-attack startup sequence (write chip params, set attack action, post-update) and returns 1.
-interface: '(r5 = BattleObject*, r10 = Toolkit*) -> r0 = 1 if a chip attack was initiated, else 0 ; side
-  effects: mutates the battle object, reads/writes battle state.'
-details: "r6 is initialised to 0 and used as the success flag. The body reads the selected chip for the\
-  \ AI's actor via battle_getSelectedChipForUse_800ED90, masking the low byte of r0 into r4 (the chip\
-  \ id, 0x7F).\n  If r3 from the chip lookup is zero (no chip selected), the function falls through to\
-  \ loc_811262C, returning 0. Otherwise it reads battle_getStateUnk40_800A704 (oBattleState_Unk_40) and\
-  \ compares it against the constant 0x12c loaded via off_81126D4. Only when the state field is >= 0x12c\
-  \ (i.e. past the battle intro/setup) does it proceed with the attack.\n  The startup sequence then runs\
-  \ somethingWriteChipParams_80126E4 (with the chip id in r0), object_setAttack0 (sets the actor's action\
-  \ to attack 0), and sub_800F322 (likely a post-attack-init step or counter tick). r6 is set to 1 before\
-  \ the shared epilogue.\n  Note the asm pushes only {r4,r6,lr}, so r5/r7/r10 are preserved through the\
-  \ call per the register contract; r4/r6 are restored by the pop.\n  r0 is the success bool returned\
-  \ to the caller (sub_8112278), which appears to be the AI tick / decision loop.\n"
+status: confirmed
+summary: Attempt to launch the player's selected Custom chip as an attack, returning whether the attack was started.
+interface: 'u32 battleObject_tryStartChipAttack_8112600(/* battleObj=r4, chipBankOrObj=r5, r7 */ ); /* out: r0 =
+  success(1/0), r1 = gate-value or attacker result; preserves r4 r6 r7 */'
+details: "Called when the player object needs to fire a chip. Steps:\n1. battle_getSelectedChipForUse_800ED90(r5,\
+  \ r4, 0) — retrieve the chip the player\n   has queued. If r3==0 the slot is empty/invalid → return 0.\n2. Chip\
+  \ code = r0 & 0x1FF (mask via lsl/lsr #23).\n3. battle_getStateUnk40_800A704() — read battle state word. If it\
+  \ is < 0x12C the\n   battlefield is not yet in the phase that allows chip firing → return 0.\n4. somethingWriteChipParams_80126E4(chipCode,\
+  \ r5, r7) — populate the chip's\n   attack-template / projectile parameters into the caller's workspace.\n5. object_setAttack0(r0,\
+  \ r5) — write the attack descriptor into the player\n   battle-object's attack-slot-0 (the player's primary attack).\n\
+  6. battleObject_decrementChipHeldAndClearChip_800F322(r5) — decrement the held-chip\n   count and clear the \"\
+  selected chip\" pointer so the chip cannot be re-fired.\nReturns r0=1 on success, r0=0 on either early-exit. r1\
+  \ carries the gate constant\n0x12C on the state-check failure or the value from object_setAttack0 on success.\n\
+  r6 is used internally as the success flag; it is restored before return.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `mov r6, #0` ... `mov r6, #1` immediately before the return at loc_811262C shows r6 is the
-    success flag returned via `mov r0, r6` (`bn6f/asm/asm32.s:8924`). - `mov r0, r5; bl battle_getSelectedChipForUse_800ED90`
-    followed by `tst r3, r3; beq loc_811262C` shows a chip must be selected for the body to run. - `lsl
-    r4, r0, #0x17; lsr r4, r4, #0x17` masks r0 to a 7-bit chip id held in r4. - `bl battle_getStateUnk40_800A704;
-    ldr r1, off_81126D4 // =0x12c; cmp r0, r1; blt loc_811262C` gates the attack on battle-state field
-    >= 0x12c (intro/setup phase). - `bl somethingWriteChipParams_80126E4; bl object_setAttack0; bl sub_800F322`
-    is the three-call chip-attack startup sequence that the function wraps. - The caller sub_8112278 takes
-    a wide contract (r4..r12, lr in; everything out), consistent with an AI per-frame dispatch iterating
-    battle objects and consuming a bool per actor.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x08112600
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_tryStartChipAttack_8112600
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_tryStartChipAttack_8112600
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_tryStartChipAttack_8112600 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_tryStartChipAttack_8112600
+
+    ./wf verify --function battleObject_tryStartChipAttack_8112600 --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 43 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_tryStartChipAttack_8112600
+
+    ./wf verify --function battleObject_tryStartChipAttack_8112600 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^08112600 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- Exact identity of sub_800F322 / object_setAttack0 / somethingWriteChipParams_80126E4 — only their contracts/roles
-  are known; whether sub_800F322 is a counter increment or another write isn't pinned down by this snippet.
-- Which AI actor type this is meant for (player vs navi vs virus) — gated by somethingWriteChipParams
-  accepting a chip id; the caller chain determines which r5 it is called on.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08112600 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 7aba4135
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_8112600 -> battleObject_tryStartChipAttack_8112600
-  where: bn6f d76a3a2d
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What exactly does battle_getSelectedChipForUse_800ED90 return in r3 — a validity/availability flag or a count?
+- Confirm that the 0x12C threshold corresponds to a specific battle phase (e.g. after Nav-announce or after the
+  3-countdown)
+- Does somethingWriteChipParams_80126E4 write to a per-projectile struct or to a global attack template?
+- What is r10's role? It is listed as an input but is never read in this function's body (only preserved through
+  bl calls).
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

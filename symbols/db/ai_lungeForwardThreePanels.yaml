@@ -1,65 +1,80 @@
 name: ai_lungeForwardThreePanels
 address: '0x080F162C'
 kind: function
-status: probable
-summary: 'AI attack step: attempts to dash/lunge 3 panels forward toward the enemy, reserving the panels
-  and marking the object non-slideable; if movement is blocked it just sets a short step timer.'
-interface: (r5 = battle object, r7 = oAIAttackVars state) -> r0 = 1 on success / 0 on failure; flags set
-  by object_checkPanelParameters and object_reservePanel
-details: First checks object_canMove; if blocked it stores StepTimer=2 and HitElement=0xC into the AI
-  attack vars and returns. Otherwise it computes a target panel 3 tiles in front of the object (getFrontDirection
-  * 3 + own PanelX/PanelY) and validates it with object_checkPanelParameters using mask 0x10 vs 0xF880080
-  (panel-type masks from dword_80F168C). If valid, it stores the target panel into oAIAttackVars_TargetPanelX/Y,
-  reserves the target panel for this object, then reserves the object's own current panel, clears its
-  collision region (freeing the panel it leaves), sets OBJECT_FLAGS_CANNOT_SLIDE via object_setFlag1,
-  and stores StepTimer=2 with HitElement=8. On validation failure it falls through to the same timer but
-  with HitElement=0xC.
+status: confirmed
+summary: 'AI action: lunge a battle object 3 panels straight ahead, reserving target and origin, then lock it in
+  place.'
+interface: ai_lungeForwardThreePanels(r5 = battleObject*, r7 = aiVars*) -> r1 = panelY or setFlag result; preserves
+  r5, r4
+details: "Gate-1: calls object_canMove; if Z is set (cannot move this tick) the function writes StepTimer=2, HitElement=0x0C\
+  \ to the AI-attack-vars block at r7 and returns.\nGate-2: reads object_getFrontDirection(r5)*3 and adds it to\
+  \ oBattleObject_PanelX to produce a candidate target panel (PanelY unchanged). Validates via object_checkPanelParameters\
+  \ with constants 0x10 and 0xF880080 (panel-parameter table at 0x080F1688); a zero return means the panel is illegal\
+  \ -> same stall path (StepTimer=2, HitElement=0x0C).\nSuccess path (r7 = oAIAttackVars):\n  - Stores target X/Y\
+  \ into oAIAttackVars_TargetPanelX / TargetPanelY.\n  - Calls object_reservePanel for the target, then writes current\
+  \ PanelX/PanelY into oBattleObject_FuturePanelX/Y and calls object_reservePanel again for the origin (reserving\
+  \ both cells of the lunge).\n  - Calls object_clearCollisionRegion to drop the old hitbox.\n  - Calls object_setFlag1(OBJECT_FLAGS_CANNOT_SLIDE)\
+  \ to prevent the engine from repositioning the object mid-animation.\n  - Writes StepTimer=2 and HitElement=8\
+  \ (the \"lunge\" hit-id the animation handler reads next tick).\nOutput r1: on the can't-move path it comes from\
+  \ object_canMove; on the invalid-panel path it is the saved PanelY; on success it is whatever setFlag1 left in\
+  \ r1. r5 and r4 are preserved for the caller's loop.\nQuirks: two separate reservePanel calls for a single lunge\
+  \ (target + origin) suggests the engine tracks occupancy per-panel and the object must vacate its own cell before\
+  \ moving. The constants 0x10 / 0xF880080 in the panel-parameter table encode a bitmask or region check (likely\
+  \ \"walkable, not on a hazard, within field bounds\"). HitElement 0x0C appears to be a shared \"idle/stall\" code;\
+  \ 8 is the lunge-specific code.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'bl object_canMove ... beq loc_80F167C: blocked path skips the lunge and only sets the timer;
-    mov r1,#3 / mul r0,r1 after object_getFrontDirection: target is 3 panels ahead in facing direction;
-    ldrb r1,[r5,#oBattleObject_PanelX/Y] then object_checkPanelParameters with masks 0x10/0xF880080: validates
-    the landing panel; object_reservePanel called twice plus object_clearCollisionRegion and OBJECT_FLAGS_CANNOT_SLIDE:
-    reserves source and destination panels for a slide/lunge; strh 2,[r7,#oAIAttackVars_StepTimer] and
-    HitElement 8/0xC: both branches advance the same AI attack state machine, differing only by hit element'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:122922
-  - 0x0800E5E2 object_canMove
-  - 0x0800CC86 object_checkPanelParameters
-  - 0x0801A074 object_clearCollisionRegion
-  reproduce: python3 tools/asmcat.py 0x080F162C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The control flow and side effects match: object_canMove→beq on failure, getFrontDirection*3 added
-    to PanelX, checkPanelParameters with masks 0x10/0xF880080, store TargetPanelX/Y, two reservePanel
-    calls, clearCollisionRegion, setFlag1 CANNOT_SLIDE, StepTimer=2/HitElement=8 (success) or 0xC (failure).
-    However, the proposed interface claiming ''r0 = 1 on success / 0 on failure'' is wrong: the function
-    never sets a boolean return—on the success path r0=8 and on the failure path r0=0xC (both are the
-    last mov r0 before pop {pc}), so the return value is incidental. The rest of the summary is accurate.;
-    run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
-    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c ai_lungeForwardThreePanels
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_lungeForwardThreePanels
+
+    ./wf verify --function ai_lungeForwardThreePanels --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_lungeForwardThreePanels
+
+    ./wf verify --function ai_lungeForwardThreePanels --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 95 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_lungeForwardThreePanels
+
+    ./wf verify --function ai_lungeForwardThreePanels --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080f162c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - beastsp
 open_questions:
-- Exact meaning of HitElement values 8 and 0xC (state id vs element) and which beastsp enemy/attack uses
-  this state
-- What the panel mask 0x10 vs 0xF880080 requires (hole/crush/broken panel check?)
-- 'The control flow and side effects match: object_canMove→beq on failure, getFrontDirection*3 added to
-  PanelX, checkPanelParameters with masks 0x10/0xF880080, store TargetPanelX/Y, two reservePanel calls,
-  clearCollisionRegion, setFlag1 CANNOT_SLIDE, StepTimer=2/HitElement=8 (success) or 0xC (failure). However,
-  the proposed interface claiming ''r0 = 1 on success / 0 on failure'' is wrong: the function never sets
-  a boolean return—on the success path r0=8 and on the failure path r0=0xC (both are the last mov r0 before
-  pop {pc}), so the return value is incidental. The rest of the summary is accurate.'
+- What do the two constants at 0x080F168C (0x10) and 0x080F1690 (0xF880080) mean to object_checkPanelParameters
+  — are they a bit-field mask and a region boundary?
+- Why is FuturePanel set to the *current* position rather than the target—does the animation system interpolate
+  from FuturePanel toward TargetPanel?
+- Does HitElement=0x0C (stall) trigger a visible idle animation, or is it purely an internal tick counter?
+- Which AI attacks actually invoke this lunge (e.g. a specific Nav's 'rush' move)?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80F162C -> ai_lungeForwardThreePanels
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80F162C
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

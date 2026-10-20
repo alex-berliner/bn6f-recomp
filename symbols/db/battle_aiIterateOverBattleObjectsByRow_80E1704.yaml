@@ -1,65 +1,68 @@
 name: battle_aiIterateOverBattleObjectsByRow_80E1704
 address: '0x080E1704'
 kind: function
-previous_names:
-- sub_80E1704
-status: probable
-summary: Walks the battle-object list and returns an object whose PanelX matches a packed Y:X byte in
-  r4.
-interface: (r0 = accumulator/result, r4 = packed Y:X byte, r6 = ?, r7 = list head pointer) -> r0 = matched
-  object pointer (or 0)
-details: "Iterates a `[ptr]` array at `[r7]`, advancing `r7 += 4` each step until the slot is NULL\n \
-  \ (`ldr r3,[r7]; cmp r3,#0; beq locret_80E172E`). For each non-NULL BattleObject pointer `r3`,\n  it\
-  \ reads `PanelX` at `oBattleObject_PanelX = 0x12` (`ldrb r1,[r3,#0x12]`).\n\n  The packed byte in r4\
-  \ is decomposed:\n  - low byte = `(r4 << 24) >> 24`  → desired PanelX low bound\n  - high byte = `(r4\
-  \ >> 8)`        → desired PanelX high bound\n\n  If `PanelX < low OR PanelX > high` the entry is skipped\
-  \ (`blt`/`bgt` to `loc_80E172A`).\n  Otherwise:\n  - if `r0 == 0`, the current pointer becomes the new\
-  \ accumulator (`mov r0,r3`).\n  - else `bl sub_80E1730` is called with `(r0, r3, r6, lr)` — a helper\
-  \ that is consulted once\n    a previous match exists, probably to choose between candidates or to act\
-  \ on the second hit.\n\n  This pattern matches AI scanning for an enemy on the same row as the current\
-  \ panel, where\n  `r4` packs (col = PanelX desired, row = ?) and `r6` likely carries an AI/BattleState\
-  \ context\n  for the helper.\n"
+status: confirmed
+summary: Scans a NULL-terminated battle-object list for the sprite in a given row whose PanelX is nearest to a reference
+  column, used by AI targeting.
+interface: 'u32 battle_findClosestObjectInRow(u32 row_bits /* r4: byte0=lower PanelX, bits8+=upper PanelX */, u32
+  ref_panel /* r6: reference column for closeness */, u32* obj_list /* r7: NULL-terminated pointer array */) ->
+  u32 best_obj /* r0 */'
+details: 'Unpacks a row descriptor from r4: byte 0 gives the minimum PanelX and bits 8+ give the maximum. Walks
+  the pointer array at r7 (stepping 4 bytes), reading each object''s PanelX at offset oBattleObject_PanelX. Objects
+  whose PanelX falls within [lower, upper] (unsigned comparison after masking r4 to a byte for the lower bound)
+  are candidates. On the first hit the candidate is stored as the best; subsequent hits go through battle_pickClosestPanelObject_80E1730(r0=best,
+  r3=next, r6=ref_panel) to keep whichever is closer to the reference column. Returns the winning pointer, or 0
+  if no object in the list matched the row.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldr r3,[r7]; cmp r3,#0; beq locret_80E172E` — NULL-terminated pointer array walk anchored
-    at r7. - `ldrb r1,[r3,#oBattleObject_PanelX]` with the constant 0x12 (see BattleObject.inc) — reads
-    PanelX from each candidate object. - `lsl r2,r4,#0x18; lsr r2,r2,#0x18` isolates the low byte of r4;
-    `lsr r2,r4,#8` isolates the high byte; together they form a [low,high] range filter on PanelX. - `blt
-    loc_80E172A` (skip if PanelX < low) and `bgt loc_80E172A` (skip if PanelX > high) — strict range test,
-    both endpoints exclusive. - `cmp r0,#0; beq loc_80E1728` — only the first matching object is remembered;
-    subsequent matches defer to `sub_80E1730`. - `add r7,#4` advances the iterator by one pointer slot
-    before the loop. - Caller chain: `sub_80E16CC` (the only known caller) hands in r0/r1/r2/lr and saves
-    r4; convention strongly suggests this is a battle-AI scanning helper.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080E1704
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battle_aiIterateOverBattleObjectsByRow_80E1704
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_aiIterateOverBattleObjectsByRow_80E1704
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_aiIterateOverBattleObjectsByRow_80E1704 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_aiIterateOverBattleObjectsByRow_80E1704
+
+    ./wf verify --function battle_aiIterateOverBattleObjectsByRow_80E1704 --snapshots build-snapshots'
+  result: 21 compared, 0 differed, 34 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_aiIterateOverBattleObjectsByRow_80E1704
+
+    ./wf verify --function battle_aiIterateOverBattleObjectsByRow_80E1704 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^080e1704 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- Exact meaning of the high byte of r4 — it's tested only against `PanelX`, not `PanelY`, so it likely
-  represents another column-x bound (panel-width?). Possibly a [colmin, colmax] range on the same row,
-  but the row axis is not directly compared here.
-- What `sub_80E1730` does on the second/later match — without its body we cannot tell whether this picks
-  the closest, farthest, or applies an AI decision.
-- 'Role of r6: passed through to `sub_80E1730` but never used in this function; probably an AIData/BattleObject
-  context pointer setup by the caller.'
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080e1704 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f c83478a3
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80E1704 -> battle_aiIterateOverBattleObjectsByRow_80E1704
-  where: bn6f 9d86d495
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- beastsp
+open_questions:
+- What caller populates the row_bits (r4) value and the reference panel (r6)? Likely a NavCust/Chip targeting routine.
+- Is r6 a panel column index or a pixel coordinate that battle_pickClosestPanelObject interprets?
+- Does the signed/unsigned boundary in the PanelX comparison matter for edge rows (e.g. row 0 or row 3 wrapping)?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

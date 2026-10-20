@@ -1,77 +1,74 @@
 name: battleObject_initBeastSpEnemy_80A6EBC
 address: '0x080A6EBC'
 kind: function
-previous_names:
-- sub_80A6EBC
-status: probable
-summary: 'Initialize a Beast+ SP-form enemy battle object: load its sprite/animation, set draw layer/priority/palette,
-  optionally patch coords from sub_80A70C0, optionally run sub_80A7208 when event 0x5E5 is set, then transition
-  CurState to UPDATE (0x4).'
-interface: '(r5 = BattleObject*) -> r0 = 0x26 ; side effects: writes many BattleObject fields, may patch coords
-  from a returned table, may run a one-shot story-gated helper'
-details: 'Entry contract (r4-r7, r10 saved) treats r5 as the enemy BattleObject and r10 as the Toolkit.
-
-  - strb r0=#3 -> [r5] (object header Flags, set ACTIVE | VISIBLE | PAUSE_UPDATE and clear others; also the header
-  byte at offset 0 is a flags byte).
-
-  - sprite_load(r0=0x80, r1=0x1c, r2=0x2f) loads sprite data into the slot, with a placeholder if missing.
-
-  - sprite_setAnimation(0), sprite_loadAnimationData() and sprite_noShadow() set up the visuals.
-
-  - applyLayerEffectToOWObject_8035694 on r5+0xc sets the draw layer/priority based on map regions.
-
-  - sprite_setPriority_8002E14 (r0 unspecified in the listing but called right after the layer-appender) and sprite_setPalette(1)
-  finish sprite config.
-
-  - sub_80A70C0 returns a pointer/handle; if non-NULL, its first u32 (shifts left by 16) is stored at r5+0xc (Z?)
-  and second u32 at r5+0x10 (timer?), then zero writes to r5+0x14, r5+0x2c, r5+0x34 clear pending damage/timers/coords.
-  strb r5,#6 = 0; str r5,[#0x38] = 0x11 sets a flag/state.
-
-  - If event flag 0x5E5 is set (TestEventFlagFromImmediate), sub_80A7208 is called once to apply its story-specific
-  setup.
-
-  - strb r5,#8 = 0x4 sets CurState = CUR_STATE_UPDATE, then battleObject_updateAnimation_80A6F2C runs the per-frame
-  logic and returns.
-
-  Returns r0 = 0x26 (a common battle-object init "I initialized" return code seen on captured exits).
+status: confirmed
+summary: 'Initializes a Beast-type overworld enemy sprite: loads graphics and animation, sets layer effect/priority/palette,
+  copies position from a parameter table, optionally loads battle stats (flag 0x5E5), then spawns via animation
+  update.'
+interface: void battleObject_initBeastOverworldSprite(u32 r4, u32 r5 /*sprite object ptr*/, u32 r6, u32 r7, u32
+  r10, lr)
+details: 'Sets sprite state byte at (r5+0) to 3 (loading). Calls sprite_load with args (0x80, 0x1C, 0x2F) to load
+  Beast graphics into VRAM, then animation frame 0, animation data, no-shadow, layer-effect at (r5+0xC), priority,
+  palette 1. sub_80A70C0 returns a beast-parameter block pointer; if null the function exits early without spawning.
+  When non-null it reads two u16 position values from the block, stores them shifted left 16 into (r5+0xC) and (r5+0x10)
+  (fixed-point 16.16), zeros (r5+0x14), (r5+0x2C), (r5+0x34), (r5+6), and writes behavior code 0x11 to (r5+0x38).
+  Event flag 0x5E5 is set and tested; if set, battle_loadBeastSpEnemyStats loads HP/attack/etc. Finally state byte
+  at (r5+8) is set to 4 and battleObject_updateAnimation_80A6F2C is called to activate the sprite on the overworld
+  map.
 
   '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- strb r0, [r5] with r0=3 sets object header Flags (the 0x0 byte of BattleObject is ObjectHeader.Flags).
-    - sprite_load(0x80, 0x1c, 0x2f) is the same numeric triple as other BN6 enemy init slots, with a small-but-non-zero
-    low byte suggesting an enemy-specific sprite id. - applyLayerEffectToOWObject_8035694 is called with r5+0xc
-    as the object+0xc call''s object region (Z + small fields); its project summary matches "pick layer for overworld-style
-    object", reused here for in-battle refs. - sub_80A70C0 returning r0 used as r4; ldrh/lsl 16 then str to [r5+0xc]
-    and [r5+0x10] patches Z and a 16.16 timer; the zero writes clear coords at 0x14, Damage at 0x2c, X/Y block at
-    0x34, and strb at +6 clears Param4. - movflag EVENT_5E5 + bl TestEventFlagFromImmediate + beq skip 1st branch
-    is a textbook conditional gate on a story flag; matches sub_80A7208 call. - strb r0=4 to [r5+0x8] sets BattleObject.CurState
-    = CUR_STATE_UPDATE (CUR_STATE_UPDATE=4 in the enum). - battleObject_updateAnimation_80A6F2C is then called exactly
-    once before the pop {pc}, which matches the "init hands off to update" pattern. - Captured entry r0 = 0x80a6ebd
-    (=battleObject_initBeastSpEnemy_80A6EBC | 1, Thumb bit) and exit r0 = 0x26 across all three calls confirm the
-    same caller and stable return value.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s
-  reproduce: 'python3 tools/asmcat.py 0x080A6EBC
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_initBeastSpEnemy_80A6EBC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_initBeastSpEnemy_80A6EBC
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_initBeastSpEnemy_80A6EBC
+    ./wf verify --function battleObject_initBeastSpEnemy_80A6EBC --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_initBeastSpEnemy_80A6EBC
 
-    '
-sources:
-- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_initBeastSpEnemy_80A6EBC --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 89 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_initBeastSpEnemy_80A6EBC
+
+    ./wf verify --function battleObject_initBeastSpEnemy_80A6EBC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a6ebc ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f d29ed784
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80A6EBC -> battleObject_initBeastSpEnemy_80A6EBC
-  where: bn6f ceec2432
-  tool: tools/rename_symbol.py
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 7a974ab5
-  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- What specific Beast enemy does behavior code 0x11 correspond to (Glyde, Falz-type, etc.)?
+- What does sub_80A70C0 return exactly — a pointer into a hardcoded table or a per-map parameter block?
+- Does event flag 0x5E5 indicate a post-battle or story-specific encounter variant?
+- Why are positions stored as 16-bit shifted left 16 rather than full 32-bit; is the lower halfword reserved for
+  fractional/subpixel?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

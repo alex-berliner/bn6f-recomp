@@ -1,68 +1,74 @@
 name: battleObject_scenarioEffectInputHandler_8089704
 address: '0x08089704'
 kind: function
-previous_names:
-- sub_8089704
-status: probable
-summary: Battle custom-screen handler that maps joypad (A/B/L/R) inputs over the active scenario-effect slot in
-  the chip-select state, playing the appropriate cue and returning a non-zero code on a successful change.
-interface: 'in (r10 = toolkit, lr) -> r0 = 0 (no change) / 1 (select changed) / 2 (confirm) / 3 (cancel) ; side
-  effects: PlaySoundEffect, mutation of scenario-effect state field via sub_81421C8, and reads scenario-effect active
-  flag and sub_8142A84.'
-details: "- Loads the toolkit joypad pointer from r10 at offset oToolkit_JoypadPtr (0x4), then reads Held (offset\
-  \ 0x0) and LowSensitivityHeld (offset 0x4) into r7.\n  - Branches on the A button (test r0=1, r7; beq to not-A).\
-  \ The A path calls battle_getScenarioEffectStateField_81421D0 to fetch the current scenario-effect slot, then\
-  \ battle_checkScenarioEffectActive_8142190. If both check flags succeed, falls through to sub_8142A84; if that\
-  \ returns NZ, plays SOUND_SELECT_67 and returns 2.\n  - On the A path but with scenario-effect not active, plays\
-  \ SOUND_CANT_JACK_IN and returns 0.\n  - B button (test 0x2) plays SOUND_UNSELECT_68 and returns 3.\n  - L (test\
-  \ 0x40 on LowSensitivityHeld): decrements the slot via battle_getScenarioEffectStateField/sub r0,#1; clamps to\
-  \ a minimum of 3 (mov r0,#3 on negative), calls sub_81421C8 (setter) with that value, plays sound 0x66, returns\
-  \ 1.\n  - R (test 0x80 on LowSensitivityHeld): increments slot, clamps to a max of 3 (load 0, on >= 4), setter,\
-  \ plays SOUND_UNK_66, returns 1.\n  - The r4 accumulator (0 default) is the final return value via `mov r0, r4`\
-  \ then `tst r0, r0; pop {r4-r7,pc}`.\n"
+status: confirmed
+summary: Processes one frame of joypad input during the battle scenario-effect (jack-in) selection menu; handles
+  A to confirm/jack-in, B to cancel, and L/R to cycle the highlighted effect index with 4-step wraparound.
+interface: void battleObject_scenarioEffectInputHandler_8089704(void) — reads r2 (extra PlaySoundEffect parameter),
+  r10 (toolkit pointer); returns r0 = action code {0 idle/blocked, 1 shoulder cycled, 2 A advanced, 3 B unselected}
+  with NZ flags; clobbers r1, r4–r7 via callee wrappers, preserves r4–r7, r10 across the call boundary.
+details: "Reads the toolkit's joypad pointer at oToolkit_JoypadPtr (offset from r10).\nHeld-button word is at joypad+2;\
+  \ shoulder-button word at joypad+4.\n\nA (mask 0x1 in held word):\n  1. Calls battle_getScenarioEffectStateField_81421D0\
+  \ to fetch current state index.\n  2. Calls battle_checkScenarioEffectActive_8142190(state); if Z is set the effect\n\
+  \     is not active → play SOUND_CANT_JACK_IN, return 0 (jack-in blocked).\n  3. Calls sub_8142A84; if Z set →\
+  \ advance not permitted this frame, return 0.\n  4. Otherwise plays SOUND_SELECT_67 and returns 2 (confirmed/jacked\
+  \ in).\n\nB (mask 0x2 in held word):\n  Plays SOUND_UNSELECT_68, returns 3.\n\nL (mask 0x40 in shoulder word):\n\
+  \  Plays sound ID 0x66, decrements the state index by 1 (wrapping 0→3),\n  calls e_setScenarioEffectStateB with\
+  \ the new index, returns 1.\n\nR (mask 0x80 in shoulder word):\n  Plays sound ID SOUND_UNK_66 (also 0x66 numerically\
+  \ in the C path), increments\n  the state index by 1 (wrapping 3→0 at cmp #4), calls e_setScenarioEffectStateB,\n\
+  \  returns 1.\n\nFalls through to return 0 when no relevant button is pressed.\nThe state index space is [0..3]\
+  \ (four scenario effects selectable).\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldr r7, [r7, #oToolkit_JoypadPtr]` (offset 4) and `ldrh r7, [r7, #2]/#4` matches Toolkit struct fields
-    JoypadPtr / JoypadPressed (=2) / LowSensitivityHeld (=4). - Constant `1` tested first, `beq loc_8089738` skips
-    A; constants 2 / 0x40 / 0x80 match JOYPAD_A / JOYPAD_B / JOYPAD_L / JOYPAD_R. - Sounds routed: SOUND_SELECT_67
-    on confirm, SOUND_CANT_JACK_IN when scenario blocked, SOUND_UNSELECT_68 on B, sound 0x66 / SOUND_UNK_66 on L
-    / R changes via `bl PlaySoundEffect`. - Helper pair `sub_8142190`/`sub_81421D0` named `battle_checkScenarioEffectActive`/`battle_getScenarioEffectStateField`
-    and `sub_81421C8` is the setter (called with the new clamped value). - Captured calls show all 6 entries having
-    identical r0-r3 at entry and r0=0/flags -Z-- at exit, indicating the routine returns 0 (no effective input)
-    on those invocations.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x08089704
+  - cport/src/game/asm23.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_scenarioEffectInputHandler_8089704
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_scenarioEffectInputHandler_8089704
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_scenarioEffectInputHandler_8089704 --snapshots build-snapshots'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_scenarioEffectInputHandler_8089704
+
+    ./wf verify --function battleObject_scenarioEffectInputHandler_8089704 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_scenarioEffectInputHandler_8089704
+
+    ./wf verify --function battleObject_scenarioEffectInputHandler_8089704 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^08089704 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- The exact range of scenario-effect values that sub_8142A84 constrains on the A path is not directly visible; only
-  that bne to "no update" leads to a different flow than beq to "play CAN'T_JACK_IN".
-- Whether the sound IDs 0x66 / 0x67 correspond exactly to chip-select L/R/Confirm cues would settle the name; current
-  code only proves the interaction with the scenario-effect slot.
-- The exact semantic of sub_81421C8 (whether it writes the slot back, or an internal cursor) is inferred from being
-  called immediately after a clamped add/sub.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08089704 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm23.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f add04b11
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_8089704 -> battleObject_scenarioEffectInputHandler_8089704
-  where: bn6f 82358707
-  tool: tools/rename_symbol.py
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f feeac2b3
-  tool: tools/symdoc.py
+readable_c: cport/src/game/asm23.c
+coverage:
+- beastsp
+open_questions:
+- What does sub_8142A84 check or advance beyond the binary gate (returns r2/r3/r4)? Possibly a net-specific jack-in
+  validity test.
+- Is r2 truly a caller-supplied sound-channel or volume parameter, or an artifact of the register contract?
+- 'SOUND_UNK_66 vs literal 0x66: are these the same sound ID or distinct entries in the sound table?'
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

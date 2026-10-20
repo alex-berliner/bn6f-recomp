@@ -1,70 +1,72 @@
 name: ai_sortEnemyPanelCoords
 address: '0x080E5174'
 kind: function
-status: probable
-summary: Collects opposing-side enemies via two object_getEnemyByNameRange calls (IDs 0..0xAE and 0x100..0x1C3);
-  if two are found, picks the lower-HP one (RNG-tied) for the third slot, and if fewer are found duplicates the
-  first slot, then packs PanelX|(PanelY<<4) into three bytes at r5+0x64..0x66 and bubble-sorts them ascending via
-  sub_80E5208.
-interface: (r0 = owner battle object, passed in r5 by caller) -> no return; writes 3 packed panel-coord bytes to
-  [r5+0x64..0x66], clobbers r4/r6/r7
-details: Builds a 4-pointer array on stack via two object_getEnemyByNameRange calls with the owner's alliance XOR
-  1 (opposing side) and ID ranges 0..0xAE and 0x100..0x1C3, appending the second batch after the first's returned
-  count. With exactly two hits it compares oBattleObject_HP and keeps the weaker one, using GetPositiveSignedRNG
-  bit 2 to break ties; with fewer it copies the first hit into the empty slots. It then packs each of the first
-  three slots' oBattleObject_PanelX | PanelY<<4 into one byte at r5+0x64 and runs a 3-element ascending pairwise
-  sort through sub_80E5208. Behavior when zero enemies are found looks unsafe (uninitialized/NULL slots would be
-  dereferenced), so callers presumably guarantee at least one opposing enemy.
+status: confirmed
+summary: Gathers up to three enemy battle objects on the opposing alliance, packs their panel (X,Y) coordinates
+  into the caller's battle-object byte array at offset 0x64, and sorts the three entries ascending using an alliance-aware
+  comparator.
+interface: ai_sortEnemyPanelCoords(r5=battleObj*) -> r5 preserved; clobbers r0-r3, flags; preserves r4,r6,r7
+details: Computes allianceFlip = LD8(battleObj->Alliance) ^ 1, then calls object_getEnemyByNameRange twice to collect
+  pointers to enemies whose name IDs fall in [0,0xAE) and [0x100,0x1C3) respectively, writing them into a 3-slot
+  stack buffer. If exactly 2 enemies are found the third slot is filled with the higher-HP one (ties broken by GetPositiveSignedRNG
+  masked with 4 selecting buf[0] or buf[1]); if fewer than 2 are found the single entry is duplicated into all three
+  slots. Each enemy's oBattleObject_PanelX and oBattleObject_PanelY are combined into a packed byte (Y<<4 | X) stored
+  at battleObj+0x64 through 0x66. A simple nested selection/bubble sort (outer loop 2..1, inner loop of length outer)
+  reorders the three bytes ascending via battle_orderPairByAllianceFlip, which accounts for whether the panel is
+  on the player's or enemy's half of the 3x3 grid. Stack frame is 0x10 bytes; callee-saved regs r4,r6,r7 are pushed/popped
+  so callers see no clobbering.
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: two object_getEnemyByNameRange calls with r3=[r5+Alliance]^1 and ranges (0,0xAE)/(0x100,0x1C3), second
-    appended at sp+count*4; HP compare of the two hits plus 'bl GetPositiveSignedRNG; and r0,#4; ldr r0,[r7,r0]'
-    selects lower-HP enemy on tie; loop 'ldrb [r2,#oBattleObject_PanelX] / PanelY<<4 / orr / strb [r4,r3]' writes
-    3 bytes at r5+0x64; nested loop calling sub_80E5208 on adjacent bytes is a 3-element ascending sort of those
-    packed coords; caller sub_80E50E4 runs on the recorded beastsp route and supplies r5 as the acting battle object
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:97194
-  - 0x080E50E4 sub_80E50E4
-  - 0x08001532 GetPositiveSignedRNG
-  - 0x0800EBD4 object_getEnemyByNameRange
-  - 0x080E5208 sub_80E5208
-  reproduce: python3 tools/asmcat.py 0x080E5174
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The summary
-    is mostly correct: two getEnemyByNameRange calls (0..0xAE and 0x100..0x1C3) with opposing alliance, packing
-    PanelX|(PanelY<<4) into three bytes at r5+0x64..0x66, and bubble-sorting via sub_80E5208 (loc_80E51E8/1EC).
-    However ''substituting/duplicating'' conflates two cases: exactly 2 found picks the lower-HP enemy (with RNG
-    tiebreak using bit 2, not bit 1) for slot 2, while 0 or 1 found duplicates slot 0 into the remaining slots (loc_80E51C6).
-    The function is called from sub_80E50E4 and behaves like AI logic selecting target panels, so an ai_ prefix
-    is reasonable.; run wf investigate investigate-20261018-200615; proposed by Hyper glm-5.3-flash, revised by
-    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c ai_sortEnemyPanelCoords
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_sortEnemyPanelCoords
+
+    ./wf verify --function ai_sortEnemyPanelCoords --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_sortEnemyPanelCoords
+
+    ./wf verify --function ai_sortEnemyPanelCoords --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 93 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_sortEnemyPanelCoords
+
+    ./wf verify --function ai_sortEnemyPanelCoords --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080e5174 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80E0F02.c
 coverage:
 - beastsp
 open_questions:
-- what consumes the 3 sorted bytes at r5+0x64 (which boss/AI behavior, exact field meaning)
-- what object_getEnemyByNameRange leaves in unfilled buffer slots (NULL vs sentinel), i.e. whether <2-enemy cases
-  are reachable
-- what sub_80E5208's comparison/swap convention is, to confirm sort order
-- 'The summary is mostly correct: two getEnemyByNameRange calls (0..0xAE and 0x100..0x1C3) with opposing alliance,
-  packing PanelX|(PanelY<<4) into three bytes at r5+0x64..0x66, and bubble-sorting via sub_80E5208 (loc_80E51E8/1EC).
-  However ''substituting/duplicating'' conflates two cases: exactly 2 found picks the lower-HP enemy (with RNG tiebreak
-  using bit 2, not bit 1) for slot 2, while 0 or 1 found duplicates slot 0 into the remaining slots (loc_80E51C6).
-  The function is called from sub_80E50E4 and behaves like AI logic selecting target panels, so an ai_ prefix is
-  reasonable.'
+- Why two separate name-ID ranges [0,0xAE) and [0x100,0x1C3)? Likely separates standard enemy chips from special/boss
+  entities—confirm from object table.
+- 'battle_orderPairByAllianceFlip semantics: does it flip the comparison direction when the panel is on the opposing
+  side, or does it swap coordinates?'
+- 'Offset 0x64: is this a known named field in the battle-object struct for AI target selection order?'
 sources:
-- wf investigate investigate-20261018-200615
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 58027fff
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80E5174 -> ai_sortEnemyPanelCoords
-  where: bn6f f9d9fc39
-  tool: tools/rename_symbol.py
-- date: '2026-10-20'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 3e7dd5f6
-  tool: tools/symdoc.py
-previous_names:
-- sub_80E5174
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

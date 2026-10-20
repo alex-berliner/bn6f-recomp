@@ -1,80 +1,86 @@
 name: battleObject_beastSpInit_8117EE8
 address: '0x08117EE8'
 kind: function
-previous_names:
-- sub_8117EE8
-status: probable
-summary: 'Initialise a BeastSP battle object: set type, load GUI sprite/animation, set priority 3, pick
-  a slot/halfword, write the initial coords, then dispatch the action.'
-interface: (r5 = BattleObject*) -> void ; sets r5+0x0..r5+0x14 from in-RAM table byte_8117F68 and off_8117F44,
-  side effects on r0..r4,r6..r9 via callees
-details: '1. Writes 0x23 into the object header byte at r5+0 (object_header_struct.Flags, the high bits
-  index into the header type - 0x23 is the BeastSP object type).
+status: confirmed
+summary: Initialises a beast-slot battle-cursor sprite (type 0x23), loads its GUI animation, sets priority/shadow,
+  writes per-slot table fields, positions it from a hardcoded X/Y table, then chains to the dispatch action routine.
+interface: void battle_beastSpCursorInit_8117EE8(void *r5 /* sprite record */); /* clobbers all; outputs r2,r3,r5,r10,r11
+  via beastSpDispatchAction tail-call */
+details: 'Operates on a sprite record whose base pointer is in r5. Sequence:
 
-  2. Calls initGuiSprite_8002770 with the GUI sprite resource pointer unk_201DD70 and r0=0x11, attaching
-  the BeastSP GUI sprite to the object.
+  • Writes 0x23 to byte 0 (slot-type tag for beast-special cursor).
 
-  3. sprite_setAnimation(0), sprite_loadAnimationData(), sprite_noShadow() to install anim 0 with no shadow.
+  • Calls initGuiSprite with id 0x11 and palette-table pointer unk_201DD70 to load the sprite''s visual.
 
-  4. sprite_setPriority_8002E14(3) to set OAM priority to 3.
+  • Sets animation index 0, loads animation data, clears shadow flag, sets render priority to 3.
 
-  5. Reads r5+4 (the object''s ListIndex/Index byte) as a 2-bit selector into off_8117F44, getting a halfword
-  {0x180,0x140,0x100,0xC0,0x80,0x40,0x0} and calling slotList_storeHalfwordAndClearField_800306C to write
-  it into the corresponding slot - this is the beast-SP charge/time budget that the action state will
-  consume.
+  • Reads slot number from byte +4 (0–6). Indexes a 7-entry u32 row-pointer table (0x180,0x140,0x100,0xC0,0x80,0x40,0x0
+  – descending by 0x40) and calls slotList_storeHalfwordAndClearField to write a halfword tag and zero a companion
+  field.
 
-  6. sprite_setSubRecordFieldA_8003060(3) to set the sprite sub-record field +0xA = 3.
+  • Sets sub-record field A to 3 via sprite_setSubRecordFieldA.
 
-  7. Sets r5+0x8 (CurState) = 4, r5+0x9 (CurAction) = 0, r5+0xA (CurPhase) = 0, so CurStateActionPhaseAndPhaseInitialized
-  is 0x00000004.
+  • Writes fixed bytes: +8=4 (state/mode), +9=0, +0xA=0.
 
-  8. Reads r5+4 again as a 1-bit index into byte_8117F68 (16-bit halfwords {0xFFF6, 0x0008, 0x001A, 0x002C,
-  0x003E, 0x0050, 0x0062, 0x0000}) and stores it to r5+0x14 (FuturePanelX/FuturePanelY) - this places
-  each BeastSP variant on a fixed panel column on the enemy side.
+  • Reads an s16 X-offset from byte_8117F68 indexed by slot_num*2 (values ≈ -10, 8, 26, 44, 62, 80, 98, 0), stores
+  it at +0x14, and calls sprite_setCoordinates with Y=0xB8 (184) and that X.
 
-  9. sprite_setCoordinates(0xB8, panelY) places the sprite at x=0xB8 with the panel-derived y.
-
-  10. Finally bl battleObject_beastSpDispatchAction_8117F78 to enter the per-frame action dispatcher;
-  the function returns into the caller''s lr.
+  • Tail-calls battleObject_beastSpDispatchAction_8117F78(r5), which populates r2, r3, r10, r11 for the caller.
 
   '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- mov r0,#0x23; strb r0,[r5] is the canonical header-type store for a BeastSP object, before
-    any sprite attach. - ldr r1,off_8117F60; bl initGuiSprite_8002770 attaches a known GUI sprite from
-    unk_201DD70 (the BeastSP SP-gauge overlay). - The halfword table off_8117F44 holds 0x180 down to 0x0
-    in 0x40 steps and is indexed by r5+4 (the object''s panel column byte) - matches the per-column SP
-    gauge size pattern. - byte_8117F68 halfwords 0xFFF6, 0x0008, 0x001A, 0x002C, 0x003E, 0x0050, 0x0062
-    are written into r5+0x14 which is the packed FuturePanelXY field per the BattleObject struct, so the
-    variant''s enemy-side starting column is fixed. - mov r0,#4; strb r0,[r5,#8] and the following strb
-    0/0 to r5+9/r5+0xA match CurState=4 (UPDATE), CurAction=0, CurPhase=0. - Final bl battleObject_beastSpDispatchAction_8117F78
-    and pop {pc} make this a one-shot init that hands control to the dispatcher; the function''s captured-call
-    contract (in r5/r10/lr, out r2/r3/r5) matches the dispatcher''s contract exactly. - sprite_setCoordinates(0xB8,
-    panelY) places BeastSP at x=0xB8 which is the fixed left/right slot for the SP gauge in the HUD.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s
-  reproduce: 'python3 tools/asmcat.py 0x08117EE8
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_beastSpInit_8117EE8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_beastSpInit_8117EE8
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_beastSpInit_8117EE8
+    ./wf verify --function battleObject_beastSpInit_8117EE8 --snapshots build-snapshots'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_beastSpInit_8117EE8
 
-    '
-open_questions:
-- The exact semantics of the halfword at off_8117F44 (charge count vs. pixel height) is not 100% pinned;
-  the table stepping 0x40 with 7 entries suggests gauge-segment counts, but whether r5+4 is the panel
-  column (0..6) or a smaller field would settle it.
-- r5+0x14 is assumed to be FuturePanelXY (packed). A direct field-symbol reference for BeastSP objects
-  would confirm which nibble holds x vs. y.
-sources:
-- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_beastSpInit_8117EE8 --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 39 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_beastSpInit_8117EE8
+
+    ./wf verify --function battleObject_beastSpInit_8117EE8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08117ee8 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 13ab054c
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_8117EE8 -> battleObject_beastSpInit_8117EE8
-  where: bn6f ce204b1d
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- beastsp
+open_questions:
+- What does sub-record field A = 3 select in the sprite's rendering pipeline?
+- The Y coordinate 0xB8 is fixed for all slots; is vertical spacing handled entirely by the row-pointer table or
+  by the dispatch routine?
+- byte_8117F68 has a trailing 0x0000 entry (index 7); is slot number ever ≥ 7 in practice?
+- Does slotList_storeHalfwordAndClearField encode the row-pointer value (0x180..0x0) as a halfword tag, or is it
+  a separate constant?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

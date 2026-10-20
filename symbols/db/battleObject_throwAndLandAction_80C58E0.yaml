@@ -1,67 +1,93 @@
 name: battleObject_throwAndLandAction_80C58E0
 address: '0x080C58E0'
 kind: function
-previous_names:
-- sub_80C58E0
-status: probable
-summary: 'Battle-object "throw" animation: phases 0 launches a gravity-affected projectile from its panel
-  X/Y toward panel coords stored in Param3/Param4, ticking timers/animation frames; on landing, snaps
-  position back, plays the hit SFX and hands off to CurAction 4.'
-interface: '(r5 = oBattleObject; r10 = toolkit) -> void ; side effects: writes XVelocity/YVelocity/ZVelocity,
-  Timer, CurAnim, PanelX/Y, Z and routes through panel helpers / collision-region setter.'
-details: "On entry reads CurPhase (offset 0xa). On phase 0 it bumps CurPhase to 1, reads Param3/Param4\
-  \ (offsets 0x6/0x7) and converts them to fixed-point pixel coords with `object_getCoordinatesForPanels`,\
-  \ then calls `math_getThrowSpeeds` with start (0x34 + r5), 0x30 (Timer reload), peak 0xb0000 and gravity\
-  \ 0xffffb000, storing the three velocities at XVelocity/YVelocity/ZVelocity (0x40/0x44/0x48). Every\
-  \ frame it adds velocities into X/Y/Z, applies gravity to ZVelocity, picks CurAnim (offset 0x10) from\
-  \ offsets 1..5 of an extras-style table based on the running Timer (>= 0x28 down to <4), and decrements\
-  \ Timer. When Timer underflows it copies Param3/Param4 into PanelX/PanelY, resets Z to 0x30000, calls\
-  \ `object_setCoordinatesFromPanels` + `object_updateCollisionPanels`, sets collision region 1 (`object_setCollisionRegion`\
-  \ with r0=1), CurAnim 5, plays sound 0x1d0 (`add r0,#0xff ; 0xd1 -> 0x1d0` then `PlaySoundEffect`),\
-  \ and sets CurAction = 4 with CurPhaseAndPhaseInitialized = 0. As a flourish, while Timer>=0 and bit3\
-  \ of (Timer>>3) is set, `object_highlightPanel` flashes the panel Param3/Param4.\n  The table at `byte_80C59A4`\
-  \ maps Timer thresholds to animation indices. Called as an action handler (presumably via the CurAction=3\
-  \ path) for a battle object that gets flung and lands on a target panel.\n"
+status: confirmed
+summary: Per-frame tick that drives a battle object (e.g. a thrown chip) along a parabolic arc toward a target panel,
+  swaps animation frames at checkpoints, and snaps it onto the destination panel with a landing sound when the flight
+  timer expires.
+interface: void battleObject_tickThrowArc(u32 r5 /* object */); // returns r1 (ExtraVars ptr or panel-highlight
+  result), preserves r4-r7,r10
+details: 'Called once per frame as an action handler on a BattleObject pointed to by r5.
+
+
+  *Phase-0 init (first tick):* reads target panel from Param3/Param4, converts to world coordinates via object_getCoordinatesForPanels,
+  sets Timer to 0x30 (48 frames), and fills X/Y/Z velocities via math_getThrowSpeeds using a horizontal-reach constant
+  0xB0000, flight duration 0x30, and per-frame gravity increment 0xFFFFB000.
+
+
+  *Every tick:* integrates position (X+=XVel, Y+=YVel, Z+=ZVel), then subtracts the gravity constant from ZVel.
+  Reads the ExtraVars pointer and, at specific Timer values (0x28, 0x20, 0x18, 0x10, 0x04), loads a byte from ExtraVars+1..5
+  into CurAnim to cycle the visual animation frames (spin/tumble of the thrown object). Decrements Timer by 1.
+
+
+  *Landing (Timer underflows past 0):* snaps PanelX/PanelY to Param3/Param4, zeroes Z to 0x30000 (ground height),
+  calls object_setCoordinatesFromPanels + object_updateCollisionPanels, enables collision region 1, sets CurAnim=5
+  (landed pose), plays SFX 0x1D0 (chip/object impact), sets CurAction=4 (hand off to the next action in the sequence),
+  and resets CurPhaseAndPhaseInitialized.
+
+
+  *Panel blink:* after decrementing Timer, if bit 3 of the new Timer is set, calls object_highlightPanel on the
+  destination panel (flashing the target square during flight). The trailing byte table at byte_80C59A4 (18 bytes
+  of signed offsets) appears to be animation/ExtraVars data not directly referenced by this code path; it may be
+  indexed by a sibling action handler.
+
+
+  Fields touched: oBattleObject_CurPhase, Param3, Param4, Timer, X, Y, Z, XVelocity, YVelocity, ZVelocity, ExtraVars,
+  CurAnim, PanelX, PanelY, CurAction, CurPhaseAndPhaseInitialized.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrb r0,[r5,#oBattleObject_CurPhase]; cmp r0,#0; bne loc_80C590E` gates one-shot init. -
-    `ldrb r0,[r5,#oBattleObject_Param3]` / `ldrb r1,[r5,#oBattleObject_Param4]` followed by `bl object_getCoordinatesForPanels`
-    and `bl math_getThrowSpeeds` with r0=0x34+r5, r3=0xb0000, r6=0xffffb000 implements the parabolic launch.
-    - `strh r4,[r5,#oBattleObject_Timer]` with r4=0x30 sets the duration used later as the Timer that
-    decrements each frame until landing. - After Timer decrement `bge loc_80C598E` is false: it copies
-    Param3/Param4 into PanelX/Y, stores 0x30000 into Z, calls `object_setCoordinatesFromPanels`, `object_updateCollisionPanels`,
-    `object_setCollisionRegion` (r0=1), CurAnim=5, and `bl PlaySoundEffect` with r0=0x1d0 (computed via
-    `mov r0,#0xd1; add r0,#0xff`). - `mov r0,#4; strb r0,[r5,#oBattleObject_CurAction]; mov r0,#0; strh
-    r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]` advances the action state machine. - Trailing
-    `lsr r0,#3; bcc locret_80C599C; bl object_highlightPanel` flashes the target panel every other 8-tick
-    interval.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080C58E0
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_throwAndLandAction_80C58E0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_throwAndLandAction_80C58E0
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_throwAndLandAction_80C58E0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 160 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_throwAndLandAction_80C58E0
+
+    ./wf verify --function battleObject_throwAndLandAction_80C58E0 --snapshots build-snapshots'
+  result: 41 compared, 0 differed, 55 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_throwAndLandAction_80C58E0
+
+    ./wf verify --function battleObject_throwAndLandAction_80C58E0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080c58e0 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- Which CurAction routes into this function (CurAction=3 inferred from the "phase 0 init then countdown"
-  pattern is consistent but not directly visible).
-- What the byte table at 0x80C59A4 actually represents; the assembly treats its indices as straight indices
-  into `ExtraVars` bytes 1..5, but the underlying object may use them differently.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c58e0 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f c951b1b4
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80C58E0 -> battleObject_throwAndLandAction_80C58E0
-  where: bn6f 66c2a27e
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What chip or object type triggers this action (CurAction selector)? Likely battle chips that are 'thrown' onto
+  the field.
+- The byte table at byte_80C59A4 is unreferenced in this function; confirm whether it belongs to this action or
+  a nearby handler.
+- 'Sound effect ID 0x1D0: confirm the in-game sound (chip-landing thunk vs. other SFX).'
+- 'CurAction=4 after landing: what does the next action index do (e.g. apply chip effect, disappear)?'
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

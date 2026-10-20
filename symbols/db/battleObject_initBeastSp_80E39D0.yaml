@@ -1,72 +1,74 @@
 name: battleObject_initBeastSp_80E39D0
 address: '0x080E39D0'
 kind: function
-previous_names:
-- sub_80E39D0
-status: probable
-summary: Beast-SP battle object first-state (CurState==INITIALIZE) handler — picks a sprite, sets animation,
-  flips it correctly, then jumps into the per-CurAction Beast-SP dispatcher.
-interface: '(r5 = battleObjectPtr, r10 = toolkit, lr) -> void ; side effects: writes Z16/Y16/Flags/CurAnim/CurAnimCopy/CurState
-  of r5, loads a sprite, then enters runBeastSpActionHandler'
-details: "Called with the battle object's CurState == CUR_STATE_INITIALIZE (r5 holds the object pointer;\
-  \ visible in caller return chain via `lr=0x080e39ac` and the function using `oBattleObject_*` field\
-  \ offsets throughout).\nStep by step:\n  1. Recompute pixel X/Y from current panel coords via `object_setCoordinatesFromPanels`.\n\
-  \  2. Clear Z16 to 0, then add +2 to both Z16 and the lower 16 bits of Y (Y16) — lifts the object slightly\
-  \ above its panel Y.\n  3. `sprite_load(0x10, 0x20, 0x80)` — load the Beast-SP sprite at the appropriate\
-  \ VRAM tile slot. (The captured calls show r2 = 0x0203ca7c on one path and 0x02036830 on the other,\
-  \ both OAM/tile descriptors used by sprite_load.)\n  4. `sprite_loadAnimationData()` then `sprite_noShadow()`\
-  \ — install animation tables and disable the drop shadow (signature visual of Beast-SP summons).\n \
-  \ 5. OR 0x02 into `oObjectHeader_Flags` — sets the OBJECT_FLAG_VISIBLE bit.\n  6. Look up a per-state\
-  \ animation table indexed by `oBattleObject_Param1`: load the byte at `word_80E3A30[Param1]` and store\
-  \ it into both `oBattleObject_CurAnim` and `oBattleObject_CurAnimCopy`. The table is a 2-entry `.hword\
-  \ 0x201` blob (just one entry seen, replicated), so this essentially sets CurAnim = 1 (or 0x20) depending\
-  \ on Param1 — a single anim frame is being applied.\n  7. `sprite_setAnimation` then `sprite_loadAnimationData`\
-  \ again to bind the selected animation.\n  8. `sprite_setPalette(0)` — apply palette index 0.\n  9.\
-  \ `object_getFlip()` -> `sprite_setFlip` — face the sprite in the correct horizontal direction.\n  10.\
-  \ Write `CUR_STATE_UPDATE` (0x04) to `oBattleObject_CurStateActionPhaseAndPhaseInitialized`, transitioning\
-  \ into the update phase.\n  11. Tail-call `battleObject_runBeastSpActionHandler_80E3A32` (which dispatches\
-  \ by CurAction; the action=0xB branch is documented there).\nReads 0x4F on exit (`r0=0x0000004f`) likely\
-  \ comes from the tail callee preserving a status code through the link register; the captured r1 entry\
-  \ = 0x080e39d1 (=return-to-self-thumb-bit) shows callers tail-bounce through here.\nCalibration value\
-  \ 0x4F seen on every snapshot suggests it's a stable constant from the action-handler tail, not a meaningful\
-  \ return.\n"
+status: confirmed
+summary: 'One-shot setup of a Beast Link SP battle object: positions it on its panel, loads its sprite/animation,
+  applies visibility and flip, then tails into the per-frame action handler.'
+interface: void battleObject_initBeastSp(BattleObject* r5); /* outputs r5,r8,r9,r10,r11,r12 via tail call */
+details: Places the object via object_setCoordinatesFromPanels, zeroes Z16 then shifts Z16 and Y16 by +2 px (a slight
+  stand-up offset). Loads 0x80 tile words into sprite slots 0x10/0x20 with sprite_load, pulls animation data, and
+  suppresses the shadow. Sets bit 1 (draw/visible) in oObjectHeader_Flags. Looks up an animation byte from the one-entry
+  table at word_80E3A30 (value 0x201 stored as a u16, so the first byte is 0x01) indexed by Param1, writing it into
+  CurAnim and CurAnimCopy. Applies the animation with sprite_setAnimation, reloads its data, sets palette 0, and
+  mirrors the object's horizontal flip onto the sprite via object_getFlip / sprite_setFlip. Writes CUR_STATE_UPDATE
+  into CurStateActionPhaseAndPhaseInitialized, then tail-calls battleObject_runBeastSpActionHandler_80E3A32 which
+  populates the state registers r5,r8-r12 that the caller reads back. The animation table is a single entry (0x201
+  u16); only Param1==0 is meaningful here, suggesting this init path is selected by a dispatcher for a specific
+  Beast form.
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- Snap files are named `snap_beastsp_*` so this lives in the Beast-SP code path. - Animation
-    table at `word_80E3A30` is `.hword 0x201` (1-byte entries); assembly indexes it via `ldrb r0,[r5,#oBattleObject_Param1]`
-    then `ldrb r0,[r1,r0]`. - `strh r0,[r5,#oBattleObject_Z16]` after `mov r0,#0` then add of `#2` shows
-    Z16 = 2; subsequent identical add into Y16 raises the sprite two pixels above the panel center. -
-    `object_setCoordinatesFromPanels` is called first and the function writes its new Z16/Y16 after —
-    consistent with INITIALIZE recomputing position. - `bl object_getFlip` immediately followed by `bl
-    sprite_setFlip` is the canonical pattern (no other callees between) and matches how other battle objects
-    enter face-correct sprites. - `CUR_STATE_UPDATE` (0x04) written into `oBattleObject_CurStateActionPhaseAndPhaseInitialized`
-    is the standard INITIALIZE->UPDATE transition. - Tail call `bl battleObject_runBeastSpActionHandler_80E3A32`
-    and `pop {pc}` indicate this function''s role ends once CurState is UPDATE; the rest is the per-CurAction
-    dispatcher. - `sprite_noShadow` is unique to the Beast-SP spawn (other battle objects keep their shadow)
-    — strong signal this is the beast summon init.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s
-  reproduce: 'python3 tools/asmcat.py 0x080E39D0
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_initBeastSp_80E39D0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_initBeastSp_80E39D0
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_initBeastSp_80E39D0
+    ./wf verify --function battleObject_initBeastSp_80E39D0 --snapshots build-snapshots'
+  result: 'captured calls: 10 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_initBeastSp_80E39D0
 
-    '
-open_questions:
-- What the single-byte table at 80E3A30 actually represents (only one .hword 0x201 visible — may be a
-  partial table or repeat); and what Param1's possible range maps to. Identifying the exact rendered sprite
-  id (0x10/0x20/0x80 to sprite_load) is also unclear — likely VRAM-base/slot but needs a cross-reference
-  to sprite_load's internals.
-sources:
-- discovery session 2026-10-14 batch 42 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_initBeastSp_80E39D0 --snapshots build-snapshots'
+  result: 29 compared, 0 differed, 66 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_initBeastSp_80E39D0
+
+    ./wf verify --function battleObject_initBeastSp_80E39D0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e39d0 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f beefd19e
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80E39D0 -> battleObject_initBeastSp_80E39D0
-  where: bn6f c4e8f87c
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What Net Beast does Param1==0 select, and are there other init variants for other BeastSoul forms?
+- Why is Z16 explicitly zeroed then immediately +2 (two stores where one would suffice); is the zero store a vestige
+  of a shared template?
+- Does sprite_load with (0x80,0x10,0x20) allocate a fixed tile count, or is 0x80 a pointer/offset into a VRAM region?
+- The u16 0x201 table entry yields animation 0x01 on little-endian byte read; confirm this maps to the Beast's standing
+  frame in the animation resource.
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

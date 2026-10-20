@@ -1,75 +1,79 @@
 name: ai_attackStepChooseFrontPanel
 address: '0x08112DC0'
 kind: function
-status: probable
-summary: 'AI attack step: on first call initializes state (AttackElement=1, CurAnim=1) and copies AttackBoost2
-  into StepTimer; ticks StepTimer each frame until it reaches 0, then resolves the first filtered panel
-  in the attacker''s facing direction and stores the sub_80E3CF2 result into PanelChooseCallback, finally
-  setting HitElement=4.'
-interface: (r5 = battle object, r7 = AIAttackVars state block; entry r0 unused) -> r0 = attack/callback
-  id stored into oAIAttackVars_PanelChooseCallback; no meaningful flags
-details: 'On first invocation (AttackElement == 0) it initializes the step: AttackElement = 1, PanelChooseCallback
-  = 0, StepTimer = AttackBoost2, and sets the object''s current animation to 1 (likely a step/charge pose).
-  Each subsequent frame it decrements StepTimer and returns until it reaches 0. It then reads the front
-  direction via object_getFrontDirection and looks up an alliance-dependent panel parameter entry (byte_8112E24,
-  param 0x20) for the object''s PanelX/PanelY, passing them to object_getFirstPanelInDirectionFiltered
-  to find the target panel. It calls sub_80E3CF2 with r2 = ScratchVar, r3 = 0xC0000, r4 = AttackBoost2
-  (as a byte), r6 = AIAttackVars+0x16 and r7 = object+0x4C, storing the result as PanelChooseCallback.
-  Finally it sets HitElement = 4, so later steps attack with that element on the chosen panel.'
+status: confirmed
+summary: Per-frame AI attack step that targets the panel directly in front of the attacker; on the first tick it
+  starts a wind-up, and once the timer expires it resolves the forward hit.
+interface: 'ai_attackStepChooseFrontPanel(r5 = BattleObject*, r7 = AIAttackVars*) -> r1 (chosen panel X), r5 (result
+  panel data)
+
+  // clobbers r0 r2 r3 lr nzcv; preserves r4 r5 r6 r7
+
+  '
+details: "Called each frame as part of the AI attack state machine (r5 = attacking battle object, r7 = per-attack\
+  \ AI variable block).\nFirst entry (oAIAttackVars_AttackElement == 0):\n  sets AttackElement to 1, clears oAIAttackVars_PanelChooseCallback,\n\
+  \  seeds oAIAttackVars_StepTimer from oAIAttackVars_AttackBoost2,\n  sets oBattleObject_CurAnim to 1 (wind-up\
+  \ animation).\nEach subsequent tick decrements StepTimer; while it is still positive the function returns unchanged.\n\
+  When the timer reaches zero:\n  queries object_getFrontDirection for the attacker's facing,\n  reads oBattleObject_PanelX\
+  \ / oBattleObject_PanelY,\n  calls GetAllianceDependentPanelParamArgs with a static param table (byte_8112E24,\
+  \ 16 bytes) to obtain alliance-specific direction offsets,\n  calls object_getFirstPanelInDirectionFiltered to\
+  \ locate the nearest valid panel ahead,\n  calls sub_80E3CF2 (generic attack-resolution handler) passing the filtered\
+  \ panel result, oAIAttackVars_ScratchVar, the constant 0x0C0000 (panel size flag), AttackBoost2, the panel object,\
+  \ and two buffer pointers (ai_vars+0x16 and 0x4C+panel).\nStores the callback result into oAIAttackVars_PanelChooseCallback\
+  \ and advances oAIAttackVars_HitElement to 4 (active-hit sub-state).\nr4, r6, r7 are saved/restored around the\
+  \ helper calls to preserve caller state.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'Init branch guarded by ldrb [r7,#oAIAttackVars_AttackElement]; cmp #0 sets AttackElement=1,
-    StepTimer=AttackBoost2, anim 1 (loc_8112DD8 block); ldrh StepTimer / sub #1 / bgt locret: pure per-frame
-    countdown before acting; bl object_getFrontDirection then GetAllianceDependentPanelParamArgs(table
-    byte_8112E24) feeding object_getFirstPanelInDirectionFiltered: panel selection in facing direction;
-    result of sub_80E3CF2 stored to [r7,#oAIAttackVars_PanelChooseCallback]; then strh #4 to HitElement;
-    Callees object_getFirstPanelInDirectionFiltered / GetAllianceDependentPanelParamArgs match panel-targeting
-    semantics; runs in battlesweep/beastsp AI attack routes'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:9915
-  - 0x081096FA GetAllianceDependentPanelParamArgs
-  - 0x0800E2CA object_getFrontDirection
-  - 0x0800D0BC object_getFirstPanelInDirectionFiltered
-  reproduce: python3 tools/asmcat.py 0x08112DC0
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The flow matches: init AttackElement=1, clear PanelChooseCallback, copy AttackBoost2 into StepTimer,
-    set CurAnim=1; then count down; on 0 compute front dir and call object_getFirstPanelInDirectionFiltered
-    via GetAllianceDependentPanelParamArgs; finally call sub_80E3CF2 with ScratchVar, 0xC0000, AttackBoost2,
-    AIAttackVars+0x16, object+0x4C; then store r0 into PanelChooseCallback and set HitElement=4. The proposal''s
-    name ''ai_attackStepChooseFrontPanel'' is acceptable but ''StepTimer'' ending in 0 triggers a choose-panel
-    step, so the name fits. Minor: the summary says ''plays for AttackBoost2 frames'' but StepTimer is
-    halfword, AttackBoost2 a byte; likely fine. The interface claim that r0 is unused at entry is wrong
-    only if AttackElement!=0 branch still uses r0 implicitly via the bgt return — otherwise correct. I''ll
-    revise the summary to be more precise.; run wf investigate investigate-20261018-182231; proposed by
-    Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c ai_attackStepChooseFrontPanel
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_attackStepChooseFrontPanel
+
+    ./wf verify --function ai_attackStepChooseFrontPanel --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 166 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_attackStepChooseFrontPanel
+
+    ./wf verify --function ai_attackStepChooseFrontPanel --snapshots build-snapshots'
+  result: 16 compared, 0 differed, 80 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_attackStepChooseFrontPanel
+
+    ./wf verify --function ai_attackStepChooseFrontPanel --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08112dc0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- Exact meaning of sub_80E3CF2's arguments (ScratchVar, 0xC0000, AttackBoost2 byte, AIAttackVars+0x16
-  pointer, object+0x4C) and its return value stored to PanelChooseCallback
-- Which enemy/chip attack routine this step belongs to and what HitElement=4 denotes
-- Semantic of the byte_8112E24 table entry (0x20 param) for the panel filter
-- 'The flow matches: init AttackElement=1, clear PanelChooseCallback, copy AttackBoost2 into StepTimer,
-  set CurAnim=1; then count down; on 0 compute front dir and call object_getFirstPanelInDirectionFiltered
-  via GetAllianceDependentPanelParamArgs; finally call sub_80E3CF2 with ScratchVar, 0xC0000, AttackBoost2,
-  AIAttackVars+0x16, object+0x4C; then store r0 into PanelChooseCallback and set HitElement=4. The proposal''s
-  name ''ai_attackStepChooseFrontPanel'' is acceptable but ''StepTimer'' ending in 0 triggers a choose-panel
-  step, so the name fits. Minor: the summary says ''plays for AttackBoost2 frames'' but StepTimer is halfword,
-  AttackBoost2 a byte; likely fine. The interface claim that r0 is unused at entry is wrong only if AttackElement!=0
-  branch still uses r0 implicitly via the bgt return — otherwise correct. I''ll revise the summary to
-  be more precise.'
+- What exact sub-structure does the 0x0C0000 constant encode in sub_80E3CF2 (likely panel-width flag or 12-pixel
+  grid cell size)?
+- What do the two buffer pointers (ai_vars+0x16 and 0x4C+panel) feed into the hit-resolution path?
+- Is byte_8112E24 an alliance-specific (Lan vs Protoman vs Net) parameter table for directional offsets?
 sources:
-- wf investigate investigate-20261018-182231
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_8112DC0 -> ai_attackStepChooseFrontPanel
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8112DC0
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

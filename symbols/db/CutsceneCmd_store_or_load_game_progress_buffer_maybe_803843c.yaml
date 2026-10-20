@@ -1,0 +1,71 @@
+name: CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c
+address: '0x0803843C'
+kind: function
+status: confirmed
+summary: Cutscene script opcode that reads a 2-byte progress-slot ID and a 1-byte selector, then either snapshots
+  current game progress to a buffer or restores it from that buffer.
+interface: u32 r7 (script cursor) + u32 r10 (toolkit ptr) in; r2,r3,r4,r5,r7 + NZ flags out; clobbers r0,r6,c,v,lr;
+  preserves r5 across the save/load call
+details: Fetches the game-state pointer from toolkit[oToolkit_GameStatePtr] into r2 (for downstream callers). Calls
+  ReadMapScriptByte with r6=2 to pull a 2-byte slot identifier from the script stream (lands in r4 as cmd_value).
+  Calls ReadMapScriptByte with r6=1 to pull a 1-byte selector. Selector==0 branches to storeGameProgressToGameProgressBuffer_8035364
+  (saves live state into a buffer keyed by cmd_value); nonzero branches to loadGameProgressFromGameProgressBuffer_8035354
+  (restores state from that buffer). After the branch, r7 is advanced by 3 to skip the two bytes consumed by the
+  2-byte read plus the one byte of the selector. Returns r0=1 (nonzero, Z clear) to signal the command executed
+  without halting the cutscene. The store/load callees leave their own r4/r5 results in place; the outer function
+  does not overwrite them before returning, so callers see those values too.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c
+
+    ./wf verify --function CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c
+
+    ./wf verify --function CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c --snapshots build-snapshots'
+  result: 40 compared, 0 differed, 56 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c
+
+    ./wf verify --function CutsceneCmd_store_or_load_game_progress_buffer_maybe_803843c --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0803843c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- beastsp
+open_questions:
+- What does the 2-byte cmd_value represent to the store/load helpers – a save-slot index, a progress-checkpoint
+  ID, or something else?
+- Is there ever a nonzero-but-not-one selector in shipped cutscene data, or is it always 0/1?
+- Do the callee functions use the game-state pointer in r2, or is r2 purely an incidental pass-through for the outer
+  cutscene dispatcher?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

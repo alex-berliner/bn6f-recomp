@@ -1,54 +1,80 @@
 name: ai_updateDiveAttack
 address: '0x081109F6'
 kind: function
-status: probable
-summary: 'Per-frame AI attack step: an object dives downward toward a target row and, when its timer expires,
-  resurfaces/lands on the saved panel (or aborts and snaps back to its original panel).'
-interface: (r5 = battle object, r7 = AI attack vars; args in r0-r3 unused) -> r0 = scratch from last callee;
-  updates object panel/coords, flags, attack vars
-details: Decrements the word at [r5+0x7E] (attack step timer) and, while it is still >=0, adds oBattleObject_YVelocity
-  to Y each frame (descending) and re-syncs panels/collision — a flying/diving motion. When the timer
-  goes negative, it takes the panel Y saved at [r5+0x7B] as the landing row, updates TargetPanelX/Y in
-  the r7 attack-var struct, recomputes pixel coordinates and collision panels, and sets HitElement=0xC
-  / AttackElement=0 for the surfacing hit. If sub_8110D58 reports failure mid-dive, it clears object-flag
-  bit 1, resets StepTimer from Unk_32, restores the panel from [r5+0x78/0x79], calls sub_81110C8 and sub_811109C
-  (likely effects/markers at the panels), releases the reserved panel via object_removePanelReserve, zeroes
-  ExtraVars+0xC, sets collision region 1, and sets HitElement=0x28 instead. Uses the standard battle AI
-  convention r5=object, r7=oAIAttackVars scratch struct.
+status: confirmed
+summary: 'Per-frame AI state update for a dive-attack: integrates Y-gravity while the dive timer runs, snaps to
+  a target panel when the timer expires, and finalizes the dive with impact effects, panel teleport, and collision
+  updates when a panel-transition signal is received.'
+interface: void ai_updateDiveAttack(u32 r5 /*battle object ptr*/, u32 r7 /*AI attack vars ptr*/); /* returns r5
+  unchanged */
+details: "Called once per frame from the battle-object AI dispatcher for enemies using a dive attack.\nThree-phase\
+  \ behaviour controlled by a 16-bit timer at battleObj+0x7E:\n\n1. Timer > 0 (normal dive): decrements the timer,\
+  \ queries ai_checkNextPanelFlags. If no transition\n   is signalled (return == 0), integrates YVelocity into Y\
+  \ (gravity fall) and refreshes panel/collision.\n\n2. Timer <= 0 (expired, no transition): snaps the object to\
+  \ the alternate panel Y stored at +0x7B,\n   copies that (x, y) into both the object and AIAttackVars target-panel\
+  \ fields, calls\n   object_setCoordinatesFromPanels + object_updateCollisionPanels, sets HitElement = 0xC and\n\
+  \   AttackElement = 0 (marking an in-flight dive hit). Shared tail rebuilds panels from coords.\n\n3. ai_checkNextPanelFlags\
+  \ returns non-zero (dive finished): clears bit 1 of ObjectHeader_Flags\n   (collision-active flag), spawns an\
+  \ impact/splash effect at the current panel via\n   spawn_effectAtPanel, copies Unk_32 into StepTimer, teleports\
+  \ the object to the reserve-panel\n   coordinates at +0x78/+0x79, calls ai_spawnPanelEffect at the landing tile,\
+  \ releases the panel\n   reserve via object_removePanelReserve, zeroes ExtraVars+0xC, sets collision region 1,\
+  \ and\n   writes HitElement = 0x28 / AttackElement = 0 (final landing hit). Shared tail runs.\n\nStructures touched:\n\
+  \  - BattleObject: PanelX/PanelY, Y/YVelocity, Flags, ExtraVars+0xC, +0x7B, +0x78, +0x79, +0x7E.\n  - AIAttackVars:\
+  \ TargetPanelX, TargetPanelY, HitElement, AttackElement, StepTimer, Unk_32.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: sub r0,#1 / strh on [r5+0x7E] with tst/blt splits the active-dive vs landing paths; active path
-    adds oBattleObject_YVelocity to oBattleObject_Y each call, then object_setPanelsFromCoordinates +
-    object_updateCollisionPanels; landing path loads [r5+0x7B] into PanelY and TargetPanelY and sets HitElement=0xC
-    (loc_8110A16); abort path clears object flag 2, restores panels from [r5+0x78/0x79], calls object_removePanelReserve
-    and sets HitElement=0x28 (loc_8110A3E); all callees are battle-object panel/collision helpers, confirming
-    r5 is a battle object and this is an AI attack step
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:5646
-  - 0x0801BB46 object_removePanelReserve
-  - 0x0801A07C object_setCollisionRegion
-  - 0x0800E29C object_setCoordinatesFromPanels
-  reproduce: python3 tools/asmcat.py 0x081109F6
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c ai_updateDiveAttack
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_updateDiveAttack
+
+    ./wf verify --function ai_updateDiveAttack --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_updateDiveAttack
+
+    ./wf verify --function ai_updateDiveAttack --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 92 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_updateDiveAttack
+
+    ./wf verify --function ai_updateDiveAttack --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^081109f6 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- what sub_8110D58, sub_81110C8 and sub_811109C actually test/draw (no known callers documented this routine)
-- which enemy/attack uses this state and what HitElement 0xC vs 0x28 map to
-- meaning of fields 0x78/0x79 (original panel?) and 0x7B (landing row) in the object struct
+- What distinguishes HitElement 0xC (timer-expired snap) from 0x28 (transition-complete landing) in the damage pipeline?
+- What do the reserve-panel coordinates at +0x78/+0x79 represent exactly—pre-computed landing position chosen at
+  dive start?
+- What is the purpose of copying Unk_32 into StepTimer during the finished-dive path?
+- Is the shared tail (object_setPanelsFromCoordinates + object_updateCollisionPanels) redundant for the expired-timer
+  path that already called those helpers?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_81109F6 -> ai_updateDiveAttack
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_81109F6
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

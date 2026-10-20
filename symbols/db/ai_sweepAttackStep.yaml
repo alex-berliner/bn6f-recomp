@@ -1,71 +1,77 @@
 name: ai_sweepAttackStep
 address: '0x0811095E'
 kind: function
-status: probable
-summary: 'Per-frame AI dash/sweep update: decrements a timer at r5+0x7C while advancing X by velocity; on abort
-  (sub_8110D34 nonzero) restores panels from r5+0x78/0x79, clears flag bit 2, releases reservation, sets collision
-  region 1 and HitElement 0x28; on timer expiry restores from r5+0x7A/PanelY and sets HitElement 8; both paths resync
-  panels, set TargetPanelX/Y, and zero AttackElement.'
-interface: (r5 = battle object, r7 = AI attack state; no register args) -> r0 clobbered; no meaningful return
-details: 'r7+0x7C holds a countdown: each frame it is decremented; while still >=0 the object advances by oBattleObject_XVelocity
-  and re-derives its PanelX/PanelY from coordinates. If the check sub_8110D34 returns nonzero the attack is aborted:
-  flag bit 2 of oObjectHeader_Flags is cleared, sub_81110C8 and sub_811109C are called with the object''s panel
-  coords (likely panel hit/effect bookkeeping), the AI''s StepTimer is reloaded from oAIAttackVars_Unk_32, the panel
-  pair stored at object offsets 0x78/0x79 is restored as PanelX/PanelY, the object''s panel reservation is released,
-  ExtraVars+0xC is zeroed, collision region is set to 1, and HitElement is set to 0x28. When the timer expires normally
-  (goes negative) the simpler exit restores the backup panels at 0x7A/0x79, resyncs coordinates and collision panels,
-  and sets HitElement=8. Both paths clear AttackElement to 0 and write the chosen panels into oAIAttackVars_TargetPanelX/Y.'
+status: confirmed
+summary: 'Per-frame step of a sweep-type battle AI attack: advances across columns until the countdown expires at
+  the target panel.'
+interface: void ai_sweepAttackStep(BattleObject *r5, AIAttackVars *r7); // returns r5 possibly updated
+details: "Decrements a u16 countdown timer at object+0x7C. Three branches:\n(1) Timer expired (<0): snaps object\
+  \ to the destination panel stored at\n    object+0x7A (X) and current PanelY; writes those into\n    AIAttackVars_TargetPanelX/Y;\
+  \ calls object_setCoordinatesFromPanels +\n    object_updateCollisionPanels; sets HitElement=8 (final-hit marker),\n\
+  \    AttackElement=0.\n(2) Timer active + object_hasNextXPanelProperty returns nonzero (a next\n    column exists\
+  \ in the sweep pattern): clears bit 1 (advancing) from\n    ObjectHeader_Flags; spawns a trail effect at the old\
+  \ panel via\n    spawn_effectAtPanel; reloads the step timer from\n    AIAttackVars_Unk_32 into AIAttackVars_StepTimer;\
+  \ moves to next panel\n    coords at object+0x78/+0x79, writes them into both the object and the\n    AIAttackVars\
+  \ target fields; updates coordinates and collision; spawns\n    a panel-arrival effect (ai_spawnPanelEffect);\
+  \ releases the old panel\n    reserve (object_removePanelReserve); zeroes\n    BattleObject_ExtraVars+0xC; sets\
+  \ collision region to 1; sets\n    HitElement=0x28, AttackElement=0.\n(3) Timer active + no next column: drifts\
+  \ the object linearly by adding\n    XVelocity to X (sub-pixel movement between panels).\nCommon tail for branches\
+  \ (1) and (3): resyncs panels from coordinates\n(object_setPanelsFromCoordinates) then updates collision panels.\n\
+  Fields touched: oBattleObject_X, XVelocity, PanelX, PanelY, X+0x7A,\nX+0x78, X+0x79, ObjectHeader_Flags, ExtraVars+0xC;\n\
+  oAIAttackVars_TargetPanelX/Y, StepTimer, Unk_32, HitElement,\nAttackElement.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'ldrh r0,[r5,#0x7c]; sub/strh then tst/blt: countdown timer selects move vs. teardown branch (sub_811095E
-    start); ldr r0,[r5,#oBattleObject_X]; add oBattleObject_XVelocity; str: continuous X movement while active;
-    strb [r7,#oAIAttackVars_TargetPanelX/Y] and HitElement/AttackElement writes: r7 is an AI attack-state record;
-    bl object_removePanelReserve after sub_81110C8/sub_811109C: end-of-attack frees the panels the attack occupied;
-    object flags bit 2 cleared, collision region set to 1, and saved panels 0x78/0x79 restored in the aborted path;
-    recorded routes battlesweep/beastsp and the panel-reserve + velocity movement fit a boss sweep/charge attack'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:5573
-  - 0x0801BB46 object_removePanelReserve
-  - 0x0801A07C object_setCollisionRegion
-  - 0x0800E29C object_setCoordinatesFromPanels
-  reproduce: python3 tools/asmcat.py 0x0811095E
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The proposal
-    states ''r7+0x7C holds a countdown'' but the code uses `mov r1, #0x7c; ldrh r0, [r5,r1]`—the timer lives at
-    r5+0x7C (the battle object), not r7+0x7C. The normal-expiry path at loc_811097E reads r5+0x7A and oBattleObject_PanelY
-    (not 0x79); 0x78/0x79 appear only in the abort path at loc_81109A6, so ''restores the backup panels at 0x7A/0x79''
-    is inaccurate. All other behavior—velocity advance, abort via sub_8110D34 nonzero, flag-bit-2 clear, panel restore,
-    reservation release, collision-region=1, HitElement values—matches the assembly. The name and overall summary
-    fit well.; run wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
-    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c ai_sweepAttackStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_sweepAttackStep
+
+    ./wf verify --function ai_sweepAttackStep --snapshots build-snapshots'
+  result: 'captured calls: 13 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_sweepAttackStep
+
+    ./wf verify --function ai_sweepAttackStep --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 95 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_sweepAttackStep
+
+    ./wf verify --function ai_sweepAttackStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0811095e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- No caller is known, so the object/state structures and when this state is entered are only inferred from callees.
-- What sub_8110D34 tests (wall reached? target hit?), and what sub_81110C8/sub_811109C do with the panel coords,
-  is unknown.
-- Exact meaning of HitElement values 8 vs 0x28 and of object offsets 0x78-0x7C is unconfirmed.
-- 'The proposal states ''r7+0x7C holds a countdown'' but the code uses `mov r1, #0x7c; ldrh r0, [r5,r1]`—the timer
-  lives at r5+0x7C (the battle object), not r7+0x7C. The normal-expiry path at loc_811097E reads r5+0x7A and oBattleObject_PanelY
-  (not 0x79); 0x78/0x79 appear only in the abort path at loc_81109A6, so ''restores the backup panels at 0x7A/0x79''
-  is inaccurate. All other behavior—velocity advance, abort via sub_8110D34 nonzero, flag-bit-2 clear, panel restore,
-  reservation release, collision-region=1, HitElement values—matches the assembly. The name and overall summary
-  fit well.'
+- 'HitElement 8 vs 0x28: confirm what damage/element IDs these map to (8 may be the terminal hit, 0x28 the per-panel
+  tick).'
+- Meaning of ExtraVars+0xC being zeroed on column advance—likely a per-panel scratch counter.
+- 'object_hasNextXPanelProperty internals: does it check a precomputed column list on the object or query the grid
+  directly?'
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_811095E -> ai_sweepAttackStep
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 9c652f19
-  tool: tools/symdoc.py
-previous_names:
-- sub_811095E
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

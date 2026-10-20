@@ -1,50 +1,76 @@
 name: ai_hopStepUpdate
 address: '0x08115398'
 kind: function
-status: probable
-summary: 'Per-frame update for an AI attack''s hop/leap: integrates X/Z velocity along an arc, then lands
-  the object on its reserved future panel.'
-interface: (r5 = battle object, r7 = oAIAttackVars) -> void; sets object anim, flags, and state timer
-details: 'Each frame it adds XVelocity to X and ZVelocity to Z, then subtracts 0xA000 from ZVelocity (dword_81154E4
-  = 0xFFFF6000), producing a parabolic hop arc. When oAIAttackVars_StepTimer equals 8 it switches the
-  object''s animation to 5 (presumably the descent pose), then decrements the timer. When the timer goes
-  negative, the object lands: FuturePanelX/Y are copied into PanelX/Y, the panel reserve is released,
-  Z is zeroed, pixel coordinates and collision panels are recomputed, collision region 1 is set, flag
-  0x40 is cleared and the CURRENTLY_MOVING flag set, and sub_8115446 is called (likely queuing the next
-  attack phase). It then reloads the timer with 0x18 and oAIAttackVars_HitElement with 0x14.'
+status: confirmed
+summary: 'Advance one physics tick of a hopping enemy: integrate velocity, apply gravity, switch to landing anim
+  at apex, and on timer expiry snap to the reserved panel, reset height, and spawn the dust-cloud effect.'
+interface: ai_hopStepUpdate(u32 obj /*r5*/, u32 aiVars /*r7*/) -> (u32 collisionInfo /*r1*/, u32 obj /*r5*/)
+details: 'Called each frame while a hopper-type battle object is airborne. Reads r5 (battle object) and r7 (AI attack
+  variables), preserves r4/r5/r6/r7 across internal calls. 1. Integrates XVelocity into X and ZVelocity into Z (world-space
+  position), then subtracts 0xA000 from ZVelocity (gravity constant dword_81154E4 = 0xFFFF6000). 2. Calls object_setPanelsFromCoordinates
+  and object_updateCollisionPanels to keep the spatial grid in sync; r1 carries a collision result back to the caller.
+  3. When StepTimer reaches 8 (apex frame), sets CurAnim to 5 (landing animation). 4. Decrements StepTimer. While
+  it stays >= 0 the hop is still in flight and the function returns early. 5. On expiry (remaining < 0): promotes
+  FuturePanelX/Y to PanelX/Y, removes the panel reservation, zeroes Z (ground snap), rebuilds coordinates and collision
+  panels, sets collision region 1, clears flag 0x40, and sets OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT in flag-word 1.
+  6. Spawns a rear dust-cloud visual via ai_spawnHopRearEffect, which may return a modified r5/r7. 7. Resets StepTimer
+  to 0x18 (24 frames idle before next hop) and sets HitElement to 0x14.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'sub_8115398 start: X += XVelocity, Z += ZVelocity, then ZVelocity += 0xFFFF6000 gives hop arc;
-    timer==8 sets oBattleObject_CurAnim = 5, mid-air pose change; timer<0 block copies FuturePanelX/Y
-    into PanelX/Y and calls object_removePanelReserve before landing; landing path: Z=0, object_setCoordinatesFromPanels,
-    object_setCollisionRegion(1), clear 0x40, set CURRENTLY_MOVING flag; ends by setting StepTimer=0x18
-    and HitElement=0x14 in oAIAttackVars, chaining to sub_8115446'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:14352
-  - 0x08115340 sub_8115340
-  - 0x0801A15C object_clearFlag
-  - 0x0801BB46 object_removePanelReserve
-  - 0x0801A07C object_setCollisionRegion
-  reproduce: python3 tools/asmcat.py 0x08115398
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c ai_hopStepUpdate
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_hopStepUpdate
+
+    ./wf verify --function ai_hopStepUpdate --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_hopStepUpdate
+
+    ./wf verify --function ai_hopStepUpdate --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_hopStepUpdate
+
+    ./wf verify --function ai_hopStepUpdate --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08115398 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- what sub_8115446 does (likely selects the next attack step/state)
-- exact meaning of HitElement=0x14 and timer 0x18 in the follow-up phase
+- What enemy archetype does this drive? Likely a generic 'hopper' used by several MM&B6 Falzar enemies, but no specific
+  callers were provided.
+- HitElement 0x14 – what element or knockback value does it correspond to?
+- CurAnim 5 – which sprite set does the landing animation index?
+- ai_spawnHopRearEffect may clobber r7 (the effect's own AI vars); confirm the caller expects r7 to be reloaded
+  or unchanged.
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 62ad2570
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8115398 -> ai_hopStepUpdate
-  where: bn6f be30f643
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8115398
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

@@ -1,82 +1,74 @@
 name: battleObject_panelShaker_init_80C7C3C
 address: '0x080C7C3C'
 kind: function
-previous_names:
-- sub_80C7C3C
-status: probable
-summary: Initializes the battle-object "Panel Shaker" support object at r5 (sprite load, no-shadow, palette
-  0, panel-recompute, collision setup) and transitions it to its update state while playing its spawn
-  SFX.
-interface: '(r5 = BattleObject ptr, r10 = Toolkit ptr, r8 = ?, lr = ret) -> void ; side effects: allocates
-  CollisionData, plays SFX 0x2e, sets CurState=CUR_STATE_UPDATE'
-details: '1. Calls object_setCoordinatesFromPanels() to refresh pixel X/Y from the object''s current PanelXY.
-
-  2. Clears FuturePanelXY (oBattleObject_FuturePanelXY) to 0.
-
-  3. Loads the PanelShaker sprite (tile id 0x14) and shadow flag 0x14 into object slot 0x80 via sprite_load,
-  then strips the shadow with sprite_noShadow.
-
-  4. Sets OBJECT_FLAG_VISIBLE (bit 1) into oObjectHeader_Flags; resets CurAnim/CurAnimCopy to 0 and calls
-  sprite_setAnimation(0) + sprite_loadAnimationData.
-
-  5. sprite_setPalette(0) and sprite_setFlip(object_getFlip()).
-
-  6. Allocates a CollisionData slot via object_createCollisionData; on failure calls object_freeMemory
-  and returns without scheduling an update.
-
-  7. Reads Param1: if ==1 (Param1==1 path at loc_80C7C98) sets collision-type tables with r1=0xa/r2=5/r3=3
-  and additionally applies object_setCollisionStatusEffect1(0x10); otherwise uses r1=4/r2=5/r3=3.
-
-  8. object_setCollisionHitEffect(3), object_presentCollisionData() (registers this frame''s collision
-  into the global collision system).
-
-  9. PlaySoundEffect(0x2e) (0x2f + 0xff -> 0x2e).
-
-  10. Writes CUR_STATE_UPDATE into oBattleObject_CurStateActionPhaseAndPhaseInitialized and returns.
-
-  The Param1==1 variant installs status effect 0x10 in addition to the default collision setup, suggesting
-  two spawn variants (likely normal vs. cracked-panel variant).
-
-  '
+status: confirmed
+summary: 'Initializes a panel-shaker battle object: loads its 128x20x20 sprite, sets up a collision hitbox (with
+  optional paralysis status when Param1==1), plays the panel-shake sound effect, and advances the object to its
+  update phase.'
+interface: r5 = object (battleObject pointer, preserved); r8, r10 = caller context (preserved); no meaningful return
+  registers; clobbers r0-r3, lr, all flags
+details: 'Calls object_setCoordinatesFromPanels to place the shaker on its grid panel. Loads sprite tile 0x80 at
+  20x20 with no shadow. Sets header flag bit 2 (likely "active/visible" or "no idle animation" for this object type).
+  Resets CurAnim and CurAnimCopy to 0, loads animation data, and selects palette 0. Copies the object-level flip
+  onto the sprite. Allocates collision data via object_createCollisionData; on allocation failure the object is
+  freed via object_freeMemory and the init is aborted. The collision box width depends on Param1: when Param1==1
+  the box is 10 units wide (wider grab area) and status-effect 0x10 (paralysis) is applied on contact; otherwise
+  the box is 4 units wide (single-panel shake). Hit effect is set to 3. object_presentCollisionData registers the
+  hitbox with the battle field. Sound effect 0x12E (0x2f + 0xff) is played (panel-shake audio). Finally the state-action-phase
+  field is written to CUR_STATE_UPDATE so the object begins ticking. r8 and r10 are passed through to presentCollisionData
+  and PlaySoundEffect respectively without modification.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `mov r0, #0; strh r0, [r5,#oBattleObject_Z16]` (Z16 == offset of FuturePanelXY within AllianceAndDirectionFlip
-    union) zeroes future panel coords. - `mov r1, #0x14; mov r2, #0x14; mov r0, #0x80; bl sprite_load`
-    loads tile 0x14 into slot 0x80 — concrete sprite id of this object type. - `orr r0, r1` with r1=2
-    sets OBJECT_FLAG_VISIBLE on oObjectHeader_Flags. - `bl object_createCollisionData` + `tst r0, r0;
-    bne ...; b locret_00C7CBE` is the classic "abort if collision slot unavailable" path that frees the
-    object and exits. - `ldrb r1, [r5,#oBattleObject_Param1]; cmp r1, #1; beq loc_80C7C98` is the explicit
-    two-variant fork driven by Param1. - The two setupCollisionData calls differ only in r1 (0x4 vs 0xa);
-    the 0xa branch additionally calls `object_setCollisionStatusEffect1(0x10)` — matching collision-type-group
-    encoding with an extra status. - `object_setCollisionHitEffect(3)` is the standard hit-effect (e.g.
-    "panel crack" type 3) for panel-manipulation objects. - `mov r0, #0x2f; add r0, #0xff` → r0=0x2e then
-    `bl PlaySoundEffect` plays sound 0x2E (a panel/shake SFX id range). - `mov r0, #CUR_STATE_UPDATE;
-    str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]` writes the standard "init done,
-    now run update" state for the per-frame jumptable.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s
-  reproduce: 'python3 tools/asmcat.py 0x080C7C3C
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_panelShaker_init_80C7C3C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_panelShaker_init_80C7C3C
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_panelShaker_init_80C7C3C
+    ./wf verify --function battleObject_panelShaker_init_80C7C3C --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_panelShaker_init_80C7C3C
 
-    '
-open_questions:
-- The exact identity of Param1==0 vs Param1==1 (e.g. "regular PanelShaker" vs "status-inflicting PanelShaker");
-  comparing sibling PanelShaker variants in this fight or matching SFX/animation ids to known BN6 PanelShaker
-  enemies would settle the role.
-- Whether r8 carries anything this init reads — it's in the contract but no instruction here dereferences
-  it; it's likely a "current active object" pointer reused by callees.
-sources:
-- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_panelShaker_init_80C7C3C --snapshots build-snapshots'
+  result: 39 compared, 0 differed, 57 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_panelShaker_init_80C7C3C
+
+    ./wf verify --function battleObject_panelShaker_init_80C7C3C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c7c3c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 391e53d9
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80C7C3C -> battleObject_panelShaker_init_80C7C3C
-  where: bn6f f491ae79
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What does header flag bit 2 specifically gate for a panel-shaker object?
+- Confirm the meaning of Param1==1 versus default (wider hitbox + paralysis vs. normal panel shake only).
+- Identify sound effect 0x12E by name (panel-shake / Ratton Bomb impact?).
+- Which enemy or field hazard spawns this object type?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

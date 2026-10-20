@@ -1,63 +1,80 @@
 name: battle_checkBeastSpTrigger_80A7BC0
 address: '0x080A7BC0'
 kind: function
-previous_names:
-- sub_80A7BC0
-status: probable
-summary: Checks whether the BeastSP trigger zone is active and, if so, sets the EVENT_1731 flag, plays
-  a sound, and starts the BeastSP cutscene.
-interface: '(r5 = *BeastSPTriggerZone, r10 = *Toolkit) -> void ; side effects: writes to r5+4 flag/byte,
-  sets EVENT_1731, plays sound 0x73, kicks off cutscene byte_8089DD8'
-details: "Gate: only runs when battle_isInputAllowedOrBattleBusy_80A7C58 reports false (and skips via\
-  \ locret_80A7C3C on all early-outs, so this is \"void\"-like: only nz/c/v flags and caller-saved regs\
-  \ survive).\n  Pulls the overworld player object via Toolkit->GameStatePtr->OverworldPlayerObjectPtr,\
-  \ then compares BeastSPTriggerZone->FuturePanelXY (offset 0x14) against the player's JoypadHeld (offset\
-  \ 0x24) — only proceeds if they match.\n  Adds the offset pair at dword_80A7C44 / dword_80A7C48 (= 0x80000\
-  \ each) to the player's full PlayerX/Y (0x1c/0x20) and subtracts the trigger zone's coords at offsets\
-  \ 0xc/0x10; BLT exits (out of range check vs 0x100000 from dword_80A7C4C/dword_80A7C50).\n  On hit:\
-  \ calls sub_81420F0 with r5[4] (some r5-local state byte) to obtain an event-flag argument, then SetEventFlag,\
-  \ sets r5[8] = 8, plays SOUND_UNK_73 via PlaySoundEffect, calls a small init pair (sub_81418F0 then\
-  \ sub_81418E4) that returns a value compared against sub_81420C8, sets EVENT_1731 with SetEventFlagFromImmediate,\
-  \ then finally StartCutscene(byte_8089DD8, sub_8142080()).\n  r5 is the per-trigger zone scratch struct;\
-  \ offsets 4 (state byte) and 8 (\"triggered\"/phase) are written.\n  Snapshot filename \"snap_beastsp_*\"\
-  \ in the captured-call log corroborates the \"Beast SP\" interpretation.\n"
+status: confirmed
+summary: Checks whether the player has entered a Beast-area special encounter zone during battle, and if so fires
+  the trigger event, validates AI-data flag count, sets cutscene event 0x1731, and launches the Beast cutscene script.
+interface: void battle_checkBeastSpTrigger_80A7BC0(void) /* r5 = trigger object ptr, r10 = toolkit; preserves r4-r7,
+  r10 */
+details: "Preconditions (all must pass or function returns immediately):\n  1. battle_isInputAllowedOrBattleBusy\
+  \ returns Z-set (input allowed, battle idle).\n  2. OverworldPlayerObject (toolkit → gameState → player) has ID\
+  \ at 0x24 matching trigger's target ID at 0x14.\n  3. Bounding-box: player position (offsets 0x1C/0x20) plus fixed\
+  \ origin (0x80000 each) minus trigger position (offsets 0xC/0x10) must lie in [0, 0x100000] on both axes.\n\n\
+  Trigger-object fields touched:\n  0x04 (byte): map-group id passed to beast_getMapGroupIdBase → result fed to\
+  \ SetEventFlag.\n  0x08 (byte): written 8 to mark the trigger as fired.\n  0x0C / 0x10: trigger world position\
+  \ (x, y).\n  0x14: target game-state ID to match against player.\n\nAfter the bounding-box passes:\n  - Sets an\
+  \ event flag derived from the trigger's map-group byte.\n  - Plays SOUND_UNK_73 (0x73).\n  - Calls sub_81418F0\
+  \ then battle_getAIDataVersionFields_81418E4; takes the returned r2 as an expected flag count.\n  - Calls battle_getEnemyIndexFromMapGroup_8142080\
+  \ (clobbers but value not used here), then getSetFlagCount; if count ≠ expected, bails out silently.\n  - Sets\
+  \ EVENT_1731 via SetEventFlagFromImmediate (r0=0x17, r1=0x31).\n  - Calls battle_getEnemyIndexFromMapGroup_8142080\
+  \ again; result (r0) is passed as the parameter to StartCutscene with the Beast cutscene script at byte_8089DD8.\n\
+  \nRegister contract quirk: r5 and r10 are preserved across the call (pushed/popplied), r6 is also preserved though\
+  \ not directly referenced in the body—likely a caller expectation.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- Captured snapshots are named snap_beastsp_*, so r5 is the BeastSP trigger zone. - Calls SetEventFlagFromImmediate
-    EVENT_1731, then StartCutscene(byte_8089DD8) — direct cutscene trigger on event 1731. - Uses `ldr
-    r7,[r10,#oToolkit_GameStatePtr]; ldr r7,[r7,#oGameState_OverworldPlayerObjectPtr]` to fetch the overworld
-    player and reads JoypadHeld (offset 0x24) for the panel direction check. - The 0x80000 / 0x100000
-    constants computed via add/sub are the +/-0x80000 (8 panels = 1 column) range math typical of "is
-    player within ~2 columns/rows of the trigger zone center" Beast SP proximity tests. - Gate callee
-    is named battle_isInputAllowedOrBattleBusy_80A7C58; bl+`bne locret_80A7C3C` is a standard "skip side
-    effects unless idle" guard. - Sets byte at r5+8 to 8 immediately before the SFX/cutscene: clearly
-    a "this zone just fired" latch.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080A7BC0
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battle_checkBeastSpTrigger_80A7BC0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_checkBeastSpTrigger_80A7BC0
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_checkBeastSpTrigger_80A7BC0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 130 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_checkBeastSpTrigger_80A7BC0
+
+    ./wf verify --function battle_checkBeastSpTrigger_80A7BC0 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_checkBeastSpTrigger_80A7BC0
+
+    ./wf verify --function battle_checkBeastSpTrigger_80A7BC0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^080a7bc0 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- 'Whether r5+4 is a Navi-team / SP-state selector passed to sub_81420F0 (most likely: it goes into a
-  flag-ID computation that ends with SetEventFlag, then EVENT_1731 is the story-side latch). Identifying
-  the sub_81418E4/... helpers would pin the trigger semantics down.'
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080a7bc0 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 9c862a66
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80A7BC0 -> battle_checkBeastSpTrigger_80A7BC0
-  where: bn6f 301fb1d2
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+open_questions:
+- What exactly is SOUND_UNK_73 (0x73)—a chime, a rumble, or a transition stinger?
+- 'sub_81418F0: what does it compute and why is its result discarded (only r3 set, never read)?'
+- 'The getSetFlagCount vs ai_ver.r2 comparison: is this a version-migration guard or a data-integrity check for
+  the Falzar/Thousand-Robot pack?'
+- 'dword_80A7C44–0x50 bounding box constants (0x80000 origin, 0x100000 half-size): confirm these are in subpixel
+  map units and correspond to a specific overworld region.'
+- Is the Z-flag from battle_isInputAllowedOrBattleBusy the sole gate, or does r6 carry an additional condition callers
+  rely on?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

@@ -1,51 +1,73 @@
 name: battle_collectAdjacentPanelsByFlags
 address: '0x0800D45C'
 kind: function
-status: probable
-summary: Scans the 3x3 panels around a battle object and collects coordinates of panels whose status flags
-  match a required/forbidden mask pair into a list, returning the count.
-interface: (r5 = battle object, r7 = output byte array, r2 = required panel-flag mask, r3 = forbidden
-  panel-flag mask) -> r0 = number of entries written to [r7]; each entry is (panelY<<4)|panelX
-details: 'Iterates panelY = 3..1 and panelX = 6..1 over the whole field, but only accepts coordinates
-  where the object''s PanelX/PanelY (oBattleObject_PanelX/Y at r5) place the panel within a 3x3 neighborhood
-  (offset -1..+1 in both axes). For each candidate it preserves r0-r3 across a call to object_getPanelParameters(x,
-  y), then tests the returned flags: skip if any r3 bit is set, skip unless all r2 bits are set. Matches
-  are stored as one byte (y<<4)|x at [r7 + index], index in r6; returns the index as the count. Note the
-  masks and buffers arrive in non-standard registers (r2, r3, r5, r7), so the caller sets them up directly.'
+status: confirmed
+summary: Scans the ring of cells surrounding the player's 3×3 battle area, filters them by required/excluded flag
+  bits from object_getPanelParameters, and writes matching (row<<4|col) pairs into a caller-supplied buffer.
+interface: u8 battle_collectAdjacentPanelsByFlags(u32 requiredFlags /*r2*/, u32 excludeFlags /*r3*/, u32 battleObjPtr
+  /*r5*/, u32 outputBuffer /*r7*/) -> u8 count /*r0*/; clobbers r1, preserves r2 r3 r4 r6 r7
+details: Iterates y from 3 down to 1 (outer loop) and x from 6 down to 1 (inner loop), giving a 6×3 sweep of absolute
+  grid positions. Computes relX = panelX - x + 1 and relY = panelY - y + 1 (0-based offsets into the player's own
+  3×3 area); if both fall in [0,2] the cell is inside the player's footprint and is skipped. For each exterior cell
+  the function calls object_getPanelParameters(x, y) which returns a flag word in r0; it then rejects the cell if
+  (flags & excludeFlags) != 0 or (flags & requiredFlags) != requiredFlags. Accepted cells are packed as a single
+  byte (y << 4 | x) and written sequentially to the outputBuffer pointed to by r7. The caller-provided r2 (requiredFlags)
+  and r3 (excludeFlags) are preserved across the inner call by push/pop of r0–r3,r6,r7. r5 holds the battle-object
+  pointer; oBattleObject_PanelX and oBattleObject_PanelY (u8 fields) give the anchor column and row. Return value
+  in r0 is the number of bytes written (count of matching panels). The two dword constants at 0x0800D4A4/0x0800D4A8
+  (0x01800000, 0x02800000) are unrelated padding.
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: loops r1=3..1 and r0=6..1 (asm 800D45E-800D464) exactly cover the 18 field panels x=1..6, y=1..3;
-    bounds checks of [r5+oBattleObject_PanelX]/[r5+oBattleObject_PanelY] vs r0/r1 (800D466-800D494) limit
-    hits to the ±1 neighborhood of the object; bl object_getPanelParameters with push/pop of r0-r3 (800D47E-800D486)
-    queries each candidate panel's flags; tst r4,r3 / and r4,r2; cmp r4,r2 (800D488-800D48E) require all
-    r2 bits set and no r3 bits; strb (r1<<4)|r0 to [r7,r6], r6++, return r6 (800D492-800D49A) writes packed
-    coordinates and returns the count
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/object.s:4049
-  - 0x08112B06 sub_8112B06
-  - 0x0800C8F8 object_getPanelParameters
-  reproduce: python3 tools/asmcat.py 0x0800D45C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/object.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battle_collectAdjacentPanelsByFlags
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_collectAdjacentPanelsByFlags
+
+    ./wf verify --function battle_collectAdjacentPanelsByFlags --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 190 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_collectAdjacentPanelsByFlags
+
+    ./wf verify --function battle_collectAdjacentPanelsByFlags --snapshots build-snapshots'
+  result: 45 compared, 0 differed, 51 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_collectAdjacentPanelsByFlags
+
+    ./wf verify --function battle_collectAdjacentPanelsByFlags --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0800d45c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/object.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/object.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- Caller sub_8112B06 is undocumented, so the meaning of the r2/r3 flag masks (which panel types are being
-  sought/avoided) and the identity/size of the r7 output buffer are unconfirmed
-- Why the object pointer and output buffer arrive in r5/r7 instead of the standard argument registers
-  is unclear without seeing the caller's setup
+- What callers use this and what flag combinations do they pass for requiredFlags/excludeFlags?
+- Is the output buffer expected to be pre-zeroed or large enough for all 18 exterior cells?
+- Does object_getPanelParameters(x,y) interpret x/y as absolute grid indices or relative offsets from the current
+  battle object?
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_800D45C -> battle_collectAdjacentPanelsByFlags
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_800D45C
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

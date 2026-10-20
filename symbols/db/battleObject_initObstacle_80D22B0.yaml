@@ -1,78 +1,78 @@
 name: battleObject_initObstacle_80D22B0
 address: '0x080D22B0'
 kind: function
-previous_names:
-- sub_80D22B0
-status: probable
-summary: Battle-object initializer that spawns an inanimate "obstacle" (no AI, no chip) with a shadow,
-  set panel coords/Z, 0x1F4 HP/MaxHP, 6000-frame timer, and a null-element collision; transitions CurState
-  to UPDATE on success.
-interface: '(r5 = BattleObject slot, r10 = Toolkit, r8 = ?globals) -> void ; side effects: writes the
-  battle object, allocates/links a CollisionData slot (or frees the object if allocation fails), runs
-  one collision-handler tick'
-details: '- Sets CurAnimAndCurAnimCopy = 0 then sprite_load(0x80, 0x10, 8), sprite_setAnimation(0), sprite_loadAnimationData,
-  sprite_update — installs placeholder sprite/animation.
-
-  - sprite_hasShadow turns on the shadow bit for the sprite.
-
-  - object_setCoordinatesFromPanels converts current panel coords into world X/Y.
-
-  - Z (oBattleObject_Z) cleared to 0; Z16 and Y16 each decremented by 1 (offset by 1 subpixel-equivalent);
-  future panel XY copied from current panel XY.
-
-  - NameID forced to 0xCE — by process of elimination that lives in the "obstacle/NPC" range since no
-  chip/AI pointer is assigned.
-
-  - HP = MaxHP = 0x1F4 (500); Timer = 6000 (0x1770).
-
-  - object_createCollisionData tries to obtain a collision slot; on failure, object_freeMemory destroys
-  this object and returns early (curState left at INITIALIZE=0, so the actor would not run).
-
-  - On success: object_setupCollisionData(r5, 0, r1=0xE=PrimaryElement?, r2=0xF, r3=3) followed by object_presentCollisionData
-  (runs the shared collision handler for the frame), then sets CurState = CUR_STATE_UPDATE (0x04). No
-  AIData is created and no chip/script is bound, matching a static obstacle rather than a virus or chip.
+status: confirmed
+summary: 'Initializes a battle-field obstacle sprite: loads its 128×16 tilemap, assigns 500 HP / name 0xCE, creates
+  a 14×15 solid hitbox, and transitions it to its update state.'
+interface: battleObject_initObstacle_80D22B0(r5 = battleObjectPtr, r8 = spriteList) -> (r5 = battleObjectPtr or
+  freed, r8 = spriteList); clobbers r0-r3, nzcv, lr; preserves r4-r7
+details: 'Loads the obstacle sprite via sprite_load(0x80, 0x10, 8) meaning a 128×16 tile grid at 8 bpp. Resets CurAnimAndCurAnimCopy
+  (u16 at oBattleObject_CurAnimAndCurAnimCopy) to 0 and calls sprite_setAnimation, sprite_loadAnimationData, sprite_update,
+  sprite_hasShadow, and object_setCoordinatesFromPanels. Centers the object on the depth axis by zeroing oBattleObject_Z,
+  copies oBattleObject_PanelXY into oBattleObject_FuturePanelXY, then subtracts 1 from both oBattleObject_Z16 and
+  oBattleObject_Y16 (tile-edge rendering nudge). Sets identity fields: oBattleObject_NameID = 0xCE, oBattleObject_HP
+  and oBattleObject_MaxHP = 500 (0x1f4, encoded as 0xfa << 1), oBattleObject_Timer = 0x1770 (6000). Calls object_createCollisionData;
+  on failure (r0 == 0) frees the object via object_freeMemory and returns immediately with the original r8. On success
+  calls object_setupCollisionData(width=0xe, height=0xf, type=3) then object_presentCollisionData to register the
+  hitbox in the scene. Finally writes CUR_STATE_UPDATE into oBattleObject_CurState (u8). Quirk: the HP value is
+  computed as literal 0xfa shifted left by 1 (250×2 = 500) rather than a direct 0x1f4, which may hint at an internal
+  half-HP unit convention.
 
   '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `mov r0, #0x80; mov r1, #0x10; mov r2, #8; bl sprite_load` then `mov r0, #0; strh r0,[r5,#oBattleObject_CurAnimAndCurAnimCopy];
-    bl sprite_setAnimation` — loads sprite/animation index and zeroes the cached anim field. - `bl sprite_loadAnimationData`
-    then `bl sprite_update` then `bl sprite_hasShadow` — confirms a sprite animation pipeline and explicit
-    shadow enable. - `mov r0,#0; str r0,[r5,#oBattleObject_Z]` clears Z; `ldrh r0,[r5,#oBattleObject_PanelXY];
-    strh r0,[r5,#oBattleObject_FuturePanelXY]` mirrors current→future panel. - `ldrh ... oBattleObject_Z16;
-    sub r0,#1; strh ...` and same for Y16 — small Y/Z shifts. - `mov r0,#0xce; strh r0,[r5,#oBattleObject_NameID]`
-    — fixed NameID 0xCE (no chip assignment). - `mov r0,#0xfa; lsl r0,#1 -> 0x1F4` written to HP and MaxHP
-    (`oBattleObject_HP/MaxHP`). - Timer set to 6000 from `dword_80D231C = 0x1770`. - `bl object_createCollisionData`
-    then `tst r0,r0; bne loc_80D2306` — on null slot, `bl object_freeMemory; pop {pc}` aborts this object.
-    - `mov r1,#0xe; mov r2,#0xf; mov r3,#3; bl object_setupCollisionData` — collision flags/element config
-    for a passive obstacle. - `bl object_presentCollisionData` followed by `mov r0,#CUR_STATE_UPDATE;
-    strb r0,[r5,#oBattleObject_CurState]` — hands off to the standard per-frame collision handler and
-    parks the object in the UPDATE state.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s
-  reproduce: 'python3 tools/asmcat.py 0x080D22B0
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_initObstacle_80D22B0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_initObstacle_80D22B0
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_initObstacle_80D22B0
+    ./wf verify --function battleObject_initObstacle_80D22B0 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_initObstacle_80D22B0
 
-    '
-open_questions:
-- Why NameID = 0xCE specifically (a custom inline name entry vs. the standard name table) — would need
-  a cross-reference to NameID values produced by other init paths to confirm whether 0xCE denotes an "obstacle/inanimate"
-  class.
-- The exact meaning of object_setupCollisionData(r1=0xE, r2=0xF, r3=3); the named summary doesn't enumerate
-  the r1..r3 arguments, but the layout looks like collision-type/element/wall properties for an inanimate
-  non-attacking object.
-sources:
-- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_initObstacle_80D22B0 --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 79 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_initObstacle_80D22B0
+
+    ./wf verify --function battleObject_initObstacle_80D22B0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, maps.'
+  reproduce: grep -l '^080d22b0 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 13ab054c
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80D22B0 -> battleObject_initObstacle_80D22B0
-  where: bn6f ce204b1d
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+- maps
+open_questions:
+- Name ID 0xCE (206) – which specific obstacle (crate, barrel, rock, etc.) does this correspond to in Falzar's data
+  tables?
+- 'The Z16/Y16 -1 nudge: is this a universal tile-origin correction or specific to obstacle rendering?'
+- Timer 0x1770 (6000 frames ≈ 100 s at 60 fps) – what does this idle timer govern for obstacles (respawn, decay,
+  or a phase duration)?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

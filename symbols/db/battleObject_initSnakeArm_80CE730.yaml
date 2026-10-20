@@ -1,91 +1,76 @@
 name: battleObject_initSnakeArm_80CE730
 address: '0x080CE730'
 kind: function
-previous_names:
-- sub_80CE730
-status: probable
-summary: Initializes a battle object's snake-arm attack state, spawning a hit effect on failure or launching
-  the arm on success.
-interface: '(r5 = battle object) -> void ; side effects: writes object state/flags, collision hit-effect,
-  palette, XVelocity, and may spawn a child effect object or free the parent'
-details: 'Called when a battle object enters its arm-lunge / reach attack (uses CUR_STATE_INITIALIZE).
-  First
-
-  snaps the object from its panel coordinates to pixel coordinates via
-
-  object_setCoordinatesFromPanels, then asks battleObject_initSpriteAndCollision_8011504 to load the
-
-  arm sprite/animation with the constants at 0x70402 / 0x4050300 and a flip corresponding to facing.
-
-  If that init returns non-zero (success), the function sets OBJECT_FLAG_VISIBLE on the object
-
-  header, programs a collision hit-effect of 2, sets the sprite palette index to 0, runs
-
-  object_presentCollisionData to publish collisions for this frame, then sets
-
-  XVelocity = object_getFrontDirection() * oBattleObject_ExtraVars (a sideways/distance scalar kept
-
-  in the per-object extra-vars slot), and finally writes CUR_STATE_UPDATE (0x4) so the next frame
-
-  the object leaves init and enters its update loop — i.e. the arm slides off.
-
-  On failure to init the sprite it pulls oBattleObject_ExtraVars[0x34..0x3c] (params) into r1-r3,
-
-  adds 0x00100000 to the param3 base, and dispatches spawn_t1_0x0_EffectObject with arg4=r5
-
-  (object pointer) so a type-4 / type-1 effect object appears, then frees the parent battle
-
-  object via object_freeMemory and returns.
-
-  The two constants 0x70402 and 0x4050300 look like a packed (sprite/animation spec, collision
-
-  spec) pair passed to battleObject_initSpriteAndCollision_8011504. The use of ExtraVars as a
-
-  precomputed displacement/distance and the `object_getFrontDirection` multiplier is consistent
-
-  with an arm that reaches in the object''s facing direction.
-
-  '
+status: confirmed
+summary: 'Initializes the Snake Arm projectile battle object: places it from panel data, loads its sprite/collision,
+  then either aborts (spawning a small hit-effect) or sets up directional velocity and transitions to per-frame
+  update.'
+interface: 'void battle_initSnakeArm_80CE730(void) — reads: r5 (object ptr), r6/r7 (panel coords), r8 (collision
+  context), r10, lr; writes back r5, r8; clobbers r0-r3, lr, NZCV; preserves r4, r6, r7'
+details: "Snake Arm is the projectile spawned by the Snake Arm Battle Card (a serpentine shot that travels\nhorizontally\
+  \ across the panel field). This function is its one-time spawn initializer.\n\n1. Calls object_setCoordinatesFromPanels\
+  \ (r5/r6/r7) to snap the projectile onto the grid.\n2. Calls battleObject_initSpriteAndCollision_8011504 with\
+  \ tile-ID 0x70402 and a data pointer\n   0x4050300 to allocate and load the sprite + hitbox. Returns status in\
+  \ r0.\n3a. Failure path (r0 == 0): reads three u32s at r5+0x34 (x, y, z-of-0x100000 offset), calls\n    spawn_t1_0x0_EffectObject\
+  \ with effect type 0x14, then object_freeMemory to release the\n    half-allocated object.\n3b. Success path:\n\
+  \    - Sets bit 1 (mask 0x2) in ObjectHeader_Flags (collidable / active marker).\n    - object_setCollisionHitEffect(2,\
+  \ r5) — hit-effect ID 2.\n    - sprite_setPalette(0, r5) — default (index 0) palette.\n    - object_presentCollisionData(r1=2,\
+  \ r5, r8) — commits the hitbox to the collision grid.\n    - object_getFrontDirection(r5) → r0; reads u32 at r5+oBattleObject_ExtraVars\
+  \ (a speed\n      scalar baked into the panel data); writes r0*scalar into r5+oBattleObject_XVelocity,\n     \
+  \ giving the horizontal travel direction and magnitude.\n    - Writes CUR_STATE_UPDATE into oBattleObject_CurState\
+  \ so the main loop calls the projectile's\n      per-frame state handler next tick.\n\nThe ExtraVars field acts\
+  \ as a speed multiplier unique to Snake Arm; the front-direction sign\ndetermines left/right travel on the panel.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: "- `push {r4,lr}` / `pop {r4,pc}` leaf calling pattern with r5=object, r10=toolkit preserved.\
-    \ - `bl object_setCoordinatesFromPanels` first (panel-to-pixel snap typical of init-from-state). -\
-    \ `ldr r0, dword_80CE810 // =0x70402` and `ldr r1, dword_80CE814 // =0x4050300` then\n  `bl battleObject_initSpriteAndCollision_8011504`:\
-    \ loads sprite/animation spec at function start.\n- `tst r0, r0` / `bne loc_80CE75A` is the success/failure\
-    \ branch. - Failure path: `mov r0, #0x34; add r0, r0, r5; ldmia r0!, {r1-r3}` reads three words from\n\
-    \  ExtraVars (loc=0x60 + 0x34..0x3c → likely the Params union view for an effect), then\n  `add r3,\
-    \ r3, #0x100000`, `mov r4, #0x14` (kind=0x14), `bl spawn_t1_0x0_EffectObject`,\n  `bl object_freeMemory`.\n\
-    - Success path: `ldrb r0,[r5,#oObjectHeader_Flags]; orr r0, r1(=#2)` sets OBJECT_FLAG_VISIBLE\n  (0x02)\
-    \ at oBattleObject + 0x00 (header).\n- `mov r0, #2; bl object_setCollisionHitEffect` then `mov r0,\
-    \ #0; bl sprite_setPalette`. - `bl object_presentCollisionData` then `bl object_getFrontDirection`.\
-    \ - `ldr r1, [r5,#oBattleObject_ExtraVars]; mul r0, r1; str r0, [r5,#oBattleObject_XVelocity]`\n \
-    \ sets XVelocity = front_direction * ExtraVars[0].\n- `mov r0, #CUR_STATE_UPDATE; strb r0,[r5,#oBattleObject_CurState]`\
-    \ advances out of init."
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s
-  reproduce: 'python3 tools/asmcat.py 0x080CE730
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_initSnakeArm_80CE730
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_initSnakeArm_80CE730
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_initSnakeArm_80CE730
+    ./wf verify --function battleObject_initSnakeArm_80CE730 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_initSnakeArm_80CE730
 
-    '
-open_questions:
-- The exact identity of the parent object that owns this state handler (some chip / virus snake-arm sub-action)
-  is not pinned down; the per-call `snap_beastsp_0050000_0.bin` capture shows r0=0 at entry, which is
-  unusual and may be a debug/break snapshot rather than the live call site. Knowing the action/state table
-  that points here would confirm the parent chip.
-- The semantics of ExtraVars[0] (distance scalar) and the three Params words at +0x34 are inferred from
-  the failure-path layout; concrete caller writes would settle it.
-sources:
-- discovery session 2026-10-14 batch 44 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_initSnakeArm_80CE730 --snapshots build-snapshots'
+  result: 38 compared, 0 differed, 57 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_initSnakeArm_80CE730
+
+    ./wf verify --function battleObject_initSnakeArm_80CE730 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080ce730 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f ae9cb8d5
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80CE730 -> battleObject_initSnakeArm_80CE730
-  where: bn6f 0823ec4c
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What exactly does tile-ID 0x70402 / data 0x4050300 contain for the Snake Arm sprite frame sequence?
+- Is effect type 0x14 the 'blocked/whiff' visual that plays when the Snake Arm spawns into an occupied tile?
+- Does the ExtraVars scalar vary per Snake Arm element type, or is it always a fixed speed value from the card data?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

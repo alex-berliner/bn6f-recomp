@@ -1,66 +1,77 @@
 name: battleObject_runBeastSpFunction_8136DE0
 address: '0x08136DE0'
 kind: function
-previous_names:
-- sub_8136DE0
-status: probable
-summary: Run a saved function table entry for the Beast-SP context, saving/restoring AIData timer fields
-  across the call
-interface: '(r0 = beast-sp subsystem object ptr, r1 = 0x28) -> r0 = ? (caller treats as unknown); side
-  effects: writes EWRAM 0x2009398..0xC and calls one of 0x24 dispatch targets then invokes beastsp_dispatchHandler_81356D4'
-details: "Stack-only helper. On entry r10 is the Toolkit (r7 = [r10+0x34] SubmenuPtr, r1 = [r10+4] which\
-  \ is\n  ParamWord from somewhere; here r1 holds a short-lived 6-byte scratch pointer).\n  It first copies\
-  \ three u16s (offsets 0, 2, 4) from the scratch pointer into EWRAM\n  byte_2009390+0x8..+0xC (the AIData\
-  \ Unk_40/Unk_44 area used by the BeastSp code), then\n  zeroes those three u16s in the scratch. It reads\
-  \ `byte` from byte_2009390, indexes\n  off_8136E28 with it (a 36-entry thunk table at 0x08136E2C, all\
-  \ `sub_xxx+1` Thumb addresses)\n  to call a Beast-SP state function via `mov lr,pc; bx r0` (ARM/Thumb\
-  \ switch), then invokes\n  beastsp_dispatchHandler_81356D4 with r10 restored, and finally restores the\
-  \ three saved\n  halfwords back into the scratch.\n  The 36 dispatch targets (sub_8136EE4 … sub_81375CC)\
-  \ and the use of byte_2009390 for dispatch\n  identify this as a continuation/exec wrapper for the Beast-SP\
-  \ state machine used in Beast Out.\n  Captured calls show entry r0=08136DE1 (Thumb bit set, confirming\
-  \ the caller PCs to 0x08136DE0),\n  r1=0x28 (the size/scratch byte count passed via r1), exit r0=0xfc00/0xfc02\
-  \ which is the canonical\n  default JOYPAD mask (high bits only), suggesting the indirected function\
-  \ may end by returning\n  that or by ASLEEPing; the caller then uses r0+offs_81356D4 logic. (8hex addr\
-  \ without 0x.)\n"
+status: confirmed
+summary: 'Per-frame tick of the Beast SP dialog state machine: saves the 3-halfword dialog triple from the battle
+  object, dispatches the active dialog handler via a 36-entry jump table, runs the beast-SP handler dispatcher,
+  then restores the triple.'
+interface: void battleObject_runBeastSpDialogStep(void /* inputs r2 r4 r6 r9 r10 r11 r12 -> outputs r8 r9 r10 r11
+  r12; preserves r4 r5 r6 r7 */);
+details: '[r10] is the battle-object pointer; [r10+4] is a linked toolkit holding a 3-halfword dialog triple (offsets
+  0, +2, +4 – likely dialog-id, page, sub-state).  The triple is copied into a scratch area at byte_2009390 (fields
+  at +8, +a, +c) and the live copy is zeroed so the handler sees a clean slate.  byte_2009390 itself (the first
+  byte) indexes a 36-entry thumb-mode jump table at off_8136E2C whose entries are chatbox, navicust, and beast-dialog
+  helpers (e.g. navicust_showDialogStore8, navicust_advanceBeastEventDialog, chatbox_writeState30IfFlag80Clear,
+  navicust_runObjectDialogScript, beastOutDialogDelayStep, navicust_queueBeastOutDialog, navicust_finalizePieceDrop,
+  etc.). After the selected handler returns (invoked with mov lr,pc; bx r0 so flags/r0-r3/r8 are clobbered), the
+  function reloads the owner pointer from [r10+0x34] and calls beastsp_dispatchHandler_81356D4.  Finally the saved
+  triple is written back into the toolkit at [r10+4].  r11 and r12 pass through the handler and dispatcher untouched
+  in most cases; the dispatcher may return updated values in r8-r12 which propagate to the caller.  A secondary
+  data table at off_8136EC8 (dword_86E55FC, 0x6014800, 0x100, byte_86E56FC, byte_3001590, 0x20) is present but not
+  referenced by this code path.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldr r7,[r7,#0x34]` then `ldr r5, off_8136EC0 ; =byte_2009390` shows r10==Toolkit, scratch
-    is EWRAM at 0x2009390 - `ldrh r0,[r1]; strh r0,[r5,#8]` and offsets 0/2/4 mirror save-clear-restore
-    across the BeastSP call (timestamps in AIData Unk_40..0x4c fields) - `mov r0,#0; strh r0,[r1]` clears
-    the scratch before the call - `ldrb r1,[r5]; ldr r0,[r0,r1]; mov lr,pc; bx r0` is the standard Thumb/ARM
-    thunk dispatch via off_8136E28 -> off_8136E2C, a 36-entry function table - `bl beastsp_dispatchHandler_81356D4`
-    is the named BeastSP continuation caller - Caller lr=0x0811f784 in all snapshots shows this is invoked
-    from the shared battle update loop - The 6 saved bytes correspond to 3 timers most likely PwrAtk/TimerAndTimer2
-    style (u16 + u16 + u16) on a battleObject struct'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x08136DE0
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_runBeastSpFunction_8136DE0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_runBeastSpFunction_8136DE0
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_runBeastSpFunction_8136DE0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_runBeastSpFunction_8136DE0
+
+    ./wf verify --function battleObject_runBeastSpFunction_8136DE0 --snapshots build-snapshots'
+  result: 45 compared, 0 differed, 0 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_runBeastSpFunction_8136DE0
+
+    ./wf verify --function battleObject_runBeastSpFunction_8136DE0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^08136de0 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- The exact identity of the 6 bytes saved/restored (r1 points to field on a battleObject or AIData, unknown
-  which struct's field)
-- Which of the 36 dispatched functions are valid for a given beastSP-step byte
-- 'Why capture-call r0==0xfc00/0xfc02: it isn''t actually set by this frame''s body (the body only writes
-  to EWRAM and runs the tail call), so the value comes from the dispatched function or its continuation
-  — naming it as "run/continuation wrapper" is confirmed but the consumer of r0 is opaque.'
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08136de0 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 09ad1b28
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_8136DE0 -> battleObject_runBeastSpFunction_8136DE0
-  where: bn6f 311f2abb
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm36.c
+coverage:
+- beastsp
+open_questions:
+- What exactly do the three halfwords in the dialog triple represent (id/page/state vs. id/line/counter)?
+- Is byte_2009390 shared scratch for all Beast SP objects or allocated per-object?
+- What does the 0x100 / 0x20 entry in off_8136EC8 control, and is it used by the handlers or only elsewhere?
+- Does beastsp_dispatchHandler_81356D4 advance the SP's own frame/timer state, or is that done in the dialog handlers?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

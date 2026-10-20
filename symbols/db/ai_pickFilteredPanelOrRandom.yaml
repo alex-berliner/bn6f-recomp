@@ -1,55 +1,73 @@
 name: ai_pickFilteredPanelOrRandom
 address: '0x081124F2'
 kind: function
-status: probable
-summary: 'Battle-AI panel selector: finds an alliance-dependent panel behind the opponent''s rows, re-validates
-  it against panel flags, and falls back to a random nearby panel.'
-interface: (r0 = battle object, r5 = context entity with panel/coord bytes at +0x16/+0x17) -> r0 = chosen
-  panel or 0/kept value; uses object's alliance byte at +0x13
-details: r0 (saved in r4) is a battle object whose +0x13 field selects the team-dependent entry of table
-  byte_81125F0; the first lookup's param/args drive object_getClosestPanelMatchingRowFiltered, which scans
-  rows opposite the facing side from six rows back. If no row qualifies (r0 == 0) the function returns
-  immediately. Otherwise a second alliance-dependent lookup (byte_81125E0) feeds object_checkPanelParameters,
-  whose r0-r3 are pushed/popped so the param/args survive for reuse; if the panel still passes the flag
-  masks the function returns with it. Only when that check fails does it call GetRandomRelativePanelFiltered
-  with r6 = [r5+0x16] ^ [r5+0x17] and r4 = 5, picking a random reachable panel as replacement. Overall
-  this looks like target-panel (re)selection for an AI action, with the random pick as fallback when the
-  preferred panel no longer matches.
+status: confirmed
+summary: 'AI helper that selects a grid panel for an NPC: tries closest row-matching panel, then checks params,
+  then falls back to a random relative panel.'
+interface: void ai_pickFilteredPanelOrRandom(u32 obj /*r0*/, u32 battleState /*r5*/) -> r0-r3; preserves r4-r7
+details: 'Reads battle.panelX (offset 0x16) XOR battle.panelY (offset 0x17) as a column/row filter, and obj.row
+  (offset 0x13) as the target row. Calls GetAllianceDependentPanelParamArgs with a row-matching parameter table
+  (byte_81125F0) to obtain alliance-dependent panel params (r2, r3), then calls object_getClosestPanelMatchingRowFiltered.
+  If that call returns with Z set (no match), it immediately returns the r0-r3 from that call. If a match IS found
+  (Z clear), it looks up a second parameter table (byte_81125E0), pushes the current r0-r3, calls object_checkPanelParameters;
+  if that returns non-zero it pops and returns the saved r0-r3 (the closest-match result). Otherwise it recomputes
+  the filter, sets r4=5 (relative-panel mode), and calls GetRandomRelativePanelFiltered to pick a random panel in
+  a direction relative to the NPC. r4-r7 are saved/restored across the callee calls via push/pop and manual save/restore
+  in the C wrapper.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'two GetAllianceDependentPanelParamArgs calls with tables byte_81125F0/byte_81125E0, indexed
-    by [r4+0x13] (alliance); beq locret_811252A after object_getClosestPanelMatchingRowFiltered: return
-    when no matching row is found; object_checkPanelParameters args saved via push/pop {r0-r3} and reused
-    for the fallback call; bne locret_811252A after object_checkPanelParameters: keep the panel when the
-    flag check passes; fallback bl GetRandomRelativePanelFiltered with r6 = [r5+0x16]^[r5+0x17], r4 =
-    5'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:8852
-  - 0x081096FA GetAllianceDependentPanelParamArgs
-  - 0x08015E46 GetRandomRelativePanelFiltered
-  - 0x0800CC86 object_checkPanelParameters
-  reproduce: python3 tools/asmcat.py 0x081124F2
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c ai_pickFilteredPanelOrRandom
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_pickFilteredPanelOrRandom
+
+    ./wf verify --function ai_pickFilteredPanelOrRandom --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 261 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_pickFilteredPanelOrRandom
+
+    ./wf verify --function ai_pickFilteredPanelOrRandom --snapshots build-snapshots'
+  result: 21 compared, 0 differed, 75 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_pickFilteredPanelOrRandom
+
+    ./wf verify --function ai_pickFilteredPanelOrRandom --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^081124f2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- exact meaning of bytes +0x16/+0x17 of the r5 object and why they are XORed
-- meaning of r4 = 5 in GetRandomRelativePanelFiltered (range? list id?)
-- contents of param tables byte_81125E0/byte_81125F0
-- no known callers, so the calling context and which boss/AI uses this are unknown
+- What do the two parameter tables byte_81125F0 and byte_81125E0 represent per alliance?
+- What does r4=5 (relative mode) mean exactly in GetRandomRelativePanelFiltered?
+- Does Z=1 from object_getClosestPanelMatchingRowFiltered mean 'no panel found' or 'panel found'?
+- What fields of obj (beyond offset 0x13 row) influence the filtering?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_81124F2 -> ai_pickFilteredPanelOrRandom
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_81124F2
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

@@ -1,69 +1,75 @@
 name: battleObject_beastSpAdvanceAndDrawTiles_8119A48
 address: '0x08119A48'
 kind: function
-previous_names:
-- sub_8119A48
-status: probable
-summary: Per-step Beast SP meter/bar advance that draws/replaces the bar's tile strip and pings SFX 0x7E
-  every 4 increments when the chatbox flag is clear.
-interface: (r5 = beastSp state ptr, r10 = toolkit) -> side effects only (modifies r5->state, copies BG
-  tiles, plays SFX)
-details: "Bumps a u16 counter at [r5+0x10] by adding 2 to it. Computes the cap as [r5+0x14] shifted left\n\
-  \  by 2. While the counter has not reached the cap, r2 is set to 0x28 (a width in tiles); no further\n\
-  \  work is done this tick and we fall through to the tile copy with r2 = 0x28.\n  Once the counter has\
-  \ met/exceeded the cap, r2 becomes the carry value (initial [r5+0x10] before\n  bumping, i.e. the post-overflow\
-  \ portion). A stride counter at [r5+0x18] is incremented and\n  every time its low 2 bits are 0 (so\
-  \ every 4 calls), if chatbox event flag 0x80 (`& eFlags2009F38`)\n  is clear (Z), SFX `SOUND_UNK_7E`\
-  \ is played.\n  Then unconditionally `CopyBackgroundTiles(j=0x12, i=0xd, tileBlock32x32=0, tile_ids=hword_8119904,\n\
-  \  j_size=0xa, i_size=2)` is called to overwrite the bar's tile strip with r2 as a height param\n  (r2\
-  \ is passed via {push r2,r5} so the called function sees a tile-block parameter).\n  Finally if [r5+0x4]\
-  \ is 0, `sub_8119AA0(0x12, 0xF, [r5+0x10]>>2)` is called to update a secondary\n  related tile strip;\
-  \ otherwise the helper is skipped. The guard at [r5+0x4] likely distinguishes\n  which side of the meter\
-  \ is being updated (player vs enemy/peak value state).\n  r5 returned with the post-increment state\
-  \ pointer; r2/r3/r10 live-on for the caller per contract.\n  The function is `void` (no return value\
-  \ pushed to caller).\n"
+status: confirmed
+summary: Advance the BeastSpirit activation scroll counter, play a tick sound every 4 frames, redraw the scrolling
+  text tile block, and conditionally draw a cursor row.
+interface: void battleObject_beastSpAdvanceAndDrawTiles_8119A48(u32 obj /*r5*/, u32 bg /*r10*/); // outputs r2 =
+  scroll offset, r3 = callee residue; preserves r4-r7,r10
+details: "Operates on a BeastSpirit activation display object. Steps:\n1. Increments scroll position at obj+0x10\
+  \ by 2.\n2. Computes a scroll cap from obj+0x14 << 2. If the new scroll is still below\n   the cap (signed compare),\
+  \ sets r2 to the current scroll and proceeds:\n   - Increments a frame tick counter at obj+0x18.\n   - On every\
+  \ 4th tick (low 2 bits of counter == 0), calls\n     chatbox_mask_eFlags2009F38(0x80); if that flag is clear (Z\
+  \ set),\n     plays SOUND_UNK_7E.\n3. Regardless of scroll state, redraws a 10-col x 2-row background tile\n \
+  \  block via CopyBackgroundTiles(j=0x12, i=0xD, block=0,\n   tile_ids=hword_8119904, j_size=0xA, i_size=2). The\
+  \ call is bracketed\n   with push {r2,r5} / pop {r2,r5} so the scroll value and object pointer\n   survive the\
+  \ clobber.\n4. Reads a gate byte at obj+4. If nonzero (cursor managed elsewhere),\n   returns leaving r2 = scroll\
+  \ value (or 0x28 sentinel when out of range).\n5. If gate byte is zero, draws a single cursor row via\n   copyBgTilesFromTable(j=0x12,\
+  \ i=0xF, r2=scroll>>2), advancing the\n   visual cursor in 4-pixel steps.\nFields touched: obj+0x10 (scroll y),\
+  \ obj+0x14 (scroll line count),\nobj+0x18 (tick counter), obj+0x04 (cursor-managed gate byte).\nQuirk: the 0x28\
+  \ sentinel in r2 when the scroll exceeds the cap is\neffectively an \"off-screen\" indicator; the cursor-row call\
+  \ would then\ndraw at position 10 (0x28>>2) which is presumably outside the visible\ntile rows.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldr r1, [r5,#0x10]; add r1, #2; str r1, [r5,#0x10]` — counter at +0x10 is incremented by
-    2 (so units are half-pixels or quarter-tiles). - `ldr r3, [r5,#0x14]; lsl r3, r3, #2; cmp r1, r3;
-    bge` — cap = +0x14<<2; loop is gated by comparison. - `ldr r4, [r5,#0x18]; add r4, #1; str r4, [r5,#0x18];
-    mov r3, #3; and r4, r3` — stride counter at +0x18, masked by 3 to fire every 4 updates. - `mov r0,
-    #0x80; bl chatbox_mask_eFlags2009F38; bne loc_8119A76; mov r0, #SOUND_UNK_7E; bl PlaySoundEffect`
-    — chatbox flag 0x80 gate then SFX 0x7E. - `mov r0, #0x12; mov r1, #0xd; mov r2, #0; ldr r3, off_8119A9C;
-    mov r4, #0xa; mov r5, #2; bl CopyBackgroundTiles` — reuses BG-tile helper to repaint tile block 0
-    starting at (0x12, 0xd), 0xa×2 tile window from tile-id table `hword_8119904`. - `ldrb r0, [r5,#0x4];
-    tst r0, r0; bne locret_8119A9A` — gate by flag at +0x4. - Final `bl sub_8119AA0` mirrors first call
-    but uses (0x12, 0xF) and `r2>>2` as third param, matching the side:cap ratio used elsewhere as a 4-tile
-    period. - Caller is `sub_81199C0` (a Beast-SP per-frame pump) and is reached via 0x081199db from the
-    beastsp snapshots; the metric name fields ("BeastOutAPwrAtk", "PwrAtkCurChargeTime", "PwrAtkState",
-    "PwrAtkButton" in AIData) point at the cross-transform SP-charge meter.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x08119A48
+  - cport/src/game/asm32_8119438.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_beastSpAdvanceAndDrawTiles_8119A48
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_beastSpAdvanceAndDrawTiles_8119A48
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_beastSpAdvanceAndDrawTiles_8119A48 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_beastSpAdvanceAndDrawTiles_8119A48
+
+    ./wf verify --function battleObject_beastSpAdvanceAndDrawTiles_8119A48 --snapshots build-snapshots'
+  result: 41 compared, 0 differed, 55 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_beastSpAdvanceAndDrawTiles_8119A48
+
+    ./wf verify --function battleObject_beastSpAdvanceAndDrawTiles_8119A48 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^08119a48 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- Layout of the r5 state record (offsets 0x4 / 0x10 / 0x14 / 0x18) and what the SOUND_UNK_7E 4-step cadence
-  represents inside the bar's animation.
-- What `sub_8119AA0` ultimately draws and which player's meter is being updated (the [r5+0x4] gate hints
-  at side 0 vs side 1).
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08119a48 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32_8119438.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 353d80a9
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_8119A48 -> battleObject_beastSpAdvanceAndDrawTiles_8119A48
-  where: bn6f 57a30947
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32_8119438.c
+coverage:
+- beastsp
+open_questions:
+- What does SOUND_UNK_7E sound like in-game (scroll-tick blip for BeastSpirit text?)
+- Confirm hword_8119904 tile table contents (BeastSpirit activation character glyphs?)
+- Is the chatbox_mask flag 0x80 a global mute/skip for BeastSpirit SFX, or specific to this animation?
+- What sets the gate byte at obj+0x04 (external cursor manager)?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

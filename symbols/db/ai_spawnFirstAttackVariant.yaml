@@ -1,56 +1,72 @@
 name: ai_spawnFirstAttackVariant
 address: '0x08111BDE'
 kind: function
-status: probable
-summary: Clears AttackBoost2, then iterates AI attack variant ids 0..4 calling ai_attackSpawnVariant;
-  on each successful spawn decrements the r4 counter and exits when it reaches zero, else retries all
-  five variants.
-interface: (r0 = attempt count, r7 = AI attack vars struct) -> r0 = clobbered; clears oAIAttackVars_AttackBoost2
-details: 'Zeros the byte oAIAttackVars_AttackBoost2 in the AI attack-vars struct passed in r7, then loops
-  variant ids 0..4, calling ai_attackSpawnVariant for each. Each call returns nonzero on success; when
-  it does, the attempt counter (r4, taken from r0) is decremented and if it reaches zero the function
-  returns, otherwise the loop keeps trying the next variant. If all five variants fail, r6 wraps after
-  5 and the loop restarts until the attempt budget is exhausted. So it acts as a fallback: pick whichever
-  of the up-to-five variants yields a spawnable attack, allowing up to r0 tries.'
+status: confirmed
+summary: Spawns up to a requested number of attack variants by iterating slots 0–4, clearing the secondary boost
+  flag first.
+interface: void ai_spawnFirstAttackVariant(u32 count /*r0*/, u32 r5, AIAttackVars *vars /*r7*/, u32 r10); /* r0
+  clobbered; r5,r7,r10 passed through; r1,r2,r8-r12 leftover from last ai_attackSpawnVariant call; nzcv clobbered
+  */
+details: Saves the requested variant count into r4, zeroes vars->AttackBoost2 (oAIAttackVars_AttackBoost2 at [r7+offset]),
+  then loops variant_idx 0..4 calling ai_attackSpawnVariant(variant_idx, r5, r7). A non-zero return means that slot
+  produced a spawnable variant, so the remaining count (r4) is decremented; the loop exits early once count hits
+  0 or all 5 slots are tried. All output registers (r1, r2, r5, r7, r8, r9, r10, r11, r12) are whatever the final
+  ai_attackSpawnVariant wrapper left behind. r10 is listed as an input by the caller but is never referenced inside
+  the function body—it is only forwarded to ai_attackSpawnVariant via register context. The function does not return
+  a value in r0; the return is void.
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'sub_8111BDE loops r6 = 0..4 and ''bl ai_attackSpawnVariant'', branching back only while r0
-    == 0; ''sub r4, #1; beq locret'' consumes r0 as a retry budget before restarting the variant loop;
-    ''strb r0, [r7,#oAIAttackVars_AttackBoost2]'' clears an AI attack-vars field at entry; sole caller
-    sub_8111B88 feeds it the attempt count; callee ai_attackSpawnVariant spawns a variant''s attack object'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:7891
-  - 0x08111B88 sub_8111B88
-  - 0x08111BFE ai_attackSpawnVariant
-  reproduce: python3 tools/asmcat.py 0x08111BDE
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The loop iterates variant ids 0..4, but r6 starts at 0 (not r4), and r4 (taken from r0) is the attempt
-    budget that decrements only on success. On full success r4 reaches 0 and BEQ to locret exits; otherwise
-    it loops through all five variants. The proposal''s name is fine, but the summary''s ''up to r0 tries''
-    framing slightly miscasts it: r4 is decremented on success, not failure, and acts as a max-spawns
-    cap.; run wf investigate investigate-20261018-203615; proposed by Hyper glm-5.3-flash, revised by
-    MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c ai_spawnFirstAttackVariant
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_spawnFirstAttackVariant
+
+    ./wf verify --function ai_spawnFirstAttackVariant --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_spawnFirstAttackVariant
+
+    ./wf verify --function ai_spawnFirstAttackVariant --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_spawnFirstAttackVariant
+
+    ./wf verify --function ai_spawnFirstAttackVariant --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08111bde ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
+related:
+- ai_attackSpawnVariant
 open_questions:
-- what sub_8111B88 passes as the attempt count and where r7's struct is allocated (enemy AI state?)
-- exact meaning of the AttackBoost2 field cleared here
-- 'The loop iterates variant ids 0..4, but r6 starts at 0 (not r4), and r4 (taken from r0) is the attempt
-  budget that decrements only on success. On full success r4 reaches 0 and BEQ to locret exits; otherwise
-  it loops through all five variants. The proposal''s name is fine, but the summary''s ''up to r0 tries''
-  framing slightly miscasts it: r4 is decremented on success, not failure, and acts as a max-spawns cap.'
+- What does a non-zero vs zero return from ai_attackSpawnVariant signify—spawn success vs slot empty/ineligible?
+- Is AttackBoost2 a per-turn flag reset here, or a one-shot modifier consumed by the variant spawner?
+- Why does the caller pass r10 if the function body never touches it explicitly?
 sources:
-- wf investigate investigate-20261018-203615
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 58027fff
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_8111BDE -> ai_spawnFirstAttackVariant
-  where: bn6f f9d9fc39
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8111BDE
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

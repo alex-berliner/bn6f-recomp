@@ -1,67 +1,78 @@
 name: battleObject_setupBeastSprite
 address: '0x080A822C'
 kind: function
-status: probable
-summary: 'Initializes a beast entity: loads gfx 0x1c/0x56, calls sub_80A8324, sets priority-by-event-flag, applies
-  animation + noShadow + OAM priority 2, converts three 16-bit coords to upper-word format into [r5+0xC/0x10/0x14],
-  and refreshes the sprite.'
-interface: (r5 = entity/object struct ptr, preset before entry) -> void; writes state bytes and position fields
-  into the struct
-details: Stores 3 at [r5] (a mode/state byte), calls sprite_load with (0x80, 0x1c, 0x56), then battleObject_checkSetPriorityByEventFlag
-  stores its bool at [r5+5]. It applies sprite_setAnimation, sprite_loadAnimationData and sprite_noShadow, then
-  sprite_setPriority(2). Callee sub_80A82A4 returns a pointer whose halfwords at +0/+2/+4 (likely x/y or x/y/z)
-  are sign-extended into [r5+0xC], [r5+0x10], [r5+0x14]. It stores 4 at [r5+8] (another state/phase byte) and finishes
-  with battleObject_updateSpriteAndMaybeReloadAnim. Notably r4-r7 are saved but only r4 is used, and r5 is expected
-  from the caller, suggesting this is a chunk of an inlined/state-machine initializer rather than a standalone routine.
+status: confirmed
+summary: 'Initialises a Beast Linker battle object''s sprite: loads its tileset, resolves animation and draw priority
+  from map-event flags, packs three attribute words, transitions to ready state, and performs the final sprite update.'
+interface: battleObject_setupBeastSprite(r5 *object, r10 *gameState) -> r2, r3 (from update routine); r4, r5 preserved
+details: 'r5 points to the Beast battle-object struct. The function writes: type=3 at offset 0 (SPRITE_TYPE_BEAST,
+  identifying Regal/Full-Metal-type Beast sprites), event-resolved priority byte at offset 5, state=4 ("ready")
+  at offset 8, and three 16-bit attribute fields shifted into the upper half of u32 slots at offsets 0xC, 0x10,
+  0x14 (read from a per-Beast attribute table returned by getMapAreaDataTableEntry_80A82A4). Graphics are loaded
+  via sprite_load(0x80 tileset, 0x1C palette, 0x56 base tile). ow_swapMapEventFlags is called to flush pending map-event
+  changes. battleObject_checkSetPriorityByEventFlag_80A82DC returns a priority value which is stored at offset 5
+  AND passed as the animation-id to sprite_setAnimation (i.e. the Beast''s idle animation index is tied to its event-flag
+  priority). sprite_loadAnimationData, sprite_noShadow (Beasts render without a shadow), and sprite_setPriority_8002E14(2)
+  set draw-layer to mid-ground. The tail call to battleObject_updateSpriteAndMaybeReloadAnim_80A827C finalises the
+  OAM entry and its leftover r2/r3 are the function''s visible outputs. Quirk: the three attributes are stored with
+  the 16-bit value in the UPPER half of a 32-bit word (lsl #16), matching the game''s tile-index/position packing
+  convention for sprite OAM entries.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'sub_80A822C: bl sprite_load with r0=0x80, r1=0x1c, r2=0x56 followed by animation/noShadow/priority-2
-    setup; strb r0,[r5] / strb r0,[r5,#5] / strb r0,[r5,#8] write three state bytes of the r5 entity struct; ldrh/str
-    pairs copy three halfwords from sub_80A82A4''s result into [r5+0xC..0x14], matching position fields; tail sequence
-    calls battleObject_updateSpriteAndMaybeReloadAnim_80A827C, the standard post-setup sprite refresh; callee battleObject_checkSetPriorityByEventFlag
-    gates OAM priority by a map/event-flag pair, consistent with map-object setup'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm29.s:6075
-  - 0x080A82DC battleObject_checkSetPriorityByEventFlag_80A82DC
-  - 0x080A827C battleObject_updateSpriteAndMaybeReloadAnim_80A827C
-  - 0x080026E4 sprite_load
-  reproduce: python3 tools/asmcat.py 0x080A822C
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The proposal
-    omits the call to sub_80A8324 (line 7, between sprite_load and battleObject_checkSetPriorityByEventFlag). More
-    critically, the ''sign-extended'' description is wrong: the code uses ldrh + lsl r0,r0,#0x10 (lines 18-26),
-    which shifts a zero-extended halfword into the upper 16 bits, a fixed-point format conversion rather than sign-extension.
-    The name ''setupBeastSprite'' is well-supported by the beastsp execution route and the 0x1c/0x56 gfx pair. Everything
-    else (store 3 at [r5], priority 2, noShadow, store 4 at [r5+8], r5-caller convention) matches the asm.; run
-    wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
-    by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_setupBeastSprite
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_setupBeastSprite
+
+    ./wf verify --function battleObject_setupBeastSprite --snapshots build-snapshots'
+  result: 'captured calls: 30 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_setupBeastSprite
+
+    ./wf verify --function battleObject_setupBeastSprite --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 84 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_setupBeastSprite
+
+    ./wf verify --function battleObject_setupBeastSprite --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^080a822c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm29.c
 coverage:
 - beastsp
 - maps
+related:
+- battleObject_updateSpriteAndMaybeReloadAnim_80A827C
 open_questions:
-- No caller is recorded, so what r5 points to and how this routine is dispatched (state machine? spawn table?) is
-  unknown
-- What sub_80A82A4 returns (position table entry?) needs its own disassembly
-- Which sprite sheet indices 0x1c/0x56 and resource 0x80 correspond to in game assets
-- 'The proposal omits the call to sub_80A8324 (line 7, between sprite_load and battleObject_checkSetPriorityByEventFlag).
-  More critically, the ''sign-extended'' description is wrong: the code uses ldrh + lsl r0,r0,#0x10 (lines 18-26),
-  which shifts a zero-extended halfword into the upper 16 bits, a fixed-point format conversion rather than sign-extension.
-  The name ''setupBeastSprite'' is well-supported by the beastsp execution route and the 0x1c/0x56 gfx pair. Everything
-  else (store 3 at [r5], priority 2, noShadow, store 4 at [r5+8], r5-caller convention) matches the asm.'
+- What do the three 16-bit attributes from getMapAreaDataTableEntry_80A82A4 represent (tile offset, frame index,
+  palette override)?
+- Is the animation-id = priority-byte coupling intentional, or a coincidence of the data layout?
+- Does r10 carry a per-area Beast variant table that selects which of Regal/Full-Metal/etc. is being set up?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80A822C -> battleObject_setupBeastSprite
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 58027fff
-  tool: tools/symdoc.py
-previous_names:
-- sub_80A822C
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

@@ -1,54 +1,86 @@
 name: battleObject_clearActiveOnDeletionState_80D236C
 address: '0x080D236C'
 kind: function
-previous_names:
-- sub_80D236C
-status: probable
-summary: If the deletion-state battle flag is set, clear the object's ACTIVE bit, set PAUSE_UPDATE, force
-  CurAction=8 and zero CurPhaseAndPhaseInitialized.
-interface: (r5 = BattleObject*) -> side effects only; no return value
-details: "Calls battle_getFlags to read the battle state's halfword at offset 0x32, then tests bit 0 with\
-  \ tst r0, #1.\n  If bit 0 is clear, calls nullsub_10 (an empty stub) and returns.\n  If bit 0 is set,\
-  \ manipulates the BattleObject at r5:\n    - reads byte at oObjectHeader_Flags (offset 0 in the ObjectHeader),\
-  \ clears bit 0x04 (OBJECT_FLAG_PAUSE_UPDATE) and writes it back\n    - then reads it again, sets bit\
-  \ 0x02 (OBJECT_FLAG_ACTIVE) and writes it back\n    - writes immediate 8 into oBattleObject_CurAction\
-  \ (offset 0x9)\n    - writes halfword 0 into oBattleObject_CurPhaseAndPhaseInitialized (offset 0xa)\n\
-  \  Net effect: when the per-frame \"deletion\" flag is asserted, the object is left ACTIVE but update-paused,\
-  \ with its action forced to 8 and phase counter reset.\n  Used as a per-frame routine during battle\
-  \ object lifecycle handling.\n"
+status: confirmed
+summary: During battle teardown, transitions a still-active battle object into the inactive/deleting state by clearing
+  its active flag, setting its inactive flag, forcing its action to the deletion handler (8), and zeroing its phase
+  counters.
+interface: 'battleObject_clearActiveOnDeletionState_80D236C(r5: Object* obj, r10: BattleCtx* ctx) -> r1: u32 (2
+  = cleared, 1 = no-op); clobbers r0, nz, lr'
+details: 'Reads the global battle flags via battle_getFlags(). If bit 0 (battle-active) is clear,
+
+  it calls nullsub_10 (a no-op placeholder) and returns with r1 = 1, leaving the object
+
+  untouched. If the battle IS active, it manipulates the object''s oObjectHeader_Flags
+
+  byte: clears bit 2 (the "active/living" flag) and sets bit 1 (the "inactive/deleting"
+
+  flag), writes oBattleObject_CurAction = 8 (the deletion/dispose action), and zeroes
+
+  oBattleObject_CurPhaseAndPhaseInitialized (16-bit) so the object restarts at phase 0
+
+  while already in the deletion action. r10 is in the register contract but never
+
+  actually read here; it is preserved across the callee calls. r1 ends up as 1 (not
+
+  active) or 2 (cleared), set by the mov #2 before the bic/orr pair or left at #1 from
+
+  the earlier mov in the not-active path.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `bl battle_getFlags` reads `oBattleState_Unk_32` via the callee''s contract - `tst r0, #1;
-    bne loc_80D237E` branches on the LSB of that halfword - `bic r0, r1` then `orr r0, r1` against `#4`
-    / `#2` shows OBJECT_FLAG_PAUSE_UPDATE cleared and OBJECT_FLAG_ACTIVE set - `mov r0, #8; strb r0, [r5,#oBattleObject_CurAction]`
-    writes CurAction = 8 (CUR_STATE_DESTROY-like sentinel) - `mov r0, #0; strh r0, [r5,#oBattleObject_CurPhaseAndPhaseInitialized]`
-    zeros the CurPhase + PhaseInitialized halfword - No callee-saved registers (r4-r7, r8-r10) are pushed/popped,
-    only lr; signature is void-like'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080D236C
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_clearActiveOnDeletionState_80D236C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_clearActiveOnDeletionState_80D236C
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_clearActiveOnDeletionState_80D236C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_clearActiveOnDeletionState_80D236C
+
+    ./wf verify --function battleObject_clearActiveOnDeletionState_80D236C --snapshots build-snapshots'
+  result: 75 compared, 0 differed, 21 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_clearActiveOnDeletionState_80D236C
+
+    ./wf verify --function battleObject_clearActiveOnDeletionState_80D236C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp, maps'
-  reproduce: 'grep -l ''^080d236c '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp, maps
-open_questions:
-- The exact meaning of CurAction = 8 in this codebase, and whether `OBJECT_FLAG_PAUSE_UPDATE` semantics
-  match "stop processing but stay around for cleanup".
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, maps.'
+  reproduce: grep -l '^080d236c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 90fa2c5c
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80D236C -> battleObject_clearActiveOnDeletionState_80D236C
-  where: bn6f f043a75e
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+- maps
+open_questions:
+- What is nullsub_10—did it originally post an SFX or screen flash that was later stubbed out?
+- Is r10 (battle context) truly unused, or was it added by the lifter as a conservative input?
+- Does CurAction == 8 correspond to a specific deletion/dispose routine, and is its semantics worth documenting
+  elsewhere?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

@@ -1,76 +1,78 @@
 name: battleObject_updateMysteryData_80E336E
 address: '0x080E336E'
 kind: function
-previous_names:
-- sub_80E336E
-status: probable
-summary: 'Per-frame update for a battle object: bails out (sets CurState=DESTROY, calls sub_80E33D2) when its ExtraVars
-  submode is invalid, NaviStats transformation is out of range, or its target object''s CurAction is past 0x10;
-  otherwise ticks Timer, runs sprite_update, and toggles OBJECT_FLAG_VISIBLE every other frame when a sub-flag is
-  unset.'
-interface: '(r5 = BattleObject*, r10 = Toolkit*) -> void ; side effects: writes BattleObject->CurStateActionPhaseAndPhaseInitialized,
-  Timer, Header.Flags; calls sprite_update, battle_isPaused, GetBattleNaviStatsByte, sub_80E33D2'
-details: "- Reads BattleObject->ExtraVars[0xc] (offset 0x60+0xc = 0x6c). If == 1, fetches the object's alliance's\
-  \ NaviStats byte at offset 0x2c (NaviStats.Transformation) via GetBattleNaviStatsByte; only proceeds when value\
-  \ is in [0xB, 0x18]. The Transformation range 0xB..0x18 covers the 20 non-base transformations (Shield/Uncyclone/Beast\
-  \ transformations etc.), suggesting this is gating the update to a specific transformation set.\n  - If ExtraVars[0xc]\
-  \ == 2, it instead checks BattleObject->RelatedObject1Ptr->CurAction >= 0x10 (i.e. only tick when the parent action\
-  \ has reached its later phase).\n  - Once past those checks, calls battle_isPaused; bails (sets CurState=CUR_STATE_DESTROY=0x8\
-  \ and calls sub_80E33D2) if battle is paused.\n  - Otherwise reads Timer (offset 0x20) and Timer2 (offset 0x22);\
-  \ increments Timer and stores back. If Timer >= Timer2, schedules destroy via sub_80E33D2.\n  - On a valid tick,\
-  \ calls sprite_update(r5) then sets OBJECT_FLAG_VISIBLE (0x02) in Header.Flags.\n  - If ExtraVars[8] (0x68) ==\
-  \ 0, tests Timer's bit 1 (Timer & 2, i.e. every other 2-frame tick). On carry (bit set), it clears OBJECT_FLAG_VISIBLE\
-  \ again — producing a strobe/flash effect on alternate ticks when no related object is bound.\n  - No return value\
-  \ (pop {pc}); clobbers r0-r6, lr.\n"
+status: confirmed
+summary: 'Per-frame tick for a Mystery Data collectible in battle: checks spawn gates, advances the timer with a
+  4-frame flash animation, and despawns when expired or gated out.'
+interface: void battle_updateMysteryData(BattleObject* obj /*r5*/); clobbers r0-r4,r6-r7,lr; reads/preserves r10;
+  outputs r5,r8-r12 via callee convention
+details: "Operates on a single BattleObject (r5) representing a Mystery Data item floating in battle. Two conditional\
+  \ despawn gates are evaluated at the start, selected by the value of obj->ExtraVars[3] (u32 at offset +0xC):\n\
+  \  Gate 1 (value == 1): calls GetBattleNaviStatsByte(alliance, 0x2C) and\n    despawns if the returned stat byte\
+  \ is outside the signed range [0x0B,0x18].\n    This restricts which Navis (identified by their stat byte 0x2C)\
+  \ can collect\n    this mystery data.\n  Gate 2 (value == 2): reads the related object (obj->RelatedObject1Ptr)\
+  \ and\n    despawns if that object's CurAction < 0x10, tying the collectible's\n    lifetime to another battle\
+  \ entity's action phase.\nAfter the gates, the function calls battle_isPaused; it returns without further processing\
+  \ when the battle is NOT paused (bne skips the Z-clear path). When processing continues, the 16-bit Timer (offset\
+  \ oBattleObject_Timer) is incremented; if it reaches Timer2 (the configured duration), the object is marked CUR_STATE_DESTROY\
+  \ and battle_despawnEnemyObject is called. Otherwise sprite_update is called, the object's Flags bit 1 (visibility)\
+  \ is set, and a flash toggle runs: if ExtraVars[2] (offset +0x8) is zero and the timer's bit 1 is clear, visibility\
+  \ bit 1 is cleared, producing a 4-frame on/off blink cycle.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `push {lr}` / `pop {pc}` with no r0 write -> ARM calling convention, no return value. - `cmp r0, #1`
-    / `bne loc_80E3386` on `ldr r0, [r5,#oBattleObject_ExtraVars+0xc]` shows two distinct submode branches (1 and
-    2). - `bl GetBattleNaviStatsByte` with `r0=Alliance, r1=0x2c` (NaviStats.Transformation) and the subsequent
-    `cmp r0,#0xb` / `cmp r0,#0x18` defines the legal transformation window. - `ldr r0, [r5,#oBattleObject_RelatedObject1Ptr]`
-    then `ldrb r0, [r0,#oBattleObject_CurAction]; cmp r0,#0x10` shows the second branch gates on the parent object''s
-    action phase. - `bl battle_isPaused` / `bne locret_80E33D0` shows early-out when paused. - `ldrh r0, [r5,#oBattleObject_Timer];
-    add r0,#1; ldrh r1, [r5,#oBattleObject_Timer2]; cmp r0,r1` is a counter against a deadline. - `mov r0, #CUR_STATE_DESTROY;
-    str r0, [r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]; bl sub_80E33D2` is the standard "kill this
-    object" pattern. - `bl sprite_update` then `ldrb r0, [r5,#oObjectHeader_Flags]; mov r1,#2; orr r0,r1; strb r0,[r5,#oObjectHeader_Flags]`
-    sets OBJECT_FLAG_VISIBLE. - `ldr r0,[r5,#oBattleObject_ExtraVars+8]; cmp r0,#0; bne locret_80E33D0` then `ldrh
-    r0,[r5,#oBattleObject_Timer]; lsr r0,r0,#2; bcs locret_80E33D0` (note: lsr by 2, not 1; carry set when bit 1
-    of original Timer was set) followed by `bic r0,r1; strb r0,[r5,#oObjectHeader_Flags]` shows the alternate-frame
-    clear of VISIBLE when ExtraVars[8] is zero.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080E336E
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_updateMysteryData_80E336E
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_updateMysteryData_80E336E
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_updateMysteryData_80E336E --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_updateMysteryData_80E336E
+
+    ./wf verify --function battleObject_updateMysteryData_80E336E --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 56 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_updateMysteryData_80E336E
+
+    ./wf verify --function battleObject_updateMysteryData_80E336E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080e336e '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- 'Exact meaning of ExtraVars[0xc] submode values 1 vs 2: the transformation-window branch (1) vs the parent-action
-  branch (2) hints at two different object types sharing this update, but the specific object type (looks like a
-  "mystery data" / transformation-related BattleObject given the SNAKEARM_EV/BASS_CHIP_EV constants in the header)
-  is not pinned down.'
-- What sub_80E33D2 actually does (cleanup, particle spawn, etc.) — only its name remains unknown.
-- Why OBJECT_FLAG_VISIBLE strobes every 2 frames when ExtraVars[8] is null (likely a flashing animation effect)
-  is unconfirmed.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080e336e ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f c6f1bc6f
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80E336E -> battleObject_updateMysteryData_80E336E
-  where: bn6f 1bd2afd1
-  tool: tools/rename_symbol.py
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a625223e
-  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- battlesweep
+- beastsp
+related:
+- battleObject_initSpriteFromRelatedOrParam2_80E32D8
+open_questions:
+- What does GetBattleNaviStatsByte index 0x2C represent for each Navi, and what is the significance of the 0x0B-0x18
+  range?
+- 'Gate 2''s threshold CurAction >= 0x10: which named action phase does 0x10 correspond to?'
+- Are there any callers that pass r10 with a specific meaning, or is it simply part of the calling convention preserved
+  across this function?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

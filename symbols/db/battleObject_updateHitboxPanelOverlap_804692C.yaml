@@ -1,75 +1,76 @@
 name: battleObject_updateHitboxPanelOverlap_804692C
 address: '0x0804692C'
 kind: function
-previous_names:
-- sub_804692C
-status: probable
-summary: Tests each hitbox slot in the AIData's collision hitbox table against the panel grid and updates
-  a per-direction-overlap bitfield plus a "hitbox touches any enemy/ally panel" object flag.
-interface: '(r5 = AIData pointer) -> r3 written back to AIData+0x03 (battle-object Flags bits 1/3), r7
-  (overlap bitmap) stored to AIData+0x28; side effects: mutates the caller''s AIData'
-details: "- Pulls PanelX (r5+0x0C, signed half) and PanelY (r5+0x0E, signed half) as the object's current\
-  \ panel coords.\n  - Reads two single-bit direction flags at AIData+0x13: bit 0x10 -> r8 (X-flip, used\
-  \ to negate the dx slot delta) and bit 0x20 -> r9 (Y-flip, used to negate the dy slot delta).\n  - Resolves\
-  \ the hitbox table base as `AIData->RelatedObject2Ptr (r5+0x1C) -> [0x0C] + AIData->AIDataPtr (r5+0x18)`,\
-  \ then indexes by the object's Alliance byte (r5+0x20, ldrb -> lsl #2) to pick one of two hitbox tables\
-  \ and adds it to the base. Each entry is 5 bytes: [id?, dx (signed byte), dy (signed byte), ...]. Iteration\
-  \ is a sentinel scan: `ldrb [r2]; cmp #0xFF; beq done; add r2, #5`.\n  - For each entry, dx/dy are sign-extended\
-  \ (`ldrsb`), optionally negated by r8/r9, then summed with PanelX/PanelY. The result is range-checked\
-  \ against the visible panel window: X must be in `[-0x40, 0x130]` and Y in `[-0x20, 0xC0]`. These constants\
-  \ are the off-screen GBA panel bounds (3..6 columns / 1..3 rows beyond the 6x3 visible grid, consistent\
-  \ with BN panel geometry where a custom can hit 1-2 panels into a side column).\n  - For each slot that\
-  \ passes, the running r7 bitmap is OR'd with a single bit that starts at 0x80000000 and is shifted right\
-  \ per iteration (16 slots max). The result (r7) is the \"which hitbox slots currently overlap the visible\
-  \ field\" mask.\n  - Afterwards, it writes that mask to AIData+0x28 and uses it to set/clear `OBJECT_FLAG_ACTIVE`\
-  \ (bit 0x01) and `OBJECT_FLAG_VISIBLE` (bit 0x02) on AIData+0x03 via the object's existing flag byte\
-  \ (the `tst r3, r4 / orr r3, r4` path with r4=4,8 then 2,0xA branches). Net effect: any overlap -> set\
-  \ VISIBLE; at least one in-range -> set ACTIVE.\n  - Note: AIData+0x18 is named `AIDataPtr` in BattleObject.inc\
-  \ but here it acts as a hitbox-table base, and the pointer at +0x1C + 0x0C is what holds the offset\
-  \ to add. The \"hitbox table\" interpretation is consistent with the 5-byte stride and the panel-range\
-  \ bounds.\n"
+status: confirmed
+summary: Tests each sub-hitbox point in the object's current-frame panel list against the visible battle-panel grid
+  rectangle, builds a 32-bit per-point overlap mask, and folds it into the object's control byte.
+interface: u32 battleObject_updateHitboxPanelOverlap(u32 r5_obj); /* returns updated ctrl byte in r3; clobbers r0-r2,r4,r6-r9,r12
+  */
+details: 'Reads signed panel-center origin from obj+0x0C (x) and obj+0x0E (y). Reads mirror flags from obj+0x13:
+  bit 4 (0x10) flips X deltas, bit 5 (0x20) flips Y deltas. Resolves a 5-byte-per-entry panel point list: frame
+  byte at *(obj+0x20), offset table = *(obj+0x18) + *(*(obj+0x1C)+0xC), entry = *(table + frame*4) + table. Each
+  entry is {kind:u8, dx:i8, dy:i8, pad, pad}; list ends at kind==0xFF. For each entry, computes px = (flip_x ? -dx
+  : dx) + origin_x and tests -0x40 <= px < 0x131 (i.e. [-64,273)); if in range, computes py = (flip_y ? -dy : dy)
+  + origin_y and tests -0x20 <= py < 0xC1 (i.e. [-32,193)). These bounds correspond to the 8x5 (256x160 px) battle-panel
+  grid with a small margin. Sets bit (0x80000000 >> i) in a 32-bit hit_mask. Stores raw mask at obj+0x28. Folds
+  mask into control byte obj+3: If ctrl bit 2 clear (normal): ctrl bit 3 ← (mask & ~0x80000000) != 0 (any hit except
+  topmost); ctrl bit 1 ← mask != 0 (any hit at all). If ctrl bit 2 set (alternate): ctrl bits 1+3 ← mask != 0 (combined
+  single check). Final ctrl byte written back to obj+3 and returned in r3.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `mov r1, #0xc / ldrsh r1, [r5,r1]` and `mov r6, #0xe / ldrsh r6, [r5,r6]` (PanelX/PanelY)
-    at 0x8046930/0x8046938. - Two flips read from byte at +0x13 with masks 0x10 and 0x20 stored in r8/r9
-    (0x8046940-0x8046952). - Hitbox table resolve: `ldr r3,[r5,#0x20]; ldrb r2,[r3]; lsl r2,r2,#2; ldr
-    r0,[r5,#0x1c]; ldr r0,[r0,#0xc]; ldr r3,[r5,#0x18]; add r3,r3,r0; ldr r2,[r3,r2]; add r2,r2,r3` (0x8046952-0x8046962)
-    - looks up table entry by Alliance index then walks to that base. - Per-slot dx/dy: `ldrsb r3,[r2,r3]`
-    (offsets +1/+2) with `neg r3,r3` under r8/r9 (0x8046972-0x804699A). - Range checks `cmp r3, #-0x40
-    / cmp r3, #0x130` and `cmp r3, #-0x20 / cmp r3, #0xC0` (0x804697E-0x80469AC) - GBA battle panel bounds.
-    - Bit-set loop: `mov r4, #0x80; lsl r4, r4, #0x18` then `orr r7, r4; ... lsr r4, r4, #1` (0x8046968-0x80469B0)
-    builds the per-slot overlap bitmask. - Final write: `str r7,[r5,#0x28]; strb r3,[r5,#3]` (0x80469E8)
-    - stores overlap mask to AIData+0x28 and refreshes object Flags byte. - Sentinel `cmp r3, #0xff; beq
-    loc_80469B8` (0x804696C) terminates on 0xFF terminator. - Only direct caller is sub_8046854 which
-    is the AI sub-action handler invoked by Beast Out AI (captured-call lr=0x08046873 across 40 hits with
-    AIData+0x20=0x02 = ACTOR_TYPE_PLAYER/Beast path).'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0804692C
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_updateHitboxPanelOverlap_804692C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_updateHitboxPanelOverlap_804692C
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_updateHitboxPanelOverlap_804692C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_updateHitboxPanelOverlap_804692C
+
+    ./wf verify --function battleObject_updateHitboxPanelOverlap_804692C --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 30 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_updateHitboxPanelOverlap_804692C
+
+    ./wf verify --function battleObject_updateHitboxPanelOverlap_804692C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^0804692c '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- Whether AIData+0x28 is actually named "overlap bitmap" in the project struct - the BN6 struct currently
-  labels it `Unk_2a`-area but the function only writes to +0x28 and reads nothing else there. Also whether
-  the "DirectionFlip" semantics (0x10/0x20 in AIData+0x13) match DirectionFlip from BattleObject+0x17
-  or are AI-local - the function treats them as axis-flip toggles.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0804692c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 87c09f6c
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_804692C -> battleObject_updateHitboxPanelOverlap_804692C
-  where: bn6f eb615ac5
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- beastsp
+open_questions:
+- What is the semantic meaning of the two ctrl-bit-2 paths (normal vs. combined 0x0A)? Is it a per-object-type flag
+  selecting between row/column overlap tests?
+- The 32-bit mask has one bit per panel point but the list is variable-length; what is the maximum number of entries
+  (up to 32?) and are all bits meaningful or only the lowest N?
+- Why does the normal path distinguish 'any hit except the top bit' (bit 3) from 'any hit at all' (bit 1)? Does
+  the top bit correspond to a specific row (e.g. the back row at y=-32) that is treated specially?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

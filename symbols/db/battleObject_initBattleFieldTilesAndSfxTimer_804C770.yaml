@@ -1,68 +1,77 @@
 name: battleObject_initBattleFieldTilesAndSfxTimer_804C770
 address: '0x0804C770'
 kind: function
-previous_names:
-- sub_804C770
-status: probable
-summary: Sets the BG3/BG2 viewport offset, dispatches a "post-init" callback chosen from r5+0xd, rolls
-  a random ambient-SFX timer, and copies a 0x20×0x20 tile block to BG tile area 3.
-interface: (r5 = battle object pointer, r10 = toolkit ptr) -> side effects only (modifies RenderInfo,
-  calls a thunk, sets SFX timer, copies tiles)
-details: "The function begins by reading r10 -> RenderInfoPtr (oToolkit+0x8). It loads the u16 at offset\
-  \ 0, ORs it with 0x800 (`dword_804C7C0`) and writes it back. Next it adjusts the BG Y scroll: subtracts\
-  \ 0xc from RenderInfo+0x1a and adds 0xc to RenderInfo+0x18, producing a 12-pixel scroll-relative offset\
-  \ on those two planes.\n\n  It then loads `off_804C7B0` (a 3-entry table of function pointers at `off_804C7B4`),\
-  \ indexes into it using `byte [r5+0xd]` (an enum-like slot on the battle object — likely a \"phase\"\
-  \ or \"kind\" field), and dispatches to one of `sub_804C7C4`, `sub_804C7C8`, or `sub_804C7EC` via a\
-  \ Thumb/ARM veneer (`mov lr,pc; bx r0`). Without meaningful coverage we cannot tell what these do, but\
-  \ they look like sub-mode initializers.\n\n  It calls `sub_804C818` (the random ambient-SFX countdown\
-  \ initializer: `one primary RNG draw sets a random 300-555 frame countdown at object +0x14`).\n\n  Finally\
-  \ it copies a 0x20×0x20 tile block: r0=0 (j offset within block?), r1=0, r2=3 (which 32×32 tile block\
-  \ in VRAM), r3=`byte_86A2C80` (tile-id array), r4=0x20, r5=0x20 → `CopyBackgroundTiles`. The tile block\
-  \ 3 destination and u16 src array at `byte_86A2C80` suggest this clears/stamps a virgin field-tile block\
-  \ used by the field.\n\n  Return convention: the function restores r4–r7 from the saved frame and `pop`s\
-  \ pc out of `lr`; no r0/r1 return value is contractually written (out only carries caller-saved r0…r12/lr\
-  \ plus flags), so it is effectively `void` from the caller's point of view.\n"
+status: confirmed
+summary: 'Per-frame setup of the battlefield background: enables tile-render mode, shifts the scroll window by 12px,
+  dispatches the stage-type tile layout, ticks the periodic sound-effect timer, and uploads the 32×32 background
+  tile block to VRAM.'
+interface: 'void battleObject_initBattleFieldTilesAndSfxTimer_804C770(u32 battle_obj /*r5*/, u32 toolkit /*r10*/)
+  -> {r2, r8, r9, r10, r11, r12}; flags: nzcv clobbered'
+details: "Reads Toolkit_RenderInfoPtr from r10 (the render-info struct).\nSets bit 11 (0x800) on the render-info\
+  \ flags word at offset 0x00,\ntoggling a tile-rendering mode for the background layer.\nAdjusts the background\
+  \ scroll window at offsets 0x18 (X, += 0xC)\nand 0x1A (Y, -= 0xC), giving a 12-pixel diagonal shift.\nDispatches\
+  \ a stage-specific tile-layout routine via a three-entry\njump table keyed on byte 0xD of the battle object:\n\
+  \  type 0 → stub_doNothing_804C7C4 (no-op),\n  type 1 → sub_804C7C8,\n  type 2 → sub_804C7EC.\nThe dispatched\
+  \ routine receives render_info in r4, the type byte\nin r1, 0x800 in r2, and the battle object in r5; it writes\n\
+  r8/r9/r11/r12 as side-effects (tile-palette or geometry data).\nCalls object_periodicSoundTimerTick_804C818 to\
+  \ advance the SFX\ncountdown timer stored in the battle object.\nCalls CopyBackgroundTiles(0, 0, 3, byte_86A2C80,\
+  \ 0x20, 0x20)\nto upload tile block index 3 (a 32×32-tile area, i.e. 64×64 px\nof 8×8 tiles) from the static table\
+  \ at 0x086A2C80 into background\nVRAM at destination (0,0).\nQuirk: the push/pop of r4–r7 is defeated by the indirect\
+  \ dispatch\nand the two calls, which clobber r4–r7; the C wrapper restores\nthem before returning.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldr r4,[r10,#oToolkit_RenderInfoPtr]` reads the Toolkit''s RenderInfo slot (offset 0x8 per
-    `toolkit_struct`). - `ldrh r0,[r4]`, `orr r0, r2`, `strh r0,[r4]` OR=0x800 into RenderInfo+0 (display
-    control / BG-mode bits). - `ldrh r0,[r4,#0x1a]; sub r0,#0xc; strh r0,[r4,#0x1a]` subtracts 0xc from
-    the offset-0x1a plane (BG Y scroll candidate per `render_info_struct`). - `ldrh r0,[r4,#0x18]; add
-    r0,#0xc; strh r0,[r4,#0x18]` adds 0xc to the offset-0x18 plane (mirror-symmetric). - `ldrb r1,[r5,#0xd]`
-    indexes 3-entry jump table; only the battle object''s +0xd field is read. - `off_804C7B0` is declared
-    with three entries `sub_804C7C4+1`, `sub_804C7C8+1`, `sub_804C7EC+1` (Thumb veneers). - `bl sub_804C818`
-    matches the project''s summary: rolls 300–555 frame ambient SFX countdown into `object+0x14`. - Final
-    block writes r0=0, r1=0, r2=3, r3=`byte_86A2C80`, r4=r5=0x20 then `bl CopyBackgroundTiles`: copies
-    a 0x20×0x20 u16 tile-id array into tile block 3 at VRAM origin.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0804C770
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_initBattleFieldTilesAndSfxTimer_804C770
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_initBattleFieldTilesAndSfxTimer_804C770
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_initBattleFieldTilesAndSfxTimer_804C770 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_initBattleFieldTilesAndSfxTimer_804C770
+
+    ./wf verify --function battleObject_initBattleFieldTilesAndSfxTimer_804C770 --snapshots build-snapshots'
+  result: 37 compared, 0 differed, 8 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_initBattleFieldTilesAndSfxTimer_804C770
+
+    ./wf verify --function battleObject_initBattleFieldTilesAndSfxTimer_804C770 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^0804c770 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- What the three jump-table targets `sub_804C7C4` / `sub_804C7C8` / `sub_804C7EC` actually do — the 0xd
-  field selects one, so naming the function by one of them is premature.
-- Whether the or-of-0x800 sets a specific display bit (e.g., BG mode or forced blank) versus a per-frame
-  BG flag; would settle by inspecting `render_flushDisplayRegisters_800172C`.
-- Whether 0xd is a battle-object phase or some child enum.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0804c770 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f c6f1bc6f
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_804C770 -> battleObject_initBattleFieldTilesAndSfxTimer_804C770
-  where: bn6f 1bd2afd1
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_2.c
+coverage:
+- beastsp
+open_questions:
+- What do the two real jump-table targets (sub_804C7C8, sub_804C7EC) do with r8/r9/r11/r12 — are they tile-palette
+  IDs, layer priorities, or geometry offsets?
+- byte_86A2C80 is the tile-data source for CopyBackgroundTiles; which ROM asset does it correspond to (stage tilemap
+  vs. generic pattern)?
+- Does the 12px scroll shift correspond to the net-battle background parallax offset, and is it constant every frame
+  or conditional?
+- object_periodicSoundTimerTick_804C818 — is this a countdown to a looping battle-ambient SFX, or a one-shot trigger?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

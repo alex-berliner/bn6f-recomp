@@ -1,93 +1,89 @@
 name: battleObject_initBeastOut_8117130
 address: '0x08117130'
 kind: function
-previous_names:
-- sub_8117130
-status: probable
-summary: 'Initializes a beast-out battle object: sets object flags, picks a sprite/animation setup based on the
-  beast-out index, configures palette, priority, animation, sub-entry bank, and chains to sub_81171B4'
-interface: (r5 = ptr to BattleObject) -> r2/r3/r5 preserved by callee-save ; no meaningful return; stack pop {pc}
-details: '- Entry: r5 points at the BattleObject (matches the project''s `r5 = object` convention for sprite helpers).
+status: confirmed
+summary: 'Initializes the Beast Out sprite: selects the beast template, configures animation, palette, priority,
+  and slot linkage, then triggers the transformation animation.'
+interface: 'void battleObject_initBeastOutSprite(u32 *r5 /*in out: sprite ptr*/); /* out: r2 = anim slot idx, r3
+  = anim sub-frame, r5 = possibly reassigned sprite ptr */'
+details: 'r5 points to a battle-object/sprite record. The routine:
 
-  - Byte at r5+6 holds params; bit 1 (`&2`) selects between two base flag values: 0x23 when bit1 is clear, 0x01
-  when set. The chosen flag byte is written to r5+0 (OBJECT_FLAG_ACTIVE area / `Flags`) at `strb r0, [r5]` after
-  `tst r1, r2`.
+  1. Writes a visibility/state byte at [r5+0]: 0x23 if bit 1 of [r5+6] (status flags) is set, otherwise 1.
 
-  - Picks a per-beast animation-resource descriptor: r5+5 (`Param2`, used as `lsl r2,#2`) indexes `off_81171A8 ->
-  off_81171AC`, a word table of 2 entries (`unk_203526C` / `unk_201D884`), then `initGuiSprite_8002770` is called
-  with r0=0x0B and r1=that pointer to install the GUI sprite block. (0x0B is the init opcode, not the field byte
-  at r5+4.)
+  2. Indexes a 2-entry template table off_81171AC with [r5+5] (beast variant 0 or 1) to pick the graphic template
+  (unk_203526C or unk_201D884).
 
-  - Reads `r5+4` (`Param1`) into r0 and calls `sprite_setAnimation`, then `sprite_loadAnimationData` (tail-calls
-  via the same r5 object), then `sprite_noShadow` to drop the shadow.
+  3. Calls initGuiSprite_8002770(0xB, template) which may reallocate/reassign the sprite pointer (returned in r5).
 
-  - `sprite_setPalette(0)` zero-fills the palette field.
+  4. Sets the animation track from [r5+4] (beast type index), loads animation data, disables the sprite shadow.
 
-  - `sprite_setPriority_8002E14(2)` sets OAM priority 2 via bits 2-3 of `+0x15`.
+  5. Sets palette bank 0 and render priority 2.
 
-  - Uses `r5+4` again to pick one of 4 word entries from `off_8117194 -> off_8117198` (values 0x180, 0x198, 0x1B0,
-  0x1C8) and forwards it via `slotList_storeHalfwordAndClearField_800306C`.
+  6. Indexes a 4-entry slot table off_8117198 ({0x180,0x198,0x1B0,0x1C8}) by [r5+4] and stores the halfword into
+  the slot-list record via slotList_storeHalfwordAndClearField_800306C.
 
-  - Computes palette bank for the sprite sub-entry: defaults to 0xA but is overridden to 4 when `r5+4 >= 2` (note
-  the `blt loc_811717E` is wrong-branch; with signed `cmp #2` and `blt`, this triggers when r1>=2, so `mov r0,#4`
-  then falls through), so bank=4 for the larger beast indices.
+  7. Chooses a sub-entry palette bank: 4 for beast types >= 2, 0xA otherwise (setSubEntryPaletteBank_800304A).
 
-  - `sprite_setSubRecordFieldA_8003060(3)` writes field 0xA of the selected sub-record to 3.
+  8. Sets sub-record field A to 3 (setSubRecordFieldA_8003060) and writes 4 to [r5+8] marking the object as initialized.
 
-  - `mov r0,#4; strb r0,[r5,#8]` writes 4 directly into the CurState byte (offset 0x8 in the BattleObject header),
-  pushing the object into the normal update state right after init.
-
-  - Finally tail-calls `sub_81171B4` and `pop {pc}` returns.
-
-  - Two captured call-site contexts (snap_beastsp_0000000_*) both enter with r0=08117131 (so they were called from
-  the +1 Thumb code), r1=0, and the function leaves r0=0x67c with Z set — r0 is a trashed scratch value at exit,
-  callers don''t depend on it. The `lr` they saved (0811711c) belongs to the callsite two instructions above.
+  9. Delegates to battleObject_setBeastOutAnim (r5 passed as sprite); its r2/r3/r5 become this function''s caller-visible
+  outputs.
 
   '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- "tst r1, r2 / bne / mov r0,#1 / mov r0,#0x23 / strb r0,[r5]" — selects base flag 0x23 vs 0x01 by bit
-    1 of the params byte and stores it as the object flag byte at offset 0. - "ldrb r2,[r5,#5]; lsl r2,r2,#2; ldr
-    r1,[r1,r2]; ldr r1, off_81171A8 / off_81171AC" — uses Param2 (offset 5) as a 2-entry table index, picking one
-    of `unk_203526C` / `unk_201D884` as the sprite description fed to `initGuiSprite_8002770` with r0=0xB. - "ldrb
-    r0,[r5,#4]; bl sprite_setAnimation / sprite_loadAnimationData / sprite_noShadow / sprite_setPalette(0) / sprite_setPriority_8002E14(2)"
-    — Param1 (offset 4) drives animation index, the rest is a fixed sprite config block. - "ldr r0, off_8117194
-    / off_8117198 (.word 0x180,0x198,0x1B0,0x1C8) ; ldrb r1,[r5,#4]; lsl r1,r1,#2; ldr r0,[r0,r1]; bl slotList_storeHalfwordAndClearField_800306C"
-    — Param1 selects one of four 16-bit slot-list headers (0x180/0x198/0x1B0/0x1C8) and stores a halfword from r0
-    into it. - "mov r0,#0xa; ldrb r1,[r5,#4]; cmp r1,#2; blt loc_811717E; mov r0,#4" — palette bank 0xA or 4 depending
-    on Param1 sign-of-`>=2`. - "mov r0,#3; bl sprite_setSubRecordFieldA_8003060" — sets sub-record field +0xA to
-    3. - "mov r0,#4; strb r0,[r5,#8]" — writes CurState=4 (CUR_STATE_UPDATE per the BattleObject struct) before
-    chaining. - Two captured callers both come from lr=0811711c with the very same r0/r1 pair, consistent with one
-    generated callsite invoking this initializer for two different beasts at offset 0 and 1.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s
-  reproduce: 'python3 tools/asmcat.py 0x08117130
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_initBeastOut_8117130
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_initBeastOut_8117130
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_initBeastOut_8117130
+    ./wf verify --function battleObject_initBeastOut_8117130 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_initBeastOut_8117130
 
-    '
-open_questions:
-- Whether this initializer is exclusively the "beast out / cross mega" sprite setup or also handles the regular
-  mega navi — the per-beast table only has two real entries, and the other BeastOut helper (sub_81171B4) is right
-  next to it, so the file looks beast-out specific, but the actual context (beast-out UI vs in-battle transform)
-  needs the caller of sub_81171B4 to disambiguate.
-- 'Why `cmp r1,#2; blt` was used instead of `bge loc_811717E` (the comment "blt loc" looks inverted in the disasm):
-  confirmed by inspection that the assembly path that sets r0=4 is taken when r1>=2.'
-sources:
-- discovery session 2026-10-14 batch 41 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_initBeastOut_8117130 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 89 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_initBeastOut_8117130
+
+    ./wf verify --function battleObject_initBeastOut_8117130 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08117130 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 13ab054c
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_8117130 -> battleObject_initBeastOut_8117130
-  where: bn6f ce204b1d
-  tool: tools/rename_symbol.py
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 58027fff
-  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- beastsp
+open_questions:
+- What do the two templates (unk_203526C, unk_201D884) represent graphically—two distinct beast forms, or a shared
+  base + variant?
+- The 0x23 vs 1 state byte at [r5+0]—is 0x23 a combined 'visible + flag' value or a distinct animation-phase code?
+- The four slot values 0x180/0x198/0x1B0/0x1C8—do they map to specific OBJ tile indices for each of the four beast
+  types?
+- Why is the palette bank 0xA for types 0-1 and 4 for types 2-3—does this correspond to a split of the OBJ BG palette
+  RAM?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

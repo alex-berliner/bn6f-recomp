@@ -1,90 +1,85 @@
 name: battleObject_initMoveStep_80178D4
 address: '0x080178D4'
 kind: function
-previous_names:
-- sub_80178D4
-status: probable
-summary: Kicks off an actor's move one panel in the chosen direction by reserving the destination panel,
-  computing a constant X/Y velocity from the row/col offset, and setting the end-of-move waiting state
-  (or a fallback halt state if the destination panel can't be used).
-interface: '(r5 = battleObject) -> r0 = 0x4 or 0x8 ; side effects: writes AIData Unk_68 = 0, RelatedObject1Ptr
-  = 0, sets CurAnim, copies FuturePanelXY -> PanelXY, sets XVelocity/YVelocity, reserves next panel, etc.'
-details: '- Prologue trampoline: `bl battle_dispatchActorTurnByTypeAndAIIdx_800F404` runs the per-AI-type
-  handler first (uses r4/r5/r10/lr), then the function does its own bookkeeping on the same actor.
-
-  - Forces flag 0x500000 (`UNUSED? | DRAG | ANGER`) into CollisionData.ObjectFlags1 via `object_setFlag1`,
-  then zeroes `RelatedObject1Ptr` and `AIData.Unk_68`.
-
-  - Picks a `CurAnim` byte by inspecting the actor''s flags: if `OBJECT_FLAGS_UNK_4` (0x800) clear default
-  r2=2; if `OBJECT_FLAGS_FLINCHING` (0x800000? — actually 0x80000 = MOVE_COMPLETE; the assembly uses 0x200
-  = FLINCHING and 0x800 = INVIS, hard to tell without resolving) set r2=1, else r2=0. Stores the result
-  in `CurAnim` and writes `0xFF` into `CurAnimCopy`.
-
-  - Calls `sub_8011450` (per-AI "actor finished" handler) and `battleObject_clearPwrAtkState_8012EA8`
-  to clear PwrAtk charge state, then refreshes the sprite''s facing via `object_getFlip -> sprite_setFlip`.
-
-  - Commits `FuturePanelXY` -> `PanelXY`, recomputes pixel coords with `object_setCoordinatesFromPanels`,
-  syncs collision panels with `object_updateCollisionPanels`, clears `Z_3c`, and clears flag 0x1441 (`UNK_4|UNK_8|INVULNERABLE|AIRSHOE`)
-  with `battle_resetCollisionState_80101C4`.
-
-  - Releases the old panel reservation (`object_removePanelReserve`), adds 1 (saturated) to the per-alliance
-  counter at `[0x203EAE0 + 3*Alliance + 1]`, and tail-calls `sub_800E45E` to obtain a (dx, dy, timer2)
-  triplet that is stashed in `Unk_1c / Unk_1d / Timer2`.
-
-  - If `Timer2 != 0`, computes the destination panel (`PanelX + Unk_1c`, `PanelY + Unk_1d`), runs `battle_objectCheckPanelByAlliance_800E5AC`;
-  on success, sets `XVelocity = 0xa0000 * Unk_1c` and `YVelocity = 0x60000 * Unk_1d` (16.16 fixed-point),
-  updates `FuturePanelXY`, calls `object_reservePanel` on the destination, and falls into the success
-  exit with `Unk_0d = 4`.
-
-  - Failure/late path: writes `Timer = 0x18`, `Unk_0d = 8`. The `pop {r6,r7,pc}` after the `mov r0, #4
-  / strb` returns `0x4` to the caller; the alternate tail `pop {r6,r7,pc}` at loc_8017988 returns without
-  setting r0 (the very-low-level contract''s "out=r1,r5" probably reflects this; r0 is not in `out`).
-
-  - Exit sets `r5` preserved (i.e. same actor pointer) and writes a 0/4 byte into `Unk_0d`; the dispatcher
-  (`battle_dispatchActorTurnByTypeAndAIIdx`) sees r4/r5 intact for the next tick.
-
-  '
+status: confirmed
+summary: 'Per-turn cycle for a battle object: dispatches AI, selects idle animation, resets sprite/panel/collision
+  state, then either commits a one-panel step (velocity + panel reserve, sub-state 4) or enters a 24-tick idle wait
+  (sub-state 8).'
+interface: void battleObject_initMoveStep_80178D4(BattleObject *obj /* r5 */, u32 r4_in /* r4 */, u32 r8_in /* r8
+  */); /* writes obj, clobbers r0-r3, flags */
+details: "Called once per battle turn for each object that is in the \"moving\" phase of its\nstate machine (the\
+  \ next function in the sequence, after the previous turn's\nanimation has fully played).\n1. Calls battle_dispatchActorTurnByTypeAndAIIdx\
+  \ to run the NetNavi/custom AI tick\n   (reads/writes r4, r5, r8; may mutate the object's AIData).\n2. Sets flag\
+  \ bit 0x500000 (\"acted this turn\") on the object and clears the related-object\n   scratch pointer and AIData::TempAttackObjectPtr.\n\
+  3. Picks an idle animation index (CurAnim) from two flag bits: 0x800 → 2,\n   0x20000 → 0, otherwise 1. Resets\
+  \ CurAnimCopy to 0xFF to force a sprite refresh.\n4. Calls sub_8011450 (secondary per-turn update) and battleObject_clearPwrAtkState\n\
+  \   (resets PowerAttack sub-state fields).\n5. Mirrors the sprite's horizontal flip to match the object's facing\
+  \ (object_getFlip →\n   sprite_setFlip).\n6. Commits the queued FuturePanelXY into PanelXY, recomputes world coordinates,\n\
+  \   updates collision panel set, zeroes Z, clears flags 0x1441, resets collision state.\n7. Releases the panel\
+  \ reservation on the old FuturePanelX/Y.\n8. Increments the per-alliance turn counter (saturated at 3) via tableAddSaturatedByte.\n\
+  9. Queries sub_800E45E for a contact-offset (dx, dy) and a step-timer (Timer2).\n10. If Timer2 != 0: computes\
+  \ target panel = current panel + offset; checks occupancy\n    via battle_objectCheckPanelByAlliance. If clear,\
+  \ sets XVelocity = signbyte(0x1c)*0xA0000,\n    YVelocity = signbyte(0x1d)*0x60000, queues the target as FuturePanel,\
+  \ reserves it,\n    and sets MoveSubState = 4 (moving).\n11. Otherwise (Timer2 == 0 or panel occupied): sets Timer\
+  \ = 0x18, MoveSubState = 8 (idle wait).\nTouches: oBattleObject_RelatedObject1Ptr, oBattleObject_AIDataPtr→oAIData_TempAttackObjectPtr,\n\
+  oBattleObject_CurAnim/CurAnimCopy, oBattleObject_FuturePanelXY→PanelXY, oBattleObject_Z_3c,\noBattleObject_FuturePanelX/Y,\
+  \ oBattleObject_Alliance, oBattleObject_ContactPanelOffsetX/\nContactOffsetY, oBattleObject_Timer2/Timer, oBattleObject_XVelocity/YVelocity,\n\
+  oBattleObject_MoveSubState, byte offsets 0x1c/0x1d (direction sign bytes).\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `bl battle_dispatchActorTurnByTypeAndAIIdx_800F404` at the entry is the standard actor-dispatch
-    trampoline. - `ldr r0, dword_8017A90 // =0x500000 ; bl object_setFlag1` directly ORs 0x500000 (DRAG|ANGER)
-    into the actor''s CollisionData ObjectFlags1. - `str r0, [r5,#oBattleObject_RelatedObject1Ptr]` and
-    `str r0, [r1,#oAIData_Unk_68]` with r0=0 zero those two pointer/longword slots. - `tst r0, r1` against
-    0x800 then 0x20000 picks `CurAnim` (these map to `OBJECT_FLAGS_UNK_4` / `OBJECT_FLAGS_FLINCHING`).
-    - `strb r2, [r5,#oBattleObject_CurAnim]` / `strb r0, [r5,#oBattleObject_CurAnimCopy]` with r0=0xFF
-    records the chosen move-start animation. - `ldrh r0, [r5,#oBattleObject_FuturePanelXY] ; strh r0,
-    [r5,#oBattleObject_PanelXY]` commits the queued step. - `mov r0, #0x18 ; strh r0, [r5,#oBattleObject_Timer]`
-    sets a 24-frame stall on the failure path; the success path writes nothing to `Timer` (the prior value,
-    presumably 0, is kept). - `ldr r0, dword_8017A9C // =0xa0000 ; mul r0, r1` and `0x60000 * r1` form
-    per-panel velocities in 16.16, scaled by the signed byte offsets in `Unk_1c/Unk_1d`. - `strb r0, [r5,#oBattleObject_FuturePanelX]
-    ; strb r1, [r5,#oBattleObject_FuturePanelY]` followed by `bl object_reservePanel` claims the destination.
-    - The two `pop {r6,r7,pc}` endings store `Unk_0d = 4` vs `Unk_0d = 8`/`Timer = 0x18` (loc_8017988),
-    the canonical "moving" vs "halted" actor sub-state bytes for this dispatcher family.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080178D4
+  - cport/src/game/asm00_2_801728E.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_initMoveStep_80178D4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_initMoveStep_80178D4
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_initMoveStep_80178D4
+    ./wf verify --function battleObject_initMoveStep_80178D4 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_initMoveStep_80178D4
 
-    '
-open_questions:
-- Exact semantics of `CurAnim` values 0/1/2 (the chosen byte is a local-input flag check, not a static
-  table).
-- Whether `0x1441` cleared by `object_clearFlag` at 0x8017980 is the "in collision / hidden during move"
-  mask — the value is hard-coded in dword_8017A98 and not annotated in the structs.
-- What `sub_800E45E -> sub_800E468` is computing (the (dx, dy, timer2) tuple per alliance); without resolving
-  sub_800E468 the chosen direction algorithm is opaque.
-sources:
-- discovery session 2026-10-14 batch 37 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_initMoveStep_80178D4 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 2 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_initMoveStep_80178D4
+
+    ./wf verify --function battleObject_initMoveStep_80178D4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, story7.'
+  reproduce: grep -l '^080178d4 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2_801728E.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 391e53d9
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80178D4 -> battleObject_initMoveStep_80178D4
-  where: bn6f f491ae79
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_801728E.c
+coverage:
+- beastsp
+- story7
+open_questions:
+- sub_8011450 is called mid-turn with unknown purpose; likely a generic secondary-state update (status effects,
+  HP regen, etc.).
+- sub_800E45E returns dx, dy, timer from an AI helper; the exact table/algorithm is not yet named.
+- 'Flag bits 0x800 and 0x20000 selecting animation 0/1/2: what game conditions set/clear these? Possibly stun vs.
+  normal vs. some status.'
+- 'The 0x1441 flag-mask cleared via object_clearFlag: which individual flags does that represent?'
+- 'Direction sign bytes at offsets 0x1c/0x1d: are these set by sub_800E45E or earlier in the turn?'
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

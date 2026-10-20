@@ -1,80 +1,93 @@
 name: battleObject_advanceMoveStep_811339A
 address: '0x0811339A'
 kind: function
-previous_names:
-- sub_811339A
-status: probable
-summary: 'Advance a battle object one step of its AI-driven move: update collision/region, integrate X
-  velocity into X, recompute panel coords and either spawn an effect (target reached) or continue moving,
-  then mark "currently moving".'
-interface: (r5 = obj, r6 = AIState, r7 = AIAttackVars) -> void ; side effects to obj (X, PanelX/Y, Region,
-  ObjectFlags1), AIState (Unk_04), AIAttackVars (Unk_00/Unk_10/Unk_12/Unk_3c), spawns t1/effect object
-  on arrival
-details: "1. If CollisionData's FlagsFromCollision has any of bits 0x0c000000 set, write the\n     object's\
-  \ current PanelXY into AIAttackVars.Unk_3c and clear the collision region.\n  2. Re-set the collision\
-  \ region (object_setCollisionRegion) when PanelXY differs from\n     AIAttackVars.Unk_3c.\n  3. Integrate\
-  \ velocity: add XVelocity (oBattleObject_XVelocity at 0x40) into X,\n     then object_setPanelsFromCoordinates\
-  \ to derive PanelX/Y from world XYZ.\n  4. If PanelX is non-edge (not 0 or 7) and object_checkPanelParameters\
-  \ passes\n     (Unk_34/Unk_38 panel masks), spawn a t1 effect object at the object's panel-XYZ\n   \
-  \  using ExtraVars at r5+0x34..0x40 with Z += 0x100000 (ExtraVars.Z_3c += 0x1000_0000\n     half) via\
-  \ spawn_t1_0x0_EffectObject, set AIAttackVars.Unk_10 = 0x3c,\n     AIState.Unk_04 = 0, AIAttackVars.Unk_00\
-  \ = 8, then return (target panel reached).\n  5. Otherwise object_updateCollisionPanels, decrement AIAttackVars.Unk_10;\
-  \ if still > 0,\n     return.\n  6. If current panel is invalid, snap the object backwards off-panel:\n\
-  \     PanelX -= object_getFrontDirection()*6; if AIState.Unk_04 == 1 and\n     AIAttackVars.Unk_2c non-null\
-  \ and AIData.Version_16 non-zero, copy AIAttackVars.Unk_2c\n     byte 0x13 into PanelY; else copy FuturePanelY\
-  \ into PanelY.\n  7. If FuturePanelX differs from PanelX, snap to panel coords via\n     object_setCoordinatesFromPanels\
-  \ and reset AIAttackVars.Unk_10 from Unk_12, returning.\n  8. (Hit the destination panel) If AIState.Unk_04\
-  \ == 1, skip the Future* copy;\n     else copy FuturePanelX/FuturePanelY into PanelX/Y and object_removePanelReserve.\n\
-  \     Then object_setCoordinatesFromPanels, object_setCollisionPanelsToCurrent,\n     clear ObjectFlags1\
-  \ bit 0x40, set OBJECT_FLAGS_CURRENTLY_MOVING (1<<19), set region 1.\n     If AIAttackVars.Unk_00 !=\
-  \ 8, calls sub_801171C (object_exitAttackState_801171C).\n"
+status: confirmed
+summary: Processes one tick of an AI-controlled NavCom's planned movement during an attack sequence, handling velocity
+  integration, boundary/obstacle collision, panel validation, step-timer countdown, and final position commit with
+  state transition.
+interface: static u32 battleObject_advanceMoveStep_811339A(BattleObject *r5, AIState *r6, AIAttackVars *r7) -> r1
+  (last collision-region value or exit-attack state return)
+details: "Operates on three structures passed in registers:\n  r5  BattleObject (arena participant: position, velocity,\
+  \ panel coords, collision flags, AI data pointer)\n  r6  AIState (turn counter, overall AI phase)\n  r7  AIAttackVars\
+  \ (step timer, hit element, target pointer, charge cycles, panel params, scratch panel)\n\nFlow:\n  1. If collisionData.flags\
+  \ has bits 26-27 set (0x0C000000), stash current PanelXY into\n     attackVars.scratchPanel and call object_clearCollisionRegion;\
+  \ on the next tick\n     when PanelXY differs from the stashed value, call object_setCollisionRegion to restore.\n\
+  \  2. Advance BattleObject.X by XVelocity (fixed-point), then recompute PanelX/PanelY\n     from the new pixel\
+  \ position via object_setPanelsFromCoordinates.\n  3. Boundary / obstacle check: if PanelX is 0 or 7 (arena edges)\
+  \ skip further check.\n     Otherwise call object_checkPanelParameters; a zero result means the object ran into\n\
+  \     an obstacle on the field. In that case spawn a type-1 impact effect at the object's\n     hitbox (offset\
+  \ 0x34, with +0x100000 Y shift), set StepTimer=0x3C, clear TurnCounter,\n     set HitElement=8, and jump straight\
+  \ to the commit/exit path.\n  4. Normal path: call object_updateCollisionPanels, decrement StepTimer. While timer\
+  \ > 0\n     the step is incomplete and the function returns.\n  5. When timer hits 0, validate landing panel (object_isCurrentPanelValid).\
+  \ If invalid,\n     nudge PanelX by -6 * facingDirection (snap back), then choose PanelY:\n       - If TurnCounter==1\
+  \ and target exists and AI data supports it, adopt target's row\n         (offset 0x13 in target object).\n  \
+  \     - Otherwise use FuturePanelY.\n  6. If FuturePanelX still differs from current PanelX after validation,\
+  \ snap to\n     coordinates and reload StepTimer from ChargeCycles, returning early (another step needed).\n \
+  \ 7. Commit: unless mid-turn (TurnCounter==1), copy FuturePanelX/Y into PanelX/Y and\n     release the panel reservation\
+  \ (object_removePanelReserve).\n  8. Finalize: set coordinates, set collision panels to current, clear flag bit\
+  \ 0x40,\n     set CURRENTLY_MOVING flag, call object_setCollisionRegion.\n  9. Exit attack state (object_exitAttackState_801171C)\
+  \ unless HitElement is already 8\n     (which signals the movement was interrupted by an obstacle/hit).\n\nKey\
+  \ struct fields touched:\n  oBattleObject_CollisionDataPtr, oBattleObject_PanelXY, oBattleObject_X, oBattleObject_XVelocity,\n\
+  \  oBattleObject_PanelX, oBattleObject_PanelY, oBattleObject_FuturePanelX, oBattleObject_FuturePanelY,\n  oBattleObject_AIDataPtr,\
+  \ oBattleObject hitbox at +0x34.\n  oAIAttackVars_ScratchPointerOrPanel, oAIAttackVars_StepTimer, oAIAttackVars_HitElement,\n\
+  \  oAIAttackVars_ChargeCycles, oAIAttackVars_TargetObjectPtr, oAIAttackVars_AiAttackParam,\n  oAIAttackVars_PanelParamFlags2.\n\
+  \  oAIState_TurnCounter.\n  oAIData_Version_16.\nQuirks:\n  - HitElement==8 acts as a sentinel for \"already hit\
+  \ by obstacle, don't re-exit state.\"\n  - The 0x0C000000 mask on collision flags is an internal per-move attribute\
+  \ controlling\n    whether the collision region is torn down and rebuilt across panel transitions.\n  - The 0x100000\
+  \ additive on the effect spawn Y shifts the impact graphic above the object.\n  - r5 is listed as both an input\
+  \ and an output in the contract, but the C form shows it\n    is never modified; the \"output\" is really just\
+  \ \"preserved and readable after return.\"\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- ldr r3,[r5,#oBattleObject_CollisionDataPtr]; ldr r0,[r3,#oCollisionData_FlagsFromCollision];
-    ldr r1,=0xc000000; tst r0,r1 @ 0x081133A8 -- only clears region when those mid/high "affected by ice"
-    / "unaffected by poison" collision bits are set. - strh r0,[r7,#oAIAttackVars_Unk_3c] prior to clearCollisionRegion
-    @ 0x081133A2. - ldr r1,[r5,#oBattleObject_XVelocity]; ldr r0,[r5,#oBattleObject_X]; add r0,r0,r1;
-    str r0,... @ 0x081133CE -- X += XVelocity integration. - bl object_setPanelsFromCoordinates @ 0x081133D6
-    converts back to panel grid. - cmp r0,#0 / cmp r0,#7 / bl object_checkPanelParameters with r2/r3 from
-    AIAttackVars.Unk_34/Unk_38 @ 0x08133E8..F0 -- the "off panel" / invalid panel spawn side effect path.
-    - ldmia r0!,{r1-r3} from r5+0x34 (object Coords X/Y/Z) with r3 += 0x1000_0000 then bl spawn_t1_0x0_EffectObject
-    @ 0x08113402 -- visual effect at object''s panel +Z bump. - In landing path: bl object_setCoordinatesFromPanels
-    + bl object_setCollisionPanelsToCurrent'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0811339A
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_advanceMoveStep_811339A
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_advanceMoveStep_811339A
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_advanceMoveStep_811339A --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_advanceMoveStep_811339A
+
+    ./wf verify --function battleObject_advanceMoveStep_811339A --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 96 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_advanceMoveStep_811339A
+
+    ./wf verify --function battleObject_advanceMoveStep_811339A --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^0811339a '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- 'Exact meaning of FlagsFromCollision mask 0x0c000000 (bits 26,27). Not free lanes:'
-- they intersect OBJECT_FLAGS_UNK_26 / OBJECT_FLAGS_UNAFFECTED_BY_POISON but those flags
-- are stored in ObjectFlags1 at +0x3c, not +0x70. The match is by bit position, not the
-- same field, so semantics are inferred (likely "ice/poison-hook before region swap").
-- Why spawn_t1_0x0_EffectObject when object is on the off-target panel (panel not 0/7 and
-- parameters ok) -- could be a dust/wind-skip effect mid-step; need a parent caller trace
-- to know which AI uses this.
-- 'Clearing 0x40 in ObjectFlags1: 0x40 = OBJECT_FLAGS_CANNOT_SLIDE; the function does NOT'
-- set this bit back elsewhere in the routine, so the move-end may simply allow slide again.
-- The two sub-branches (AIState.Unk_04==1 vs FuturePanel copy) suggest two different AI
-- move modes (e.g. slide-keep-panel vs commit-FuturePanel); still need the parent
-- attacker table to confirm.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0811339a ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f c83478a3
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_811339A -> battleObject_advanceMoveStep_811339A
-  where: bn6f 9d86d495
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What do collision-flag bits 26-27 (0x0C000000) semantically represent for specific AI moves?
+- Why is the step timer set to 0x3C (60 frames / 1 second) on obstacle hit—fixed recovery or variable?
+- What is the significance of the 6-pixel-per-panel-unit factor in the facing-direction snap-back?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

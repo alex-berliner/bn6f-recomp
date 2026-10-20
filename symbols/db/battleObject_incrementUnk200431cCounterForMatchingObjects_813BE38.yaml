@@ -1,61 +1,70 @@
 name: battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38
 address: '0x0813BE38'
 kind: function
-previous_names:
-- sub_813BE38
-status: probable
-summary: Bumps a per-battle counter for sibling battle objects sharing the caller's Element
-interface: '(r0 = battleObject index, r6 = saved caller Element, r10 = toolkit) -> r0 = 0 ; side effects:
-  increments byte in Unk200431c (toolkit+0x60) for every other live battle object with the same Element'
-details: "Iterates over the 0x31-entry fixed table at byte_2006C50 (typically ordered list of\n  battle\
-  \ object indices). For each occupied slot whose index (after -1) differs from the\n  caller's saved\
-  \ index, looks up the corresponding entry in Unk2004190 (8 bytes per entry),\n  fetches the live BattleObject\
-  \ via battleObject_getByIndex_813B780, and if its Element byte\n  at oBattleObject+0xE matches the caller's,\
-  \ increments byte_200431c[obj+4] by one. Caller\n  in sub_813BD24 seeds r6 from oBattleObject+0xE before\
-  \ invoking.\n  • Scratch: battleObject scratch at r7, Element scratch at r4; r6 is dead-stored on stack\n\
-  \  • Loop bound 0x31 = the standard 49-actor cap (AlivePlayerActors/AliveOpponentActors each\n    hold\
-  \ 0x10, fits).\n  • The offset oBattleObject+4 is being used as an index into Unk200431c — this is consistent\n\
-  \    with a u8 per-battle-object \"hits taken by matched element\" / targeting / damage-dealt\n    counter\
-  \ that the caller then consumes or displays.\n"
+status: confirmed
+summary: Tallies how many active battle objects share the same type as a reference object, incrementing a per-subtype
+  counter in the toolkit's Unk200431c array for each match.
+interface: void battleObject_countSameKindBySubtype_813BE38(u32 r0 /* battleObjIndex */, u32 r6 /* callerEntryIdx
+  (skipped) */, u32 r10 /* toolkitPtr */);
+details: 'Resolves the battle object at r0 via battleObject_getByIndex_813B780 and reads its type byte at offset
+  3. Then iterates the 0x31-slot lookup table byte_2006C50. For each non-zero slot, subtracts 1 to get an entry
+  index; skips the caller''s own entry (r6). Resolves the entry through toolkit_getUnk2004190EntryPtr_813B9FC to
+  get a record whose first halfword is a battle-object index; if zero the slot is inactive. Looks up that object
+  and compares its type byte (offset 3) to the reference. On match, reads the object''s subtype byte (offset 4)
+  and uses it as an index into the byte array at [r10 + oToolkit_Unk200431c_Ptr], incrementing that counter by 1.
+  r6 is preserved across the call via the stack slot; all other registers are clobbered.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- loop upper bound `cmp r6, #0x31` at loc_813BE7C - `ldr r5, off_813BE88` pulls address of
-    `byte_2006C50` (r5 bases the index walk) - `bl battleObject_getByIndex_813B780` resolves index → BattleObject
-    pointer - `ldrb r4, [r7,#3]` stores the *caller''s* element byte once before the loop (saved in r4)
-    - `ldrb r0, [r5,r6]; sub r0, #1; cmp r0, r1` filters out the caller''s own index (r1 came from stack
-    = saved r6 caller index) - `bl toolkit_getUnk2004190EntryPtr_813B9FC` used as a gate (`ldrh r0, [r7];
-    tst r0, r0; beq`) so empty entries skip - final matching block: `ldr r0, [r10,#oToolkit_Unk200431c_Ptr]`
-    (0x60), `ldrb r1, [r7,#4]`, `ldrb r2, [r0,r1]; add r2, #1; strb r2, [r0,r1]` is a +1 increment indexed
-    by the other battle object''s index byte - caller `sub_813BD24` contract: in r10, out r7/r8 — passing
-    the toolkit through, suggests it has just iterated actors and collected per-element data needing a
-    tally pass'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x0813BE38
+  - cport/src/game/asm37_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38 --snapshots build-snapshots'
+  result: 'captured calls: 24 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38
+
+    ./wf verify --function battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38 --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 46 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38
+
+    ./wf verify --function battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^0813be38 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- What `Unk200431c[i]` actually counts (damage, hits, AI targeting weight?) — would settle by
-- reading the consumer that reads it right after sub_813BD24 returns. Exact semantics of
-- '`byte_2006C50` slot 0 meaning (likely sentinel count, skipped via `tst r0, r0`) also'
-- unverified beyond its use as an "is this slot live" flag.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0813be38 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_0.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 53ec62da
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_813BE38 -> battleObject_incrementUnk200431cCounterForMatchingObjects_813BE38
-  where: bn6f 6a79e2de
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm37_0.c
+coverage:
+- beastsp
+open_questions:
+- What game event triggers this tally (e.g. chip damage calculation, enemy death, wave spawn)?
+- Are the Unk200431c per-subtype counters consumed elsewhere as a damage or effect multiplier?
+- What is the semantic meaning of type (offset 3) vs subtype (offset 4) on a battle object?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

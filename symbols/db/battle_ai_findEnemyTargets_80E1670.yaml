@@ -1,73 +1,85 @@
 name: battle_ai_findEnemyTargets_80E1670
 address: '0x080E1670'
 kind: function
-previous_names:
-- sub_80E1670
-status: probable
-summary: finds enemy (virus/navi) battle objects on the opposite alliance and stores them into a stack-local array,
-  with sub_80E16CC probing specific related-target slots
-interface: '(r5 = self BattleObject, r10 = Toolkit) -> r0 = 0 (Alliance-precomputed count of stored slots), r5 preserved
-  ; side effects: writes a 0x34-byte scratch buffer on the stack and queries object_getEnemyByNameRange plus three
-  sub_80E16CC probes'
-details: "Allocates 0x34 bytes on the stack (`sub sp,#0x34`) and takes `sp` as the local scratch buffer (`mov r4,\
-  \ sp`).\n  Reads `oBattleObject_Alliance` (0x16) from `r5`, eors it with 1 to flip alliance, and zeroes that flipped\
-  \ value back into a slot of the local buffer at `[r3]` (where `r3 = r0*4 + r4`, i.e. slot 0).\n  Calls `object_getEnemyByNameRange(r0=r4\
-  \ ptr-to-buffer, r1=0, r2=0x1c3)` to enumerate enemy actors whose name/ID range covers 0x1c3 — the count returned\
-  \ in `r6` determines how many further slots get filled next.\n  Then it makes up to three probes via `sub_80E16CC(self=object\
-  \ in r5 with `ldr r1,[r5,#oBattleObject_RelatedObject1Ptr]`, mode=r0=0,1,2, buffer=r4)` — looks like it is checking\
-  \ which of three category/pass types the related object satisfies (likely distinguishing Player/Navi/Virus targeting,\
-  \ matching `AIData.ActorType` 0..2). The first zero return is the result value handed back in `r0` (loops via\
-  \ `bne loc_80E16BA` break on first non-zero). Whoever moves the alliance-flip count into slot 0 of the local 0x34-byte\
-  \ buffer and gets a per-mode-0..2 count from `sub_80E16CC` is preparing a target list for AI selection.\n  Stack\
-  \ is restored and only r0/r5 are live; r4/r6/r7 are pushed/popped as scratch.\n  This strongly resembles an AI\
-  \ \"find valid enemy targets\" helper: flip alliance, build an enemy-name-id list in a stack buffer, then for\
-  \ each candidate probe mode via the related-object routine.\n"
+status: confirmed
+summary: Collects opposing-alliance enemies, then probes up to three move-target panels via the related object,
+  returning the first valid panel index or zero.
+interface: u32 battle_ai_findEnemyTargets(u32 r5 /*battleObj*/, u32 r6, u32 r7, u32 r10) -> r0 /*targetPanelResult*/;
+  preserves r4-r7
+details: 'Allocates a 0x34-byte stack buffer and fills it with enemy names via
+
+  object_getEnemyByNameRange using the opposing alliance (r5->oBattleObject_Alliance ^ 1)
+
+  and a name-range count of 0x1c3.  Null-terminates the list at r0*4 bytes into the
+
+  returned buffer base (r4 from the callee).  Reads r5->oBattleObject_RelatedObject1Ptr
+
+  and calls battleObject_computeMoveTargetPanel_80E16CC three times with target indices
+
+  0, 1, 2, passing the enemy-list pointer as r2.  Stops at the first non-zero return;
+
+  if all three return zero the final result is zero.  The byte table at 0x80E16C4
+
+  (A0 A4 AC B0 B4 B8 BC FF) is emitted after the function but not referenced here—
+
+  likely a lookup consumed by the callee or a dead literal pool entry.
+
+  r10 is passed through to object_getEnemyByNameRange as r7.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrb r3,[r5,#oBattleObject_Alliance]` and `eor r3,#1` at the entry — explicitly flips alliance of
-    the calling battle object, the canonical "find enemies" trick. - `bl object_getEnemyByNameRange` with `r2=0x1c3`
-    and the buffer pointer — this enumerates enemy actors whose name/ID matches 0x1c3 and writes their count/index
-    list into the passed buffer (per the project''s helper contract). - The literal `byte_80E16C4 = 0xA0, 0xA4,
-    0xAC, 0xB0, 0xB4, 0xB8, 0xBC, 0xFF` directly after `sub_80E16CC` is consistent with mode-0..2 indexing (used
-    by the helper using r0=0/1/2). - Caller `sub_80E1566` lives in the AI region (`0x080e16xx`, in the same `sub_80E1566`
-    AI script dispatcher) and passes r5 (BattleObject) and r10 (Toolkit), matching AI helpers. - `oBattleObject_RelatedObject1Ptr`
-    is at offset 0x4c and is read for the sub call — this is the AI-related battle object slot, used during AI candidate
-    selection. - The 0x34-byte stack slot is the right size for ~13 word entries (matches a `0x1c3`-bounded id list
-    plus count/scratch).'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080E1670
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battle_ai_findEnemyTargets_80E1670
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_ai_findEnemyTargets_80E1670
 
-    '
-  result: the body read as described above
+    ./wf verify --function battle_ai_findEnemyTargets_80E1670 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_ai_findEnemyTargets_80E1670
+
+    ./wf verify --function battle_ai_findEnemyTargets_80E1670 --snapshots build-snapshots'
+  result: 3 compared, 0 differed, 93 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_ai_findEnemyTargets_80E1670
+
+    ./wf verify --function battle_ai_findEnemyTargets_80E1670 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp'
-  reproduce: 'grep -l ''^080e1670 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp
-open_questions:
-- 'Exact meaning of the three `sub_80E16CC` r0 values (0/1/2): without seeing sub_80E16CC''s assembly they could
-  be attack-mode indices, actor-type filters, or target-priority lanes.'
-- What the `object_getEnemyByNameRange` return is meant to populate in the local buffer (count? first victim index?
-  full list?). The `mov r0,#0; str r0,[r3]` writes 0 into slot 0 of the count area, suggesting r6 (return) is being
-  used as a per-element counter rather than a count to stash.
-- Whether this is invoked from "select enemy to attack" vs "select ally to support" — the flipped alliance and AI
-  context favors the former; called from a script dispatcher makes it ambiguous without seeing the caller's branch.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080e1670 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 649d4897
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80E1670 -> battle_ai_findEnemyTargets_80E1670
-  where: bn6f 7ad99d5e
-  tool: tools/rename_symbol.py
-- date: '2026-10-14'
-  what: doc comment (symdb block) at the definition
-  where: bn6f c83478a3
-  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- beastsp
+open_questions:
+- What do the three target indices (0,1,2) represent—panel distance, row offsets, or priority tiers?
+- What is the role of r10 (passed as r7 into getEnemyByNameRange)—a battle-context pointer or secondary filter?
+- Is the byte_80E16C4 table used by battleObject_computeMoveTargetPanel_80E16CC or is it dead code in this translation
+  unit?
+- The callee null-terminates at list.r4 + count*4 rather than the local buffer; confirm whether object_getEnemyByNameRange
+  may relocate the list.
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

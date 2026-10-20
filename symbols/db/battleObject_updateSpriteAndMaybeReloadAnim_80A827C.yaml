@@ -1,59 +1,71 @@
 name: battleObject_updateSpriteAndMaybeReloadAnim_80A827C
 address: '0x080A827C'
 kind: function
-previous_names:
-- sub_80A827C
-status: probable
-summary: If a derived animation id differs from the cached one, reload the object's sprite animation data
-  and shadow flag, then always run sprite_update.
-interface: (r5 = BattleObject*) -> void ; side effects sprite state, flags
-details: "- Calls sub_80A82DC first, which returns a u8 (kept in r0) representing the new desired animation/state\
-  \ id for the object.\n  - Loads the object's previously cached sprite state byte from [r5, #5] (ObjectSprite\
-  \ slot's first byte, per object_sprite_struct at offset 0x10 of BattleObject... actually offset 5 is\
-  \ inside the object_sprite_struct, so this is ObjectSprite Unk_05) into r1 and compares it to the new\
-  \ id.\n  - If they differ (beq to loc_80A8294 not taken): sprite_setAnimation (writes new id into ObjectSprite\
-  \ slot byte 0), then sprite_loadAnimationData (skips past object header to sprite data block and tail-calls\
-  \ shared animation loader), then sprite_noShadow (clears shadow rendering flag).\n  - If they match,\
-  \ the reload trio is skipped and control jumps straight to loc_80A8294.\n  - loc_80A8294 unconditionally\
-  \ calls sprite_update on r5 and returns.\n"
+status: confirmed
+summary: Advances a battle object's sprite each frame; if the event-flag-driven animation priority differs from
+  the stored animation ID (byte at offset 5), reloads the sprite's animation data and clears its shadow before ticking.
+interface: void battleObject_updateSpriteAndMaybeReloadAnim(u32 r5 /*battleObject*/, u32 r10 /*toolkit*/, lr); /*->
+  r2 r3 r4 r5 clobbered, nzcv clobbered*/
+details: 'Calls battleObject_checkSetPriorityByEventFlag_80A82DC(r5) to obtain the animation ID that current event
+  flags dictate. Reads the desired ID from battleObject+5 (u8). If they match, skips straight to sprite_update.
+  If they differ, calls sprite_setAnimation with the new ID, sprite_loadAnimationData (which returns updated r4/r5
+  pointers into the object), and sprite_noShadow to clear the shadow sprite. Finally sprite_update advances position,
+  frame index, and collision. Registers r4 and r5 are threaded through the reload path: on skip, caller''s r4 is
+  returned unchanged; on reload, r4/r5 come from sprite_loadAnimationData. r10 (toolkit pointer) is passed implicitly
+  to callees that expect it.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `bl sub_80A82DC` at 0x080a827e produces the new id in r0. - `ldrb r1, [r5,#5]` reads the
-    cached byte at offset 5 from the object struct; offset 5 of BattleObject is `Unk_05` in the object_sprite_struct
-    (sprite slot byte 5), matching sprite_setAnimation''s contract that targets the sprite slot''s first
-    byte offset. - `cmp r0, r1` / `beq loc_80A8294` is the equality branch that skips reload. - The three
-    skipped calls sprite_setAnimation, sprite_loadAnimationData, sprite_noShadow have confirmed semantics
-    (animation index write, header-skip animation loader, no-shadow flag). - `bl sprite_update` at loc_80A8294
-    runs every frame regardless of branch. - Only known caller is sub_80A822C, with the same r5/r10/lr
-    contract, confirming this is called from another battle-object update routine in the same address
-    range.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080A827C
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_updateSpriteAndMaybeReloadAnim_80A827C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_updateSpriteAndMaybeReloadAnim_80A827C
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_updateSpriteAndMaybeReloadAnim_80A827C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_updateSpriteAndMaybeReloadAnim_80A827C
+
+    ./wf verify --function battleObject_updateSpriteAndMaybeReloadAnim_80A827C --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 90 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_updateSpriteAndMaybeReloadAnim_80A827C
+
+    ./wf verify --function battleObject_updateSpriteAndMaybeReloadAnim_80A827C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp, maps'
-  reproduce: 'grep -l ''^080a827c '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp, maps
-open_questions:
-- 'The exact meaning of the byte at [r5, #5] is uncertain; it''s treated here as a cached "last animation
-  id" but the struct offset/role is inferred from context rather than project documentation.'
-- The semantics of what sub_80A82DC's returned r0 represents (animation id vs state vs other sprite slot
-  byte) is unknown.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^080a827c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 2e79aac3
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80A827C -> battleObject_updateSpriteAndMaybeReloadAnim_80A827C
-  where: bn6f d43feadd
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- beastsp
+- maps
+related:
+- battleObject_setupBeastSprite
+open_questions:
+- Is the byte at offset 5 strictly an animation ID or also a rendering-priority value (function name mentions 'priority')?
+- Does sprite_noShadow permanently clear the shadow or only for the current frame?
+- Which call sites pass a meaningful r10 versus zero?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

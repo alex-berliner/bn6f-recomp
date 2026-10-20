@@ -1,50 +1,72 @@
 name: battle_flashTickFrames
 address: '0x0804C244'
 kind: function
-status: probable
-summary: Initializes and steps the frame counter for the battle screen-flash/background-fill effect driven
-  by its caller.
-interface: (r5 = effect state object, r10 = toolkit; uses toolkit->oToolkit_Unk2009740_Ptr) -> r0 = void;
-  sets state fields 0x11/0x18 and struct bytes 0-3
-details: 'On first entry (state byte [r5+0x11] <= 0) it seeds the flash struct behind oToolkit_Unk2009740_Ptr:
-  byte0=0x44, byte1=0x3B, byte2=0x10 (total frames), byte3=0 (frame index), and sets a 2-frame sub-timer
-  at [r5+0x18]. Every call thereafter it counts down [r5+0x18]; on expiry it reloads it to 2 and, if the
-  flash index byte3 is still below 0x10, increments byte3 and decrements byte2 (frames remaining) while
-  nonzero. So byte3 acts as the current flash frame (0..15) and byte2 the remaining count, matching the
-  caller sub_804C144 which advances a frame index on timer expiry and copies a 32x32 tile block from one
-  of 8 frame buffers into character block 2. The bytes 0x44/0x3B written at init are unexplained, and
-  the effect aborts silently once byte3 reaches 0x10.'
+status: confirmed
+summary: Ticks a 2-frame palette flash animation, priming a BGRA slot and advancing its colour-index/ramp bytes
+  each cycle until the fade completes.
+interface: void battle_flashTickFrames(u32 state_obj /*r5*/, u32 toolkit /*r10*/); /* r5 preserved; flags clobbered
+  */
+details: 'Called every frame as part of a battle flash effect. State object fields: +0x11 = step counter (0 means
+  not yet primed; incremented after priming so it only primes once); +0x18 = 2-frame duration timer (reset to 2
+  on expiry). Toolkit fields: +3 = global fade progress counter (capped at 0x10); oToolkit_Unk2009740_Ptr = pointer
+  to the active palette slot. Palette slot layout: byte 0 = blue (0x44), byte 1 = green (0x3B), byte 2 = ramp (initial
+  0x10, decremented each tick), byte 3 = colour index (incremented each tick, capped at 0x10). On priming the function
+  writes a fixed teal-ish BGRA value (0x44,0x3B,0x10,0) and arms the timer; thereafter each call decrements the
+  timer, and when it reaches 0 it re-arms, advances colour-index, and decrements ramp—effectively stepping through
+  a 16-colour flash ramp over 32 frames (2 per colour). The off_804C294 word (0x400) sits after the function and
+  is unused by this code.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: Init branch writes 0x44/0x3B/0x10/0 to Unk2009740 struct, matching a one-time effect setup;
-    byte3 < 0x10 guard plus increment/decrement of byte2 = frame index vs frames-remaining pattern; [r5+0x18]
-    is a self-reloading 2-frame tick timer gating each advance; caller sub_804C144's summary (flash effect,
-    frame index on timer expiry, tile copies) matches the counter structure
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm03_2.s:10152
-  - 0x0804C144 sub_804C144
-  reproduce: python3 tools/asmcat.py 0x0804C244
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battle_flashTickFrames
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battle_flashTickFrames
+
+    ./wf verify --function battle_flashTickFrames --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 171 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battle_flashTickFrames
+
+    ./wf verify --function battle_flashTickFrames --snapshots build-snapshots'
+  result: 39 compared, 0 differed, 57 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battle_flashTickFrames
+
+    ./wf verify --function battle_flashTickFrames --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, story5, story6.'
+  reproduce: grep -l '^0804c244 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm03_2.c
 coverage:
 - beastsp
 - story5
 - story6
 open_questions:
-- meaning of the constants 0x44 and 0x3B written to struct bytes 0-1
-- full layout of the struct at toolkit+oToolkit_Unk2009740_Ptr and how the caller consumes bytes 2/3
-- what [r5+0x11] is set to by other code (whether re-init can retrigger the flash)
+- What visual effect does the 0x44/0x3B/0x10 BGRA palette entry correspond to on screen?
+- Who owns toolkit+3 (the 0x10 progress counter) and what happens when it reaches its cap?
+- Is the off_804C294 data blob referenced elsewhere or dead padding?
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_804C244 -> battle_flashTickFrames
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_804C244
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

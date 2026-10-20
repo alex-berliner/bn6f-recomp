@@ -1,0 +1,70 @@
+name: MapScriptCutsceneCmd_sound_cmd_80380ea
+address: '0x080380EA'
+kind: function
+status: confirmed
+summary: Map-script cutscene command handler that reads a 16-bit sound ID and two 8-bit parameters (channel, volume)
+  from the script stream, plays the sound, and advances past the 5-byte command.
+interface: u32 cutscenePlaySoundCmd(u32 *r7 /* script_ptr in, advanced ptr out */, u32 r12 /* channel/flag passthrough
+  */); sets NZ from final mov r0,#1 (always N=0, Z=0). Preserves r5, r8, r9, r10, r12; clobbers r0, r1, r6, v, c,
+  lr.
+details: 'Reads three values from the map-script byte stream via ReadMapScriptHalfword/ReadMapScriptByte helpers
+  (which use r6 as a read-size selector: 1=halfword, 3=byte, 4=byte, and r7 as the stream pointer, returning the
+  fetched value in r4). The halfword is the sound ID passed as r0 to the sound driver (sound_80006A2); the first
+  byte is param1 (r1, likely a channel or sub-ID) and the second byte is param2 (r2, likely volume or pan). r12
+  is passed through to the sound driver unchanged. After the driver call, r7 is incremented by 5 to skip the command''s
+  fixed overhead bytes, and r0=1 is loaded so the next-script-loop caller sees a non-terminating return. Flags N
+  and Z are set from that final mov.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/map_script_cutscene.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c MapScriptCutsceneCmd_sound_cmd_80380ea
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_sound_cmd_80380ea
+
+    ./wf verify --function MapScriptCutsceneCmd_sound_cmd_80380ea --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 236 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_sound_cmd_80380ea
+
+    ./wf verify --function MapScriptCutsceneCmd_sound_cmd_80380ea --snapshots build-snapshots'
+  result: 53 compared, 0 differed, 43 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function MapScriptCutsceneCmd_sound_cmd_80380ea
+
+    ./wf verify --function MapScriptCutsceneCmd_sound_cmd_80380ea --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080380ea ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/map_script_cutscene.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/map_script_cutscene.c
+coverage:
+- beastsp
+open_questions:
+- Exact semantics of param1 (r1) and param2 (r2) passed to sound_80006A2—channel vs. volume vs. pan not confirmed.
+- What the 5-byte overhead that r7 is advanced by represents (likely the opcode byte plus padding/terminator consumed
+  by the script interpreter before this handler is entered).
+- Purpose of the r12 passthrough to the sound driver—whether it selects a sound group, a priority, or is unused.
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

@@ -1,96 +1,72 @@
 name: battleObject_performMovementStep_8111A8C
 address: '0x08111A8C'
 kind: function
-previous_names:
-- sub_8111A8C
-status: probable
-summary: Advances a battle object one frame along an in-progress panel-to-panel move, snapping to its
-  destination panel and entering a post-move completion state when the move timer elapses.
-interface: (r5 = *BattleObject, r7 = *AIAttackVars) -> void ; mutates r5's X/Y/PanelX/PanelY/CollisionData/ObjectFlags1/CurAnim
-  and r7's Unk_10/Unk_1a/Unk_00
-details: 'Steps the object''s subpixel world X by adding XVelocity and Y by adding YVelocity (offsets
-  0x40/0x44 and
-
-  0x34/0x38), the standard per-frame motion integrator for a battle object.
-
-  When the AI move-tick counter `Unk_10` equals `Unk_12` (the scheduled slot count), it re-derives the
-
-  panel from world coords (`object_setPanelsFromCoordinates`) and refreshes the collision record
-
-  (`object_updateCollisionPanels`), so panel resync only happens on tick boundaries rather than every
-
-  frame.
-
-  When the tick counter is exactly 4 the function sets `CurAnim = 3` (presumably the "settling"/land
-
-  animation), then unconditionally decrements the counter `Unk_10` by one.
-
-  Once `Unk_10` underflows (`sub r0,#1` followed by `bge` not taken), the move has finished: PanelX/Y
-
-  are forced to the previously reserved FuturePanelX/Y, the panel reservation is released
-
-  (`object_removePanelReserve`), world coords are recomputed from the panels
-
-  (`object_setCoordinatesFromPanels`), and the collision copy is refreshed
-
-  (`object_setCollisionPanelsToCurrent`). ObjectFlags1 then has bit 0x40 (OBJECT_FLAGS_CANNOT_SLIDE)
-
-  cleared and bit `1<<19` (`OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT`, the "is currently moving" flag)
-
-  set, marking the object as still moving from this routine''s view while disabling slide interrupts.
-
-  Finally `AIAttackVars.Unk_1a = 1` and `AIAttackVars.Unk_00 = 0xc`, signaling the AI move-state machine
-
-  that the panel step has completed and it should advance to state 0xc.
-
-  The two callees that touch panel reservations/collision panels and the flag mutations together
-
-  characterize a "finish one panel-of-an-AI-driven move" helper, called every frame from
-
-  sub_8111A72 (which holds the move-state machine).
-
-  '
+status: confirmed
+summary: 'Advances a battle object one animation frame: applies velocity, syncs panel/collision data at charge-cycle
+  boundaries, sets walk anim at step 4, and on timer expiry commits the move and marks the hit.'
+interface: u32 battleObject_performMovementStep(u32 r5 /* object */, u32 r7 /* aiVars */);  /* returns r1 = collision/flag
+  result, r5 preserved */
+details: "Operates on a battle object (r5) and its AI attack variables (r7).\nEach frame it adds XVelocity/YVelocity\
+  \ to X/Y (pixel-space movement).\nWhen StepTimer equals ChargeCycles it calls object_setPanelsFromCoordinates\n\
+  and object_updateCollisionPanels to resync grid data mid-animation.\nAt StepTimer==4 it sets CurAnim to 3 (walk\
+  \ frame).\nStepTimer is then decremented; while it remains >=0 the function returns.\nOn reaching -1 (timer expired)\
+  \ the function finalises the step:\n  - copies FuturePanelX/Y into PanelX/Y (commits the move on the grid),\n\
+  \  - calls object_removePanelReserve, object_setCoordinatesFromPanels,\n    object_setCollisionPanelsToCurrent,\n\
+  \  - clears flag bit 0x40 (pending-move marker),\n  - sets OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT,\n  - sets aiVars\
+  \ HasMoved=1 and HitElement=0xC (0xC likely a \"landed/connected\" element code).\nRegister contract: reads r5\
+  \ (object ptr) and r7 (aiVars ptr); returns r1 (result of\nobject_updateCollisionPanels or object_setFlag1); clobbers\
+  \ r0/r2/r3, flags, and\npreserves r4/r5/r6. lr is pushed/popped so this is not a tail call.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldr r1, [r5,#oBattleObject_XVelocity]` + `ldr r0, [r5,#oBattleObject_X]` followed by `add`/`str`
-    at 0x8111A8E..0x8111A98 performs X+Y integration. - Same pattern against `oBattleObject_YVelocity`/`oBattleObject_Y`
-    immediately below shows both axes are integrated. - `ldrh r0,[r7,#oAIAttackVars_Unk_10]` / `ldrh r1,[r7,#oAIAttackVars_Unk_12]`
-    then `cmp r0,r1 ; bne loc_8111AAE` gates the panel resync to a specific tick. - Calls to `object_setPanelsFromCoordinates`
-    (0x0800e2ac) then `object_updateCollisionPanels` (0x0801a04c) are made only on the tick match. - `cmp
-    r0,#4` then `mov r0,#3 ; strb r0,[r5,#oBattleObject_CurAnim]` is the early "play land anim" cue when
-    1 frame from finish. - `sub r0,#1 ; strh r0,[r7,#oAIAttackVars_Unk_10] ; bge locret_8111AEA` is the
-    per-frame countdown with skip when not done. - On finish, `ldrb r0,[r5,#oBattleObject_FuturePanelX]
-    ; strb r0,[r5,#oBattleObject_PanelX]` (same for Y) commits the target panel. - Then `bl object_removePanelReserve`
-    (0x0801bb46) followed by `bl object_setCoordinatesFromPanels` and `bl object_setCollisionPanelsToCurrent`
-    finalize panel/world alignment. - `mov r0,#0x40 ; bl object_clearFlag` then `mov r0,#1 ; lsl r0,r0,#OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT
-    ; bl object_setFlag1` match clearing bit 6 of ObjectFlags1 and setting the bit-mask 0x80000 (`OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT`).
-    - Final two stores: `mov r0,#1 ; strb r0,[r7,#oAIAttackVars_Unk_1a]` and `mov r0,#0xc ; strh r0,[r7,#oAIAttackVars_Unk_00]`
-    flip the AI state to 0xc with a "done" flag. - Only caller is sub_8111A72 (per the callgraph), which
-    has the matching `in=[''r5'',''r7'',''lr'']` setup typical of an AI-move tick in the per-frame loop.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s
-  reproduce: 'python3 tools/asmcat.py 0x08111A8C
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_performMovementStep_8111A8C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_performMovementStep_8111A8C
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_performMovementStep_8111A8C
+    ./wf verify --function battleObject_performMovementStep_8111A8C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 254 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_performMovementStep_8111A8C
 
-    '
-open_questions:
-- Exact semantic of `AIAttackVars.Unk_10` / `Unk_12` (slot counter vs. total steps) and why one resync
-  is tied to `Unk_10 == Unk_12` rather than every frame.
-- Why `CurAnim = 3` is forced only when `Unk_10 == 4` (and not at the snap point) and what animation 3
-  corresponds to.
-- Meaning of `Unk_1a = 1` and `Unk_00 = 0xc` in the AI state machine would be settled by looking at sub_8111A72.
-sources:
-- discovery session 2026-10-14 batch 43 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_performMovementStep_8111A8C --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 90 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_performMovementStep_8111A8C
+
+    ./wf verify --function battleObject_performMovementStep_8111A8C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08111a8c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 7d779321
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_8111A8C -> battleObject_performMovementStep_8111A8C
-  where: bn6f 7ddd2238
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What does HitElement 0xC signify – is it a generic 'no element' sentinel or a specific attack tag?
+- Is flag 0x40 specifically a 'move-pending' bit or something else in the object flag bitmask?
+- The r1 output is ambiguous across paths – do callers actually read it?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

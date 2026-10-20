@@ -1,91 +1,80 @@
 name: battleObject_selectAIDataHandler_81347A4
 address: '0x081347A4'
 kind: function
-previous_names:
-- sub_81347A4
-status: probable
-summary: 'A-button confirm step for the custom-style AI/anger menu: stores the picked slot index, plays
-  the select SFX, flips a state byte through a 2-byte cursor pair, then dispatches a per-mode handler
-  via `battle_fieldLockDispatch_8120018` and rewrites the three tracked target slots so they no longer
-  match their stored enemy references.'
-interface: '(r2 = scene ctx, r5 = AI menu state, r8 = ?, r10 = Toolkit, lr) -> r0 = 1 if A was newly pressed,
-  else 0; side effects: PlaySoundEffect(SOUND_MENU_SELECT), writes AIData-related fields on r5 and the
-  cursor pair at s_2001c04, calls battle_fieldLockDispatch_8120018'
-details: "- On entry r5 is treated as the menu-state struct (AIData-like): the code reads `r5+0xd` as\
-  \ a 0/1 mode byte, `r5+0x4c` as a feature mask (bits 0x1 and 0x20 enable two tracking sections), `r5+0x1c/0x5c/0x60`\
-  \ as slot indices, and `r5+0x34` as `Anger` (per the AIData struct). r10 is the Toolkit, used to dereference\
-  \ `oToolkit_S2001c04_Ptr` into r0 for the cursor pair.\n  - `IsButtonPressed(JOYPAD_A)` is checked first;\
-  \ if not pressed the function returns 0 immediately (the `b loc_81348C4` path sets r0=0 and `tst r0,r0`\
-  \ for the return-NZ convention).\n  - When A is pressed, up to three \"saved\" ptrs are cached on the\
-  \ stack: `[sp]` from the slot index at `r5+0x1c` (only if `r5+0x4c & 1`), `[sp+8]` from `r5+0x5c` and\
-  \ `[sp+0xc]` from `r5+0x60` (only if `r5+0x4c & 0x20`). Each lookup multiplies the index by 0x20 (size\
-  \ of the per-element record) and reads the first 4 bytes at the address table rooted at `off_81348D4\
-  \ -> word_202A020`.\n  - `PlaySoundEffect(SOUND_MENU_SELECT)` is then called.\n  - `Anger` (u16 at `r5+0x34`)\
-  \ is written into the low byte of the 2-byte cursor pair at `[s_2001c04+0]`; the other byte (at `[s_2001c04+1]`\
-  \ or `+3`, picked by mode) is XOR'd with 4 to toggle a state bit. The choice of pair offset and \"other\"\
-  \ offset is `0/1` for `r5+0xd == 0` and `2/3` for `r5+0xd != 0`, with the previous-value comparison\
-  \ routed through `byte_30069A0[Anger]`.\n  - `battle_fieldLockDispatch_8120018(r0=table, r1=anger per\
-  \ state 0x1e or 0x28, r7=mode)` is called to walk every battle object and apply the mode's handler under\
-  \ a per-field lock/unlock.\n  - A loop (r7 = 0..0x1d) re-scans the same per-record table; whenever a\
-  \ record's first 4 bytes match one of the cached saved ptrs, the corresponding slot in r5 is rewritten\
-  \ with the current loop index and the matching bit is latched in r6 so each section can only rewrite\
-  \ once. Only the section for `r5+0xd == 0` runs (the `tst r0,r0; bne loc_81348BE` path skips it for\
-  \ mode 1).\n  - Always returns 1 (`r0=1; tst r0,r0` sets Z=0, matching the caller's \"result in nz\"\
-  \ contract).\n"
+status: confirmed
+summary: 'Handles the A-button confirm in the battle-object (AI/Navon) selection menu: saves the current slot indices,
+  plays the select sound, updates toolkit navigation state, dispatches a field-lock change, then rescans the 30-entry
+  selection table to remap saved indices to loop positions.'
+interface: u32 battleObject_selectAIDataHandler_81347A4(void *battleCtx /*r5*/, void *toolkitPtr /*r10*/, u32 soundParam
+  /*r2*/, u32 r8) -> nz(1=confirmed / 0=no A press), r8-r12 updated via field-lock dispatch
+details: "Early-exits with Z set (r0=0) when JOYPAD_A is not pressed; otherwise proceeds\nwith the confirm path\
+  \ and returns NZ (r0=1).\n\nr5 is the battle-object context struct:\n  +0x0D  alliance flag (0 = solo/standard\
+  \ table via off_81348D4[0], non-zero = alliance table via off_81348D4[1])\n  +0x1C  u16 slot-A index into the\
+  \ 32-byte-stride selection table\n  +0x34  u16 navigation value (menu page/cursor position)\n  +0x4C  u32 flags:\
+  \ bit 0 gates slot-A tracking, bit 5 (0x20) gates slot-B and slot-C tracking\n  +0x5C  u32 slot-B index\n  +0x60\
+  \  u32 slot-C index\n  +0x1E / +0x28  field-lock identifier read depending on alliance\n\nThe selection table\
+  \ is a 30-entry array of 32-byte structs pointed to by\nword_202A020 (solo) or unk_202A3E0 (alliance); only the\
+  \ first u32 of each\nentry is compared during the index-rescan loop.\n\nToolkit (r10 + oToolkit_S2001c04_Ptr)\
+  \ holds four navigation bytes at offsets\n0–3; offsets 0/1 are used when alliance==0, offsets 2/3 when alliance!=0.\n\
+  The byte is XOR'd with 4 (lock toggle) via a lookup through byte_30069A0.\n\nAfter the field-lock dispatch call,\
+  \ the function iterates 0..29 over the\ntable entries, matching the saved stack-buffered values back to their\
+  \ loop\nindex and writing that index into the respective slot field (only for the\nsolo/alliance==0 case).\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `mov r0,#JOYPAD_A; bl IsButtonPressed; bne ... ; b loc_81348C4` shows the function gates
-    everything on a fresh A press and the `loc_81348C4` arm sets r0=0 with `tst r0,r0` (per the caller
-    `sub_8133944` which expects an nz flag). - `ldrb r0,[r5,#0xd]; tst r0,r0` followed by the `beq loc_81347F8`
-    and the two-tone `mov r1,#0; mov r4,#1` vs `mov r1,#2; mov r4,#3` shows r5+0xd selects between two
-    2-byte cursor sub-pairs in s_2001c04. - `ldrh r2,[r5,#0x34]; ... strb r2,[r0,r1]` plus the `mov r1,#4;
-    eor r3,r1; strb r3,[r0,r4]` pattern shows Anger is shoved into one byte and the partner byte gets
-    bit 0x4 flipped, exactly the "select confirm toggles a flag" idiom. - `ldr r1,[r10,#oToolkit_S2001c04_Ptr]`
-    is the canonical way this codebase reaches the S2001c04 struct. - `ldr r1,off_81348D0 / ldr r1,[r1]`
-    twice with constants `0x202A020`/`0x202A3E0` (off_81348D4) shows a two-section per-record table of
-    0x20-byte entries; the saved `r5+0x1c` (u16, then later `ldrh r0,[r5,#0x1c]; mul r0,r2,#0x20`) and
-    the u32-style indices at `r5+0x5c`/`r5+0x60` index into it. - `ldr r1,[r5,#0x4c]; tst r1,#1 / #0x20`
-    gates the three saved-ptr slots independently, exactly matching the three cache slots on the stack
-    `[sp]`, `[sp+8]`, `[sp+0xc]`. - `bl battle_fieldLockDispatch_8120018` with the anger value loaded
-    into r1 (0x1e for mode 0, 0x28 for mode 1) and the table pointer in r0 is the only side-effecting
-    callee that touches battle objects here; the contract "wraps a mode-dispatched battle handler with
-    two-pass lock/unlock" fits the post-rally "rewrite all matching enemy slots" tail. - The tail loop
-    `mov r7,#0 ... cmp r7,#0x1e; blt loc_813484A` walks all 30 entries of the section-0 table and, on
-    hit, stores the loop index back into `r5+0x1c`/`+0x5c`/`+0x60`, with r6 acting as a one-shot per-section
-    mask (1, 2, 4). - `SOUND_MENU_SELECT` constant in `PlaySoundEffect(SOUND_MENU_SELECT)` is the standard
-    menu-confirm chirp used across the codebase.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x081347A4
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_selectAIDataHandler_81347A4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_selectAIDataHandler_81347A4
 
-    '
-  result: the body read as described above
+    ./wf verify --function battleObject_selectAIDataHandler_81347A4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_selectAIDataHandler_81347A4
+
+    ./wf verify --function battleObject_selectAIDataHandler_81347A4 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_selectAIDataHandler_81347A4
+
+    ./wf verify --function battleObject_selectAIDataHandler_81347A4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battles2, beastsp, menus3, story6, story8, story9'
-  reproduce: 'grep -l ''^081347a4 '' tools/traces/coverage/*.prof
-
-    '
-  result: battles2, beastsp, menus3, story6, story8, story9
-open_questions:
-- The exact meaning of the two `r5+0xd` modes (0 vs non-zero) and of the `Anger` field is unclear; the
-  assembly only shows it routes into different sub-pairs of the S2001c04 cursor pair and a different handler
-  value (0x1e vs 0x28). Cross-referencing the AIData struct's `Anger // loc=0x34` with BN6 enemy-conflict
-  UI would settle whether this is a real in-battle enemy-conflict UI or some other A-press confirm in
-  a non-battle subsystem.
-- What `off_81348D4 -> {word_202A020, unk_202A3E0}` actually describes (two distinct per-record tables
-  or one table split by mode) is not deducible from this function alone.
-- Whether the saved target slots are battle-object pointers or something narrower (e.g., player IDs) depends
-  on the table layout at 0x202A020.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battles2, beastsp, menus3, story6, story8, story9.'
+  reproduce: grep -l '^081347a4 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f eb748819
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_81347A4 -> battleObject_selectAIDataHandler_81347A4
-  where: bn6f c2454a87
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm36.c
+coverage:
+- battles2
+- beastsp
+- menus3
+- story6
+- story8
+- story9
+open_questions:
+- What specific menu context calls this—pre-battle Navon select, or in-battle AI summon?
+- What does the XOR-4 lock toggle on toolkit byte signify (locked/unlocked slot?)?
+- byte_30069A0 is an IWRAM table mapping nav value -> lock state; its generation is unclear.
+- Why does PlaySoundEffect receive r2=0x20 as a second argument?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

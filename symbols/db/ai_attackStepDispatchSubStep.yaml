@@ -1,50 +1,89 @@
 name: ai_attackStepDispatchSubStep
 address: '0x0810AF30'
 kind: function
-status: probable
-summary: Dispatches an AI attack's per-substep handler via a jump table indexed by the attack object's
-  SubStepIndex.
-interface: (r0 = attack/effect object, r7 = AI attack vars) -> tail-calls handler from off_810AF44; r0
-  returned per handler; no flags set here
-details: 'Tail-jumps to one of three Thumb handlers selected by [r7, oAIAttackVars_SubStepIndex]: ai_attackStepPlayIntroAnim,
-  sub_810AF90, or ai_attackStepSpawnFrontHitbox. It is a pure trampoline — it loads the table base from
-  off_810AF40, indexes it with the substep counter, and does ''mov lr, pc; bx r1'' to call the handler
-  in Thumb state. r0 is not modified, so the caller''s object pointer is passed straight through to the
-  handler. The table lives right after the code and holds handler addresses+1 (Thumb bit set). Called
-  once per frame from the attack-step loop (ai_attackStepExitOnScratch) and when initializing an attack
-  from spawnSweepPanelEffect, so it advances the attack''s intro/hitbox-spawn substeps.'
+status: confirmed
+summary: Dispatches the current sub-step of a Nav's attack routine via a three-entry jump table (intro anim, middle
+  phase, front hitbox spawn).
+interface: 'void ai_attackStepDispatchSubStep(u32 r2, u32 r5, AIAttackVars *ai /*r7*/, u32 r10);
+
+  /* r0 = sub-step index (byte from r7+oAIAttackVars_SubStepIndex) */
+
+  /* r1 = resolved handler address (thumb bit set) */
+
+  /* handler is called via mov lr,pc; bx r1 so all other registers pass through unchanged */
+
+  /* Clobbers: r0, r1, all condition flags (nzcv) */
+
+  /* Preserved: r2-r12, lr (caller''s return) */
+
+  '
+details: "The function is a tiny computed-goto trampoline at the head of each tick of\nan AI attack step's state\
+  \ machine.  It reads one byte,\noAIAttackVars_SubStepIndex, from the AI attack variable block pointed to by\n\
+  r7.  That byte is used directly as a byte-offset into a .balign-4, 3-entry\njump table at 0x0810AF44 (the entries\
+  \ are pre-or'd with 1 for thumb mode):\n\n  offset 0x00 → ai_attackStepPlayIntroAnim + 1\n  offset 0x04 → sub_810AF90\
+  \ + 1          (middle/active-anim phase)\n  offset 0x08 → ai_attackStepSpawnFrontHitbox + 1\n\nA single-byte\
+  \ increment (r0) therefore advances the attack through\nintro → active → hitbox-spawn in three sequential ticks.\
+  \  The dispatcher\nitself contains no loop or state mutation beyond loading r0/r1; the\nsub-step index is advanced\
+  \ (and the table bounds enforced) by the caller.\n\nBecause the indirect call is written as \"mov lr, pc; bx r1\"\
+  , the handler\nreturns straight into the dispatcher's pop{pc}→return-to-caller path.\nAll registers other than\
+  \ r0/r1 and the condition flags are transparent to\nthe handler, matching the register contract's long output\
+  \ list.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb r0,[r7,#oAIAttackVars_SubStepIndex]; ldr r1,[r1,r0]; bx r1 — table dispatch on attack substep
-    index; off_810AF44 entries are ai_attackStepPlayIntroAnim, sub_810AF90, ai_attackStepSpawnFrontHitbox
-    (+1 Thumb pointers); called from ai_attackStepExitOnScratch, whose summary says it runs the attack's
-    update routine per frame; called from battle_spawnSweepPanelEffect right after initializing the AI
-    attack state, i.e. to start its first substep
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:176144
-  - 0x0810B058 ai_attackStepExitOnScratch
-  - 0x0810B244 battle_spawnSweepPanelEffect
-  - 0x0810B13E sub_810B13E
-  reproduce: python3 tools/asmcat.py 0x0810AF30
-  result: 'proposed by hyper/glm-5.3-flash, self_score 4; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c ai_attackStepDispatchSubStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function ai_attackStepDispatchSubStep
+
+    ./wf verify --function ai_attackStepDispatchSubStep --snapshots build-snapshots'
+  result: 'captured calls: 11 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 296 out
+    of domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function ai_attackStepDispatchSubStep
+
+    ./wf verify --function ai_attackStepDispatchSubStep --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 32 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function ai_attackStepDispatchSubStep
+
+    ./wf verify --function ai_attackStepDispatchSubStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810af30 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80EBE00.c
 coverage:
 - battlesweep
 - beastsp
+related:
+- ai_setAttackTargetPanel
 open_questions:
-- what sub_810AF90 (the middle substep handler) does specifically
-- exact structure layout at r7 beyond oAIAttackVars_SubStepIndex offset
+- sub_810AF90 (offset 0x04) has no name yet – likely the sustained-attack animation loop that runs between intro
+  and hitbox.
+- Does the caller increment oAIAttackVars_SubStepIndex by 4 each tick, or does the hitbox handler reset it to 0
+  for a new attack?
+- Are there additional sub-step entries for other Nav attacks, or is this three-entry table fixed for every attack
+  type?
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_810AF30 -> ai_attackStepDispatchSubStep
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_810AF30
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

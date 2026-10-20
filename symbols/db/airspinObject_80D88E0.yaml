@@ -1,0 +1,66 @@
+name: airspinObject_80D88E0
+address: '0x080D88E0'
+kind: function
+status: confirmed
+summary: 'Per-frame tick for the AirSpin battle object: dispatches to the state handler (init / update / destroy)
+  via a jump table, then refreshes the sprite unless time is stopped.'
+interface: battle_airspinObjectTick(r4, r5, r6, r7, r8, r10) -> r5, r8, r9, r10, r11, r12; clobbers r0-r4, r6, r7,
+  lr, all flags
+details: Reads the object's current state byte at r5+oBattleObject_CurState and indexes a three-entry jump table
+  at 0x080D88FC (states 0=init via airspinObject_init_80D8908, 1=update via airspinObject_update_80D8988, 2=destroy
+  via object_genericDestroy). The handler is invoked as a tail-jump (mov lr, pc; bx r1). After the handler returns,
+  the function calls battle_isTimeStop; if the result is Z==1 (time not stopped) it calls object_updateSprite with
+  the possibly-advanced r5 pointer. When time IS stopped the sprite is frozen. The function is the registered tick
+  routine for the AirSpin (spin-blade) chip/projectile object.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c airspinObject_80D88E0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function airspinObject_80D88E0
+
+    ./wf verify --function airspinObject_80D88E0 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function airspinObject_80D88E0
+
+    ./wf verify --function airspinObject_80D88E0 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 37 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function airspinObject_80D88E0
+
+    ./wf verify --function airspinObject_80D88E0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d88e0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 5ebc0898
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- beastsp
+open_questions:
+- Does airspinObject_update_80D8988 change r5 mid-handler, or is the r5 read-back only relevant after destroy?
+- Are there other battle objects that share this exact tick-after-dispatch + time-stop pattern, or is this AirSpin-specific?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

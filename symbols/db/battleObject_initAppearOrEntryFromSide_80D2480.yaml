@@ -1,76 +1,74 @@
 name: battleObject_initAppearOrEntryFromSide_80D2480
 address: '0x080D2480'
 kind: function
-previous_names:
-- sub_80D2480
-status: probable
-summary: Initializes a battle object that materializes by walking in from the field edge, setting up its
-  sprite/sound/velocity/timer/state
-interface: (r5 = battle object ptr) -> side effects only; object now has sprite, shake velocity and CUR_STATE_UPDATE
-  = 4 set
-details: '1. Sets the OBJECT_FLAG_VISIBLE bit (0x02) on the object''s header (ldrb/orr/strb at offsets
-  ~oBattleObject_Header_Flags).
-
-  2. Calls sprite_load(0x80, 0x0C, 0x44) on the object pointed to by r5 to install the appearance/cast-in
-  sprite and anim frames.
-
-  3. Stores 0 into CurAnim/CurAnimCopy and runs sprite_setAnimation, sprite_loadAnimationData, and sprite_hasShadow
-  to bring up the entry anim with shadow.
-
-  4. Sets the sprite''s flip bit from object_getFlip() ^ 1 (so the sprite faces forward against the object''s
-  alliance side).
-
-  5. Calls object_setCoordinatesFromPanels() to refresh pixel X/Y from panel coords, then nudges X16 sideways
-  by 0x40*frontDirection to offset the spawn toward the field edge, and writes an X shake velocity of
-  ±(8<<16) into XVelocity.
-
-  6. Calls object_setPanelsFromCoordinates() to commit the nudged panel coords and sets Timer = 8 frames
-  for this entry phase.
-
-  7. Branches on Param1: passes palette 1 if Param1!=0, else palette 0 to sprite_setPalette.
-
-  8. Plays SFX 0xB0 (entry/appear cue), sets CurState = CUR_STATE_UPDATE (4), then tail-calls sub_80D24F0
-  (the per-frame Update phase for this appearance).
-
-  Whole function is a leaf initializer; no return value to caller. Pop {pc} returns to the parent state
-  machine that queued this entry init.
+status: confirmed
+summary: 'Initializes a battle object''s appear/side-entry animation: loads its wide entry sprite, offsets it off-screen
+  by direction, assigns slide-in velocity, and plays the flash sound before transitioning to the update phase.'
+interface: void battleObject_initAppearOrEntryFromSide_80D2480(void) /* r5 = battle object pointer; outputs r5 r8
+  r9 r10 r11 r12 via shared state-transition tail-call */
+details: 'Sets bit 1 (mask 0x02) of oObjectHeader_Flags to mark the object as in an appear/side-entry state. Loads
+  a 0x80x0xC sprite from palette bank 0x44 via sprite_load, then resets the animation to frame 0 (oBattleObject_CurAnimAndCurAnimCopy)
+  and uploads animation data. Queries sprite_hasShadow (result discarded). Inverts the object''s horizontal flip
+  (object_getFlip ^ 1) to mirror the entry pose. Converts panel coordinates to pixels, then adds an X offset of
+  0x40 * object_getFrontDirection (64 px per direction step) to oBattleObject_X16, placing the sprite at the screen
+  edge. Sets oBattleObject_XVelocity to -dir * 0x80000 (opposite-facing, 16.16 fixed-point, giving a one-pixel-per-frame
+  slide). Recomputes panel occupancy from the shifted coordinates. Writes 8 to oBattleObject_Timer for the appearance
+  duration. Picks palette slot 1 if oBattleObject_Param1 is non-zero, otherwise slot 0. Plays SFX 0xB0 (appear/flash
+  sound). Sets oBattleObject_CurStateActionPhaseAndPhaseInitialized to CUR_STATE_UPDATE and tail-calls sub_80D24F0
+  (shared state-transition dispatcher) which returns the live register set.
 
   '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrb r0,[r5,#oObjectHeader_Flags] / orr r0,#2 / strb r0,[r5,#oObjectHeader_Flags]` sets
-    OBJECT_FLAG_VISIBLE (0x02 in ObjectHeader.inc). - `sprite_load(0x80,0x0C,0x44)` followed by `sprite_setAnimation(0)`
-    and `sprite_loadAnimationData` matches the standard "load+reset+play anim 0" appearance init. - `mov
-    r0,#0x40; mul r1,r0,r0; ldrh r2,[r5,#oBattleObject_X16]; add r2,r2,r1; strh r2,[r5,#oBattleObject_X16]`
-    offsets X16 by ±0x40 panels off the field edge. - `neg r0,r0; mov r1,#8<<16; mul r0,r1,r0; str r0,[r5,#oBattleObject_XVelocity]`
-    stores a 16.16 XVelocity of ±0x80000 for the entry shake. - `strh #8,[r5,#oBattleObject_Timer]` is
-    the 8-frame entry-frame counter. - `mov r0,#CUR_STATE_UPDATE (4)` -> `str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]`
-    flips the state to Update and falls into sub_80D24F0 (named callee''s contract confirms it is the
-    Update handler for this object). - `PlaySoundEffect(0xb0)` plays the cannon "spawn" SFX. - `ldrb r0,[r5,#oBattleObject_Param1];
-    cmp r0,#0; beq loc_80D24DC; mov r0,#1` chooses palette 0 vs 1 based on Param1; sub_BattleObject_Header_Flags
-    -> battle_object_struct begins with Params/Param1..Param4 at offset 4.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s
-  reproduce: 'python3 tools/asmcat.py 0x080D2480
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_initAppearOrEntryFromSide_80D2480
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_initAppearOrEntryFromSide_80D2480
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_initAppearOrEntryFromSide_80D2480
+    ./wf verify --function battleObject_initAppearOrEntryFromSide_80D2480 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 253 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_initAppearOrEntryFromSide_80D2480
 
-    '
-open_questions:
-- What exactly sub_80D24F0 does once running (the matching Update for this entry) is unknown here — it
-  would only be settled by disassembly of that callee. Exact SFX 0xB0's literal name and what object/sprite
-  slot table 0x80/0x0C/0x44 refers to would need a sprite-tables lookup.
-sources:
-- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_initAppearOrEntryFromSide_80D2480 --snapshots build-snapshots'
+  result: 41 compared, 0 differed, 12 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_initAppearOrEntryFromSide_80D2480
+
+    ./wf verify --function battleObject_initAppearOrEntryFromSide_80D2480 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d2480 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f d29ed784
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80D2480 -> battleObject_initAppearOrEntryFromSide_80D2480
-  where: bn6f ceec2432
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- beastsp
+open_questions:
+- Confirm SFX 0xB0 is the standard appear/flash chime.
+- Verify what Param1 controls beyond palette selection (alternate color vs. special variant).
+- Identify sub_80D24F0's full behavior (likely battleObject_setStateAndReturnPhase).
+- The 0x80x0xC sprite dimensions suggest a horizontal entry-flash strip; confirm asset identity.
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

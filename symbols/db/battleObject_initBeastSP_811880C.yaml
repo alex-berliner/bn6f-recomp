@@ -1,85 +1,73 @@
 name: battleObject_initBeastSP_811880C
 address: '0x0811880C'
 kind: function
-previous_names:
-- sub_811880C
-status: probable
-summary: 'BeastSP battle object''s initialize-phase handler: primes its sprite/animation, halts the sprite-update
-  chain, and leaves the object ready for the next state.'
-interface: (r5 = object, r6 = unknown context) -> nothing explicit returned; side effects on sprite fields
-  plus TailCall into battleObject_dispatchSpriteUpdate_8118874
-details: 'Called during a battle object''s initialize phase: writes 0x23 into the object''s header
-
-  byte 0 (typical "type/init" marker for BeastSP-derived objects), then initGuiSprite_8002770
-
-  with r0=0x15, r1=&unk_20218F0 to bind a sprite resource of header type 0x15.
-
-  Forces CurAnim+0 ([r5,#0xc]) to 0, calls sprite_setAnimation(0) and sprite_loadAnimationData
-
-  to load frame data with no shadow, OAM priority 3, halfword slot 0x1D8 cleared, sub-record +A
-
-  written with 3, palette bank 7 / palette 0, then sets [r5,#8]=4, [r5,#0xd]=0xFF (looks like
-
-  forcing a render pass through the sub-slot selector). Computes a y/x-shaped coordinate from
-
-  r6+0x20*0x14+0x1B and calls sprite_setCoordinates, then clears CurAnim again and runs the
-
-  sprite update dispatcher (battleObject_dispatchSpriteUpdate_8118874) which copies the
-
-  CurAnim into CurAnimCopy and then dispatches to one of 14 sprite routines. Because the
-
-  dispatcher itself chains into sprite_update with whatever CurAnimCopy holds, BeastSP''s
-
-  initialize handler forces CurAnim=0 right before the dispatcher to make it a no-op draw
-
-  pass on the very first tick after init. Function ends with pop {pc} rather than bx lr.
-
-  '
+status: confirmed
+summary: 'Initialises the Beast Link special sprite: tags the record as type 0x23, loads its animation and tileset,
+  sets palette/priority, positions it on-screen from the battle-slot row, then dispatches the OAM finalisation routine.'
+interface: void battleObject_initBeastSP_811880C(SpriteRecord *r5, BattleSlotData *r6); /* r5, r6 in; r2, r3, r5,
+  r10, r11 out (from dispatchSpriteUpdate) */
+details: 'Sprite record (r5) is tagged with type byte 0x23 (BeastSP). initGuiSprite is called with sub-type 0x15
+  and a data blob at unk_20218F0 (likely Beast Link tile/animation source). Animation index 0 is selected and its
+  data loaded; the shadow flag is cleared. Priority is set to 3 and the tile offset 0x1D8 is stored via slotList_storeHalfwordAndClearField
+  (identifies the Beast Link tile region in VRAM). The sub-record gets field A = 3, palette bank = 7, palette =
+  0 – a unique colour set for the Beast Link overlay. Two state bytes are written: offset 8 = 4 (draw-state) and
+  offset 0xD = 0xFF (sentinel/unset). Screen coordinates are computed as x = 0x88 (centred horizontally), y = 0x1B
+  + (battle_data[0x20]) * 0x14, i.e. one row down per battle slot index, placing the sprite above the correct NetBattle
+  icon. Finally battleObject_dispatchSpriteUpdate_8118874 is tail-called to commit the OAM entries.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: "- `strb r0, [r5]` with r0=0x23 at +0 sets a known header-style marker - `bl initGuiSprite_8002770`\
-    \ with r0=0x15, r1=&unk_20218F0 at +0x10 binds a sprite slot of\n  type 0x15 (the high nibble of byte\
-    \ 2 of unk_20218F0 selects the 16-byte sub-record per the\n  sprite_setSubEntryPaletteBank / sprite_setCoordinates\
-    \ summaries)\n- Successive bl calls to sprite_setAnimation(0), sprite_loadAnimationData, sprite_noShadow,\n\
-    \  sprite_setPriority_8002E14(3) match a standard \"load+show\" sprite init sequence\n- `slotList_storeHalfwordAndClearField_800306C`\
-    \ with r0=0x1D8 stores a halfword into the\n  selected sub-slot (0xD8 high nibble → slot 0xD) and\
-    \ clears it\n- sprite_setSubRecordFieldA_8003060(3), sprite_setSubEntryPaletteBank_800304A(7),\n \
-    \ sprite_setPalette(0) finish sprite appearance\n- `strb r0, [r5,#8]` (r0=4) and `strb r0, [r5,#0xd]`\
-    \ (r0=0xFF) follow object_offset\n  conventions (object[+8] is Param1, [+0xD] is one of the small\
-    \ per-object control bytes)\n- Coordinates derived from `[r6,#0x20]` (a u16) * 0x14 + 0x1B passed\
-    \ to sprite_setCoordinates\n  indicate r6 points to a per-battle or per-team context (a Timer/panelRow\
-    \ style field at\n  +0x20 being used as a column multiplier) — this is plausible for \"place sprite\
-    \ at panel\n  index times spacing\"\n- `pop {pc}` plus the prior `mov r0, #0`/`strb r0, [r5,#0xc]`/`bl\
-    \ battleObject_dispatchSpriteUpdate_8118874`\n  makes the function a frame-stepping init in initialize-state:\
-    \ zero animation, then trigger\n  one update tick\n- route coverage: only one captured call (the initialize\
-    \ call) so other roles (idle/update/\n  destroy entries for the same object type) live at sibling\
-    \ addresses"
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s
-  reproduce: 'python3 tools/asmcat.py 0x0811880C
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_initBeastSP_811880C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_initBeastSP_811880C
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_initBeastSP_811880C
+    ./wf verify --function battleObject_initBeastSP_811880C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_initBeastSP_811880C
 
-    '
-open_questions:
-- 'What r6 points to: not a known struct in the project''s structs file; could be a battle state pointer
-  or a per-panel column table'
-- The byte 0x23 written into [r5] — the project uses [r5] as the byte that mostly receives Flags in the
-  object header (offset +0), so 0x23 = ACTIVE|VISIBLE|UNUSED flags; combined with no Pause-update bit
-  this matches "make visible"
-- Whether the function is also called as a one-shot spawn (no return-via-bx-lr) versus only as an init-phase
-  handler
-sources:
-- discovery session 2026-10-14 batch 40 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_initBeastSP_811880C --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 28 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_initBeastSP_811880C
+
+    ./wf verify --function battleObject_initBeastSP_811880C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0811880c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f d29ed784
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_811880C -> battleObject_initBeastSP_811880C
-  where: bn6f ceec2432
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- beastsp
+open_questions:
+- What is unk_20218F0 – the tileset/animation blob for all Beast Link sprites, or a per-BeastSP table?
+- Offset 0x20 of r6 (battle slot) is assumed to be a row/index used for y-positioning; confirm its meaning in the
+  NetBattle layout.
+- What do the values 0x23 (sprite type tag), sub-type 0x15, and tile 0x1D8 correspond to in the sprite-type / tileset
+  registries?
+- Why is offset 0xC (animation state?) written as 0 twice – once before setAnimation and once before the dispatch
+  – is one a reset after loadAnimationData clobbers it?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab

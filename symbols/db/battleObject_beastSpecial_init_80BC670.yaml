@@ -1,85 +1,75 @@
 name: battleObject_beastSpecial_init_80BC670
 address: '0x080BC670'
 kind: function
-previous_names:
-- sub_80BC670
-status: probable
-summary: CUR_STATE_INITIALIZE handler for a beast's Special-type Attack object — loads chip sprite/palette,
-  computes spawn X/Y from panel and a per-kind Y-offset table, kicks the name popup and a SpecialUse flag,
-  then transitions to CUR_STATE_UPDATE.
-interface: (r5 = ptr BattleObject) -> r0 = 0 ; writes object fields (NameID, sprite, anim, palette, coords,
-  ExtraVars[0..0x14]) and sets CurState = CUR_STATE_UPDATE
-details: '1. NameID = Param1 + 0x1A0 (battle_objectNameIdToPopupHandler_8010DD0 will resolve the popup
-  against this base).
-
-  2. Looks up the chip class via chip_class_lookup_800FC9E(Param1, 0) and, ignoring that return, loads
-  the chip frame sprite at palette index 0x80 with sprite_load, then sprite_loadAnimationData. sprite_removeShadow
-  and OR''ing flag bit 0x02 in oObjectHeader_Flags makes the chip sprite visible without shadow.
-
-  3. CurAnim/CurAnimCopy cleared, then sprite_setAnimation(0); another sprite_loadAnimationData ensures
-  frame 0 is current.
-
-  4. sprite_setPalette(4) recolors the chip; object_getFlip + sprite_setFlip apply alliance-based mirroring.
-
-  5. A "no-clip" sentinel 0xFFFFFFFF is stored at ExtraVars[0x68-...] and a "coordinate helper" initialized
-  via svc 6 (random?): ExtraVars[0x64] = 0x280000 + (0x62 field * something) is rolled into ExtraVars+4
-  as a per-instance spawn offset.
-
-  6. object_setCoordinatesFromPanels repositions X/Y on grid; then object_getFrontDirection × X-offset
-  × grid-step is added to X, and (4 - PanelY) × 0x180000 is added to Y, with the same delta written into
-  Z (so the chip hovers above its panel by the offset). ExtraVars[0xC] remembers the per-frame Y lift.
-
-  7. A 7-entry u32 dispatch table (byte_80BC758 at 0x80BC758, "off_80BC754") indexed by Param1 provides
-  a per-kind base Z-lift in 16.16 fixed point; that value is stored into ExtraVars[0x10] and added to
-  Z. The table is small (entries 6..6 with the only meaningful values: 0, 8, 4, 0, 0, -8) — matching Beast-parameterized
-  Special chips whose Z lift varies with the chip class.
-
-  8. battle_objectNameIdToPopupHandler_8010DD0 pops up the chip name. If Param1 == 6 a flag = 1 is written
-  into ExtraVars[0] of the popup handler''s returned object — looks like "this is the Beast-Out Special"
-  flag.
-
-  9. sprite_forceWhitePalette, then ExtraVars[0x14] = 0 and CurStateActionPhaseAndPhaseInitialized = CUR_STATE_UPDATE
-  (0x04), so the per-frame updater takes over.
+status: confirmed
+summary: 'Initializes the visual popup sprite for a BeastLink special chip on the battle field: loads its chip-class
+  sprite and animation, sets a randomly-jittered panel position with a pop-in lift, creates the name popup, and
+  enters the update phase.'
+interface: void battleObject_beastSpecialPopup_init_80BC670(BattleObject *obj /* r5 */); // clobbers r0-r3,r6-r7,lr;
+  reads/writes obj, may reassign obj to popup child in r5; r8-r12 passed through
+details: 'r5 is the BeastLink-special battle object. The function reads oBattleObject_Param1 (chip-class index)
+  to compute the sprite name-table ID (index + 0x1A0) stored at oBattleObject_NameID, then calls chip_class_lookup_800FC9E
+  to get tile/animation offsets and loads sprite tiles via sprite_load (subclass 0x80). It sets flag bit 1 on oObjectHeader_Flags,
+  resets CurAnim/CurAnimCopy to 0, selects animation 0 with palette 4, and copies facing from the parent object.
+  A GBA BIOS Random call (SVC 6, range 0x280000, seed = panelCol at +0x62) produces a jitter value stored at ExtraVars+4;
+  the resulting X offset is jitter*panelCol*frontDir added to oBattleObject_X after anchoring to the panel grid.
+  Y and Z receive a pop-in lift of (4 - panelY)*0x180000, and a per-chip Z bias is looked up from the table at byte_80BC758
+  (indexed by Param1*4) and added to Z. battle_objectNameIdToPopupHandler_8010DD0 creates the name-popup child object;
+  if Param1==6 (a specific chip class), the popup''s ExtraVars[0] is set to 1. Finally the sprite is forced to a
+  white palette (flash/entry effect), ExtraVars+0x14 is zeroed, and the state machine is advanced to CUR_STATE_UPDATE.
 
   '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- ldrb r0, [r5,#oBattleObject_Param1]; add r0,r0,#0x1A0; strh r0,[r5,#oBattleObject_NameID]  —
-    derives a base popup NameID from Param1 - bl chip_class_lookup_800FC9E with Param1 and r1=0 → its
-    return feeds the chip sprite db - mov r0,#0x80; bl sprite_load + bl sprite_loadAnimationData + bl
-    sprite_removeShadow + orr #2 → composing a chip sprite without shadow - mov r0,#0 / bl sprite_setAnimation
-    + bl sprite_loadAnimationData forces animation frame 0 - mov r0,#4; bl sprite_setPalette sets palette
-    slot 4 (beast palette) - bl object_getFlip + bl sprite_setFlip → facing flip from alliance XOR override
-    - svc 6 (BIOS Random) feeding ExtraVars+4; the (PanelY→Y) term (4-PanelY)*0x180000 is the standard
-    battle Z-lift formula for chips - ldr r0,[r5,#oBattleObject_ExtraVars+0xc] later re-reads that lift
-    into Z - ldrb r0,[r5,#oBattleObject_Param1]; lsl r0,r0,#2; ldr r0,[r1,r0] with off_80BC754 = byte_80BC758
-    — 7-entry Param1 → Z-base table - cmp r1,#6; bne loc_80BC718; mov r1,#1; str r1,[r0,#oBattleObject_ExtraVars]
-    — "Param1==6 marks Beast-Out Special" sentinel - bl sprite_forceWhitePalette standard chip initialization
-    - mov r0,#CUR_STATE_UPDATE; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized] — finalize
-    Update state'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (4 attempt(s), run convert-20261020-170706);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s
-  reproduce: 'python3 tools/asmcat.py 0x080BC670
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 110' --file leaves_farm_110.c battleObject_beastSpecial_init_80BC670
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function battleObject_beastSpecial_init_80BC670
 
-    '
-  result: the body read as described above
-  note: 'Proposed name (pending rename): battleObject_beastSpecial_init_80BC670
+    ./wf verify --function battleObject_beastSpecial_init_80BC670 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 272 out of
+    domain (verify run convert-20261020-170706-verify-4)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function battleObject_beastSpecial_init_80BC670
 
-    '
-open_questions:
-- The svc 6 "random" target is being placed into ExtraVars+4 then immediately squared back through X-
-  and Y-mul; the exact meaning (telegraph seed? pop animation?) is not determined from the assembly. Settling
-  it needs the surrounding Beast Special FX behavior in-game or decompiled battle FX.
-- Which 7 Param1 values correspond to which chip is not derivable from this function alone.
-sources:
-- discovery session 2026-10-14 batch 38 (outside model minimax/MiniMax-M3)
+    ./wf verify --function battleObject_beastSpecial_init_80BC670 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 5 out of domain (verify run convert-20261020-170706-verify-4)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function battleObject_beastSpecial_init_80BC670
+
+    ./wf verify --function battleObject_beastSpecial_init_80BC670 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-170706-verify-4)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080bc670 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp a9c5eab
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 7db59311
+  where: bn6f 5ebc0898
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80BC670 -> battleObject_beastSpecial_init_80BC670
-  where: bn6f 1a2beb61
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31.c
+coverage:
+- beastsp
+open_questions:
+- What chip class does Param1==6 correspond to, and what does popup ExtraVars[0]=1 control?
+- The table at byte_80BC758 has mostly zeros; are the non-zero entries for specific BeastLink specials only?
+- Is the white-palette force a flash-in effect or a sustained highlight during chip animation?
+- What does ExtraVars+0x14 (cleared here) control in the update phase?
+sources:
+- tools/wf run convert-20261020-170706
+- recomp a9c5eab
