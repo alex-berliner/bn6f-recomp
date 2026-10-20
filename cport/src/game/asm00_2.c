@@ -356,6 +356,39 @@ Next battle_dispatchActorAIByTypeAndAIIdx_800F394(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_dispatchActorAIHandlers ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool c, v; } call_indexByActorTypeAndAIIdxThenDispatch_800F420_result;
+/* register form: generated wrapper: indexByActorTypeAndAIIdxThenDispatch_800F420 has no typed C interface yet */
+static inline call_indexByActorTypeAndAIIdxThenDispatch_800F420_result call_indexByActorTypeAndAIIdxThenDispatch_800F420(u32 r0, u32 r4, u32 r5, u32 r8) {
+    R0 = r0;
+    R4 = r4;
+    R5 = r5;
+    R8 = r8;
+    GUEST_CALL(indexByActorTypeAndAIIdxThenDispatch_800F420);
+    return (call_indexByActorTypeAndAIIdxThenDispatch_800F420_result){ R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/*
+ * battle_dispatchActorAIHandlers is a pure thunk: it points r0 at the AI
+ * handler jump table (off_800F3DC) and tail-calls the dispatcher, which
+ * looks up the handler for the current actor type/AI index and runs it.
+ * Everything it "returns" (r3-r12, C, V) is simply what the dispatcher
+ * leaves behind, so nothing needs to be copied through here.
+ */
+
+/* Tail-call target: runs the per-actor AI handler selected from the table.
+ * r0 = handler table, r4/r5/r8 = dispatcher context values, guest r10 passes
+ * through untouched inside the wrapper. All results stay in the guest state. */
+static void dispatch_actor_ai_handlers(u32 handler_table, u32 ctx_r4, u32 ctx_r5, u32 ctx_r8) {
+    call_indexByActorTypeAndAIIdxThenDispatch_800F420(handler_table, ctx_r4, ctx_r5, ctx_r8);
+}
+
+Next battle_dispatchActorAIHandlers(void) {
+    dispatch_actor_ai_handlers(A_off_800F3DC, R4, R5, R8);
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_dispatchByTypeAndIndex_800F3E8 ── */
 /* ai_dispatchByTypeAndIndex_800F3E8: AI dispatch thunk.
  *
@@ -1609,6 +1642,52 @@ Next BasicBattleObjectInitialize(void) {
     ST16(object + oBattleObject_AllianceAndDirectionFlip, R1);
 
     ST32(object + oBattleObject_RelatedObject1Ptr, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_dispatchBPwrAtkHandler ── */
+/* Battle "B+power attack" AI dispatcher.
+ *
+ * r0 holds the attack step id; it indexes a table of per-step handler routines
+ * (A_off_80117D4) built into the battle AI. Before the handler runs we hand it:
+ *   r5 = the acting battle object,
+ *   r6 = its AI data block,
+ *   r7 = the attack-variable area inside that AI data block (aiData + oAIData_AttackVars),
+ * with r10 and everything else untouched. r0 itself is consumed by the table
+ * lookup: the handler receives the table entry (its own Thumb address) in r0.
+ *
+ * The handler's register side effects belong to our caller: r0 is the handler's
+ * return value, r5/r8-r12 flow through, and r6/r7 are restored by the entry
+ * push/pop, so the dispatcher preserves the caller's r6/r7.
+ */
+
+/* register form: the handler is reached through a jump-table address
+ * (mov lr, pc; bx r0), and its r5..r12 results must flow straight through to
+ * the dispatcher's caller, so the guest registers are set up and left in place
+ * around the call. r6/r7 are restored afterwards, matching the original's
+ * push {r6,r7} / pop {r6,r7}. */
+static u32 call_attack_handler(u32 handler, u32 object, u32 aiData,
+                               u32 attackVars, u32 callerR6, u32 callerR7) {
+    R0 = handler;          /* the handler finds its own address in r0 */
+    R5 = object;
+    R6 = aiData;
+    R7 = attackVars;
+    GUEST_CALL_ADDR(handler);
+    R6 = callerR6;
+    R7 = callerR7;
+    return R0;
+}
+
+/* Run attack step `step` for battle `object`; returns the handler's r0. */
+static u32 dispatch_bpwr_attack(u32 step, u32 object, u32 callerR6, u32 callerR7) {
+    u32 aiData     = LD32(object + oBattleObject_AIDataPtr);
+    u32 attackVars = aiData + oAIData_AttackVars;
+    u32 handler    = LD32(A_off_80117D4 + (step << 2));
+    return call_attack_handler(handler, object, aiData, attackVars, callerR6, callerR7);
+}
+
+Next battle_dispatchBPwrAtkHandler(void) {
+    R0 = dispatch_bpwr_attack(R0, R5, R6, R7);
     RETURN_TO_CALLER();
 }
 

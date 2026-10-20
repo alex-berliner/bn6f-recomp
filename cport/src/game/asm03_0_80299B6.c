@@ -65,6 +65,68 @@ Next battle_getPrepStatus_80299B6(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleTutorial_getMessageId ── */
+/* Battle tutorial message chooser.
+ * r5 points at the tutorial state block:
+ *   +0x07 = tutorial kind, +0x17 = a "already seen / done" flag byte.
+ * Returns which text message to show:
+ *   kind 0x0B          -> 0    (no message)
+ *   kind 0x0A          -> 0x25 if the flag is clear, else 0
+ *   any other kind     -> 0x24 if the flag is clear, else 0
+ */
+static u32 battleTutorial_pick_message(u32 state) {
+    u32 kind = LD8(state + 7);
+
+    if (kind == 0x0B)
+        return 0;
+
+    if (kind == 0x0A) {
+        if (LD8(state + 0x17) != 0)
+            return 0;
+        return 0x25;
+    }
+
+    if (LD8(state + 0x17) != 0)
+        return 0;
+    return 0x24;
+}
+
+/* r5 = tutorial state pointer, r0 = message id */
+Next battleTutorial_getMessageId(void) {
+    R0 = battleTutorial_pick_message(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_tutorialCheckEmotionMsg ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3, r4, r5, r6; } call_battle_getActorEmotion_802A564_result;
+/* register form: generated wrapper: battle_getActorEmotion_802A564 has no typed C interface yet */
+static inline call_battle_getActorEmotion_802A564_result call_battle_getActorEmotion_802A564(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_getActorEmotion_802A564);
+    return (call_battle_getActorEmotion_802A564_result){ R2, R3, R4, R5, R6 };
+}
+
+/* Check whether a tutorial emotion message should be shown for the battle
+ * actor whose object is in r5: only when its byte at +7 is 0x0B and
+ * battle_getActorEmotion reports no current emotion (r3 == 0) does the
+ * caller take the tutorial branch (returns 0x26, the message/script id);
+ * otherwise it returns 0. r2/r4/r5/r6 are only ever produced by the callee
+ * on the branch that calls it, so the wrapper leaves them in place. */
+static u32 tutorialCheckEmotionMsg(u32 actor) {
+    if (LD8(actor + 7) != 0xB)
+        return 0;
+    if (call_battle_getActorEmotion_802A564(actor).r3 != 0)
+        return 0;
+    return 0x26;
+}
+
+/* battle_tutorialCheckEmotionMsg(r5 = actor object, r10 = battle context) -> r0 */
+Next battle_tutorialCheckEmotionMsg(void) {
+    R0 = tutorialCheckEmotionMsg(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── firstBattleTutorial_step_8029A56 ── */
 /* register form: calls battle_getObjectStatusCode_8029AAA outside this file, which has no typed C interface yet */
 static u32 sub_8029AAA_register_form(void) {

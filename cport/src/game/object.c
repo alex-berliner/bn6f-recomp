@@ -2305,6 +2305,48 @@ Next sub_800E994(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_slowTickTimers ── */
+/* Slow-tick the battle timers: halve each per-hit collision timer in the
+ * object's collision data (offsets 0x82..0x8A, rounding up), and bank the
+ * lost odd ticks into the master slow timer at offset 0x80.
+ * Returns 1 when no ticks were lost this tick (master total unchanged),
+ * else 0. The collision data pointer is left in r2; r4 is preserved. */
+typedef struct {
+    u32 unchanged; /* r0: master slow timer kept its previous value */
+    u32 collPtr;   /* r2: the object's collision data pointer */
+} SlowTickResult;
+
+static SlowTickResult battle_slowTickTimers_typed(u32 self)
+{
+    SlowTickResult out;
+    u32 coll = LD32(self + oBattleObject_CollisionDataPtr);
+
+    u32 total = LD16(coll + 0x80);
+    u32 oldTotal = total;
+
+    for (u32 off = 0x82; off != 0x8C; off += 2) {
+        u32 half = (LD16(coll + off) + 1) >> 1; /* halve, rounding up */
+        total -= half;
+        ST16(coll + off, half);
+    }
+
+    ST16(coll + 0x80, total);
+
+    out.unchanged = (total == oldTotal);
+    out.collPtr = coll;
+    return out;
+}
+
+/* inputs: r5 = battle object; outputs: r0 = "unchanged" flag, r2 = data ptr.
+ * r4 is preserved (the original saves and restores it), so the adapter
+ * leaves it untouched. */
+Next battle_slowTickTimers(void) {
+    SlowTickResult res = battle_slowTickTimers_typed(R5);
+    R0 = res.unchanged;
+    R2 = res.collPtr;
+    RETURN_TO_CALLER();
+}
+
 /* ── object_clearInvulnerableTime ── */
 /* object_clearInvulnerableTime(r5 = battle object):
  * Reset the object's post-hit invulnerability counter in its collision data

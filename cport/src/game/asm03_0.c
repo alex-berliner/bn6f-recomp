@@ -8,6 +8,63 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── battle_beastJumpLockOn_8026554 ── */
+/*
+ * Beast Out jump lock-on dispatch (0x08026554).
+ *
+ * The caller supplies a panel coordinate (r0 = x, r1 = y) and a check id in
+ * r2.  If the coordinate is inside the 6x3 playfield the check id selects a
+ * handler from the game's jump table; otherwise entry 0 (the "own panel"
+ * lookup) runs.  The handler is entered with the caller's live register state
+ * -- the dispatch leaves r2 = handler address and r3 = jump table address, and
+ * copies the panel coordinates into r6/r7 for the handlers to read -- and its
+ * results in r0, r1, r5 and r8-r12 are this function's outputs.  r6/r7 are
+ * restored to the caller's values on return.
+ */
+
+/* Jump table at jt_8026584: one handler address per lock-on check id. */
+#define LOCKON_JUMP_TABLE A_jt_8026584
+
+/* Run the lock-on check selected by `mode` for panel (x, y).
+ *
+ * register form: the handler is reached through the game's own jump table and
+ * must be entered with the live register state (r0/r1 = coordinates, r2 = its
+ * own entry address, r3 = table address, r6/r7 = coordinates, r4/r5 untouched)
+ * and leaves its results in r0, r1, r5 and r8-r12, which this function
+ * outputs.  No typed call can pass that state through, so the guest registers
+ * are driven directly around the single indirect call.
+ */
+static void run_lockon_check(u32 x, u32 y, u32 mode) {
+    /* Coordinates outside the playfield fall back to check 0. */
+    if ((s32)x < 1 || (s32)x > 6 || (s32)y < 1 || (s32)y > 3)
+        mode = 0;
+
+    u32 saved_r6 = R6;          /* caller's r6/r7, restored after the call */
+    u32 saved_r7 = R7;
+    u32 table = LOCKON_JUMP_TABLE;
+    u32 handler = LD32(table + mode * 4);
+
+    R0 = x;                     /* handler arguments: r0/r1 = panel coords   */
+    R1 = y;
+    R6 = x;                     /* handlers read the coords from r6/r7       */
+    R7 = y;
+    R2 = handler;               /* dispatch leaves r2 = handler address ...  */
+    R3 = table;                 /* ... and r3 = jump table address           */
+
+    GUEST_CALL_ADDR(handler);
+
+    R6 = saved_r6;
+    R7 = saved_r7;
+}
+
+/* battle_beastJumpLockOn_8026554(r0 = panel x, r1 = panel y, r2 = check id).
+ * Everything the selected handler leaves in r0, r1, r5 and r8-r12 is already
+ * in the output registers, so there is nothing to write back here. */
+Next battle_beastJumpLockOn_8026554(void) {
+    run_lockon_check(R0, R1, R2);
+    RETURN_TO_CALLER();
+}
+
 /* ── camera_isObjectInFrontOfCamera_80269D0 ── */
 /* camera_isObjectInFrontOfCamera_80269D0: ask battle_GetObjectByteAt14_800A9E2 for a status value and reduce it to a boolean:
  * r0 = 1 if any of bits 0/2 (mask 5) is set, otherwise r0 = 0.
@@ -2055,6 +2112,47 @@ Next nullsub_14(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_queueGfxVariant ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3, r4, r5, r6, r7; bool z, n, c, v; } call_QueueEightWordAlignedGFXTransfer_result_battle_queueGfxVariant;
+/* register form: generated wrapper: QueueEightWordAlignedGFXTransfer has no typed C interface yet */
+static inline call_QueueEightWordAlignedGFXTransfer_result_battle_queueGfxVariant call_QueueEightWordAlignedGFXTransfer_battle_queueGfxVariant(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+    return (call_QueueEightWordAlignedGFXTransfer_result_battle_queueGfxVariant){ R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* battle_queueGfxVariant (0x080282AE)
+ * Queues a 0x100-byte graphics transfer for a battle object. The source is
+ * byte_86E79CC, or byte_86E79CC+0x100 when the object's byte at +7 is nonzero
+ * (the object uses the second variant of the graphics). The destination
+ * pointer arrives in r1; r4 points to the battle object.
+ * Everything except the source selection is delegated to
+ * QueueEightWordAlignedGFXTransfer, whose r3/r4/r7 results and flags are the
+ * outputs of this function as well. */
+static call_QueueEightWordAlignedGFXTransfer_result_battle_queueGfxVariant queue_battle_gfx(u32 dest, u32 object) {
+    u32 src = A_byte_86E79CC;
+
+    if (LD8(object + 7) != 0)
+        src += 0x100;
+
+    return call_QueueEightWordAlignedGFXTransfer_battle_queueGfxVariant(src, dest, 0x100);
+}
+
+/* battle_queueGfxVariant(r1 = dest, r4 = battle object, lr) -> r3 r4 r7 (+ nz c v) */
+Next battle_queueGfxVariant(void) {
+    call_QueueEightWordAlignedGFXTransfer_result_battle_queueGfxVariant queued = queue_battle_gfx(R1, R4);
+
+    R3 = queued.r3;
+    R4 = queued.r4;
+    R7 = queued.r7;
+    /* nz/c/v are whatever QueueEightWordAlignedGFXTransfer left behind; the
+     * wrapper call above already produced them, so nothing to set here. */
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_endActionSetup_8028310 ── */
 /* battle_endActionSetup_8028310: apply the two standard "end of battle action" setup calls.
  * First resets something with the value 0x1FF, then triggers action 0x1D.
@@ -2418,6 +2516,82 @@ static void do_palette_gfx_and_sheets(u32 state) {
 
 Next beastout_QueuePaletteGFXAndSheets_80286D4(void) {
     do_palette_gfx_and_sheets(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── beastout_loadSelectionScreenChipUseGfx ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5, r6, r7; } call_loadOneSpriteTileRow_80287D2_result;
+/* register form: generated wrapper: loadOneSpriteTileRow_80287D2 has no typed C interface yet */
+static inline call_loadOneSpriteTileRow_80287D2_result call_loadOneSpriteTileRow_80287D2(void) {
+    GUEST_CALL(loadOneSpriteTileRow_80287D2);
+    return (call_loadOneSpriteTileRow_80287D2_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r3, r4, r5, r6, r7; } call_QueueEightWordAlignedGFXTransfer_result_beastout_loadSelectionScreenChipUseGfx;
+/* register form: generated wrapper: QueueEightWordAlignedGFXTransfer has no typed C interface yet */
+static inline call_QueueEightWordAlignedGFXTransfer_result_beastout_loadSelectionScreenChipUseGfx call_QueueEightWordAlignedGFXTransfer_beastout_loadSelectionScreenChipUseGfx(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+    return (call_QueueEightWordAlignedGFXTransfer_result_beastout_loadSelectionScreenChipUseGfx){ R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r0; } call_getLocOfActiveChips_8027E1C_result_beastout_loadSelectionScreenChipUseGfx;
+/* register form: generated wrapper: getLocOfActiveChips_8027E1C has no typed C interface yet */
+static inline call_getLocOfActiveChips_8027E1C_result_beastout_loadSelectionScreenChipUseGfx call_getLocOfActiveChips_8027E1C_beastout_loadSelectionScreenChipUseGfx(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(getLocOfActiveChips_8027E1C);
+    return (call_getLocOfActiveChips_8027E1C_result_beastout_loadSelectionScreenChipUseGfx){ R0 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7; } call_beastout_LoadSelectionScreenSpriteSheets_802869E_result;
+/* register form: generated wrapper: beastout_LoadSelectionScreenSpriteSheets_802869E has no typed C interface yet */
+static inline call_beastout_LoadSelectionScreenSpriteSheets_802869E_result call_beastout_LoadSelectionScreenSpriteSheets_802869E(void) {
+    GUEST_CALL(beastout_LoadSelectionScreenSpriteSheets_802869E);
+    return (call_beastout_LoadSelectionScreenSpriteSheets_802869E_result){ R2, R3, R4, R5, R6, R7 };
+}
+
+/* Beast-out selection screen: load the chip-use graphics.
+ *
+ * The original queues two GFX DMA transfers and then reloads the
+ * selection-screen sprite sheets:
+ *   1. loadOneSpriteTileRow_80287D2 stages one tile row of chip-use art,
+ *   2. that staged row is queued to the VRAM tile area at 0x6009560,
+ *   3. the 0x20-byte icon sheet of the currently selected chip (slot 11 in
+ *      the active-chip list, byte at +6 = chip index) is staged in IWRAM
+ *      and queued as a second transfer,
+ *   4. beastout_LoadSelectionScreenSpriteSheets_802869E finishes by
+ *      reloading the sprite sheets.
+ *
+ * All of r2-r7 are left behind by the last callee, and the intermediates
+ * flow through the guest registers the wrappers preserve, so the typed
+ * function itself returns nothing.
+ */
+static void beastout_loadSelectionScreenChipUseGfx_typed(void) {
+    /* Stage the chip-use tile row that gets transferred below. */
+    call_loadOneSpriteTileRow_80287D2();
+
+    /* Queue the staged tile row: src byte_8723034 -> VRAM 0x6009560, 0x540 bytes. */
+    call_QueueEightWordAlignedGFXTransfer_beastout_loadSelectionScreenChipUseGfx(A_byte_8723034, 0x6009560, 0x540);
+
+    /* Look up the selected chip in the active-chip list (kind 0xB) and read
+     * its index from offset 6; each icon sheet is 0x20 bytes. */
+    u32 chipList = call_getLocOfActiveChips_8027E1C_beastout_loadSelectionScreenChipUseGfx(0xB).r0;
+    u32 chipIndex = LD8(chipList + 6);
+    u32 iconSrc = A_dword_8725814 + chipIndex * 0x20;
+
+    /* Queue the selected chip's icon sheet: iconSrc -> IWRAM unk_3001AA0, 0x20 bytes. */
+    call_QueueEightWordAlignedGFXTransfer_beastout_loadSelectionScreenChipUseGfx(iconSrc, A_unk_3001AA0, 0x20);
+
+    /* Reload the selection-screen sprite sheets on top of the new graphics. */
+    call_beastout_LoadSelectionScreenSpriteSheets_802869E();
+}
+
+/* beastout_loadSelectionScreenChipUseGfx: - -> r2 r3 r4 r5 r6 r7 */
+Next beastout_loadSelectionScreenChipUseGfx(void) {
+    beastout_loadSelectionScreenChipUseGfx_typed();
     RETURN_TO_CALLER();
 }
 

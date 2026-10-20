@@ -128,6 +128,101 @@ Next battleObject_initVisualsFromRelatedObject(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_stepSprite_80B86A4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: battleObject_copyCoordsFromRelatedObject_80B8800 has no typed C interface yet */
+static inline void call_battleObject_copyCoordsFromRelatedObject_80B8800_battleObject_stepSprite_80B86A4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_copyCoordsFromRelatedObject_80B8800);
+}
+
+/* register form: generated wrapper: battleObject_clampCurAnim_80B8810 has no typed C interface yet */
+static inline void call_battleObject_clampCurAnim_80B8810_battleObject_stepSprite_80B86A4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_clampCurAnim_80B8810);
+}
+
+/* register form: generated wrapper: battle_getStateUnk5c_800139A has no typed C interface yet */
+static inline u32 call_battle_getStateUnk5c_800139A(void) {
+    GUEST_CALL(battle_getStateUnk5c_800139A);
+    return R0;
+}
+
+typedef struct { u32 r5; } call_battleObject_stepSprite_80B86C4_result;
+/* register form: generated wrapper: battleObject_stepSprite_80B86C4 has no typed C interface yet */
+static inline call_battleObject_stepSprite_80B86C4_result call_battleObject_stepSprite_80B86C4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_stepSprite_80B86C4);
+    return (call_battleObject_stepSprite_80B86C4_result){ R5 };
+}
+
+/* battleObject_stepSprite_80B86A4: advance a battle object's sprite one step.
+ *
+ * First syncs the object's coordinates with the related object it follows and
+ * clamps its current animation. Then reads the battle state word: the original
+ * does "lsr r0, r0, #2" and branches on the carry it produces, which is bit 1
+ * of the state word (LSR #2 shifts bit 1 into the carry). When that bit is
+ * set, the object's action is interrupted — the action is forced to 4 with a
+ * fresh phase counter — and the inner sprite stepper runs to update it. */
+static u32 battleObject_stepSprite_battleObject_stepSprite_80B86A4(u32 obj) {
+    call_battleObject_copyCoordsFromRelatedObject_80B8800_battleObject_stepSprite_80B86A4(obj);
+    call_battleObject_clampCurAnim_80B8810_battleObject_stepSprite_80B86A4(obj);
+
+    u32 state = call_battle_getStateUnk5c_800139A();
+
+    /* carry of LSR #2 = bit 1 of the state word */
+    if (state & 2) {
+        ST8(obj + oBattleObject_CurAction, 4);
+        ST16(obj + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+        obj = call_battleObject_stepSprite_80B86C4(obj).r5;
+    }
+    return obj;
+}
+
+/* inputs: r5 (object; r10 is read internally by battle_getStateUnk5c's wrapper)
+ * outputs: r5 (possibly updated by the inner stepper) */
+Next battleObject_stepSprite_80B86A4(void) {
+    R5 = battleObject_stepSprite_battleObject_stepSprite_80B86A4(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_stepSprite_80B86C4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: battleObject_copyCoordsFromRelatedObject_80B8800 has no typed C interface yet */
+static inline void call_battleObject_copyCoordsFromRelatedObject_80B8800_battleObject_stepSprite_80B86C4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_copyCoordsFromRelatedObject_80B8800);
+}
+
+/* register form: generated wrapper: battleObject_clampCurAnim_80B8810 has no typed C interface yet */
+static inline void call_battleObject_clampCurAnim_80B8810_battleObject_stepSprite_80B86C4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_clampCurAnim_80B8810);
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5; } call_battleObject_stepSpriteIfAliveAndUnfrozen_80B881E_result;
+/* register form: generated wrapper: battleObject_stepSpriteIfAliveAndUnfrozen_80B881E has no typed C interface yet */
+static inline call_battleObject_stepSpriteIfAliveAndUnfrozen_80B881E_result call_battleObject_stepSpriteIfAliveAndUnfrozen_80B881E(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_stepSpriteIfAliveAndUnfrozen_80B881E);
+    return (call_battleObject_stepSpriteIfAliveAndUnfrozen_80B881E_result){ R0, R1, R2, R3, R4, R5 };
+}
+
+/* Advance one sprite step for a battle object: first sync its coordinates
+ * with the object it is attached to, clamp the current animation frame,
+ * then run the sprite step if the object is alive and not frozen.
+ * Returns the (possibly updated) object pointer in r5. */
+static u32 battleObject_stepSprite_battleObject_stepSprite_80B86C4(u32 obj, u32 r10) {
+    call_battleObject_copyCoordsFromRelatedObject_80B8800_battleObject_stepSprite_80B86C4(obj);
+    call_battleObject_clampCurAnim_80B8810_battleObject_stepSprite_80B86C4(obj);
+    return call_battleObject_stepSpriteIfAliveAndUnfrozen_80B881E(obj).r5;
+}
+
+Next battleObject_stepSprite_80B86C4(void) {
+    R5 = battleObject_stepSprite_battleObject_stepSprite_80B86C4(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_copyCoordsFromRelatedObject_80B8800 ── */
 /* Copy the three position/coordinate words (offset 0x34) from the related
  * battle object into this one. r5 = pointer to this battle object. */
@@ -164,6 +259,203 @@ static void battle_object_clamp_cur_anim(u32 self) {
 /* battleObject_clampCurAnim_80B8810(r5 = battle object) -> nothing */
 Next battleObject_clampCurAnim_80B8810(void) {
     battle_object_clamp_cur_anim(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_stepSpriteIfAliveAndUnfrozen_80B881E ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; bool z, n; } call_battle_isPaused_result;
+/* register form: generated wrapper: battle_isPaused has no typed C interface yet */
+static inline call_battle_isPaused_result call_battle_isPaused(void) {
+    GUEST_CALL(battle_isPaused);
+    return (call_battle_isPaused_result){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3, r5; } call_object_updateSpritePaused_result;
+/* register form: generated wrapper: object_updateSpritePaused has no typed C interface yet */
+static inline call_object_updateSpritePaused_result call_object_updateSpritePaused(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateSpritePaused);
+    return (call_object_updateSpritePaused_result){ R1, R2, R3, R5 };
+}
+
+/* battleObject_stepSpriteIfAliveAndUnfrozen_80B881E
+ *
+ * Advances a battle object's sprite animator by one step, but only when it is
+ * actually allowed to move:
+ *   - the battle must not be paused,
+ *   - the object's related object must still be alive (HP != 0),
+ *   - its collision ObjectFlags1 must not carry one of the bits in
+ *     STEP_BLOCK_FLAGS_MASK (frozen/hidden states that stop the animation).
+ *
+ * r0 returns 1 when the animator was stepped, 0 otherwise.  r1/r3 leave as the
+ * original leaves them: r1 is the flag mask when the mask test bails out and
+ * otherwise the value left by the last callee run; r3 is the related-object
+ * pointer once it has been loaded, and the incoming value before that.  r2 and
+ * r5 are only ever written by the callees themselves, r4 is untouched. */
+
+#define STEP_BLOCK_FLAGS_MASK 0x80110C00u /* ObjectFlags1 bits that block the sprite step */
+
+typedef struct {
+    u32 r0;
+    u32 r1;
+    u32 r3;
+} SpriteStepRegs;
+
+static SpriteStepRegs battleObject_stepSpriteIfAliveAndUnfrozen(u32 objectPtr, u32 r3In) {
+    SpriteStepRegs out;
+
+    call_battle_isPaused_result paused = call_battle_isPaused();
+    if (!paused.z) {
+        /* battle is paused: leave the sprite alone entirely */
+        out.r0 = 0;
+        out.r1 = paused.r1;
+        out.r3 = r3In;
+        return out;
+    }
+
+    u32 related = LD32(objectPtr + oBattleObject_RelatedObject1Ptr);
+    if (LD16(related + oBattleObject_HP) == 0) {
+        /* the object is dead: no step */
+        out.r0 = 0;
+        out.r1 = paused.r1;
+        out.r3 = related;
+        return out;
+    }
+
+    u32 collision = LD32(related + oBattleObject_CollisionDataPtr);
+    u32 flags1 = LD32(collision + oCollisionData_ObjectFlags1);
+    if ((flags1 & STEP_BLOCK_FLAGS_MASK) != 0) {
+        /* frozen/hidden flag set: no step (r1 keeps the tst mask) */
+        out.r0 = 0;
+        out.r1 = STEP_BLOCK_FLAGS_MASK;
+        out.r3 = related;
+        return out;
+    }
+
+    /* all clear: run the sprite animator for this object */
+    call_object_updateSpritePaused_result stepped = call_object_updateSpritePaused(objectPtr);
+    out.r0 = 1;
+    out.r1 = stepped.r1;
+    out.r3 = stepped.r3;
+    return out;
+}
+
+Next battleObject_stepSpriteIfAliveAndUnfrozen_80B881E(void) {
+    SpriteStepRegs res = battleObject_stepSpriteIfAliveAndUnfrozen(R5, R3);
+    R0 = res.r0;
+    R1 = res.r1;
+    R3 = res.r3;
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_initObjectDefaultSprite ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r5, r6; } call_object_setPanelsFromCoordinates_result;
+/* register form: generated wrapper: object_setPanelsFromCoordinates has no typed C interface yet */
+static inline call_object_setPanelsFromCoordinates_result call_object_setPanelsFromCoordinates_battle_initObjectDefaultSprite(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setPanelsFromCoordinates);
+    return (call_object_setPanelsFromCoordinates_result){ R5, R6 };
+}
+
+typedef struct { u32 r4, r5; } call_sprite_load_result_battle_initObjectDefaultSprite;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_battle_initObjectDefaultSprite call_sprite_load_battle_initObjectDefaultSprite(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_battle_initObjectDefaultSprite){ R4, R5 };
+}
+
+typedef struct { u32 r1, r2, r4, r5; } call_sprite_loadAnimationData_result_battle_initObjectDefaultSprite;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battle_initObjectDefaultSprite call_sprite_loadAnimationData_battle_initObjectDefaultSprite(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battle_initObjectDefaultSprite){ R1, R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_battle_initObjectDefaultSprite(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battle_initObjectDefaultSprite(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r3; bool c, v; } call_sprite_setPalette_result_battle_initObjectDefaultSprite;
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline call_sprite_setPalette_result_battle_initObjectDefaultSprite call_sprite_setPalette_battle_initObjectDefaultSprite(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+    return (call_sprite_setPalette_result_battle_initObjectDefaultSprite){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_battle_initObjectDefaultSprite;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_battle_initObjectDefaultSprite call_object_getFlip_battle_initObjectDefaultSprite(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_battle_initObjectDefaultSprite){ R0 };
+}
+
+typedef struct { u32 r1, r2, r3; bool c, v; } call_sprite_setFlip_result_battle_initObjectDefaultSprite;
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline call_sprite_setFlip_result_battle_initObjectDefaultSprite call_sprite_setFlip_battle_initObjectDefaultSprite(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+    return (call_sprite_setFlip_result_battle_initObjectDefaultSprite){ R1, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Reset a battle object to its default sprite setup: reload its standard
+ * sprite resources, clear animation state, re-apply its current flip, and
+ * hand it over to the normal per-frame update logic. The object pointer
+ * lives in r5 throughout and is returned unchanged to the caller. */
+static u32 battle_initObjectDefaultSprite_impl(u32 obj) {
+    /* Recompute the object's panel coordinates from its x/y position. */
+    call_object_setPanelsFromCoordinates_battle_initObjectDefaultSprite(obj);
+
+    /* Load the default sprite resources (0x80/0x10/0x3D) and animation data,
+     * then drop the shadow sprite. */
+    call_sprite_load_battle_initObjectDefaultSprite(0x80, 0x10, 0x3D, obj);
+    call_sprite_loadAnimationData_battle_initObjectDefaultSprite(obj);
+    call_sprite_noShadow_battle_initObjectDefaultSprite(obj);
+
+    /* Mark the object header as sprite-initialized (flag bit 1). */
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | 2);
+
+    /* Start at animation 0: clear the current animation and its copy,
+     * select animation 0, and (re)load its animation data. */
+    ST8(obj + oBattleObject_CurAnim, 0);
+    ST8(obj + oBattleObject_CurAnimCopy, 0);
+    call_sprite_setAnimation_battle_initObjectDefaultSprite(0, obj);
+    call_sprite_loadAnimationData_battle_initObjectDefaultSprite(obj);
+
+    /* Keep the object's existing look: default palette index 0 and the
+     * flip state it already had. */
+    call_sprite_setPalette_battle_initObjectDefaultSprite(0, obj);
+    u32 flip = call_object_getFlip_battle_initObjectDefaultSprite(obj).r0;
+    call_sprite_setFlip_battle_initObjectDefaultSprite(flip, obj);
+
+    /* Enter the standard state-machine phase for per-frame updates. */
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_UPDATE);
+
+    return obj;
+}
+
+/* battle_initObjectDefaultSprite: (r5 = battle object) -> r5 */
+Next battle_initObjectDefaultSprite(void) {
+    R5 = battle_initObjectDefaultSprite_impl(R5);
     RETURN_TO_CALLER();
 }
 
@@ -516,6 +808,24 @@ Next spawn_t1_0x5_tempAttackObject_80B8E30(void) {
        the final ORRS only sets N/Z, so C stays 0 from that ADDS. */
     cpu.c = res.c_flag;
     cpu.v = 0;
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_setObjectAnim ── */
+/* Set the current animation on a battle object and mark its shadow copy
+ * dirty (0xFF). Passing a null object pointer leaves the anim value
+ * untouched -- the original falls straight through and returns r1 as-is. */
+static u32 battle_set_object_anim(u32 object, u32 anim) {
+    if (object == 0)
+        return anim;
+    ST8(object + oBattleObject_CurAnim, anim);
+    ST8(object + oBattleObject_CurAnimCopy, 0xFF);
+    return 0xFF;
+}
+
+/* battle_setObjectAnim(r0 = object, r1 = anim) -> r1 */
+Next battle_setObjectAnim(void) {
+    R1 = battle_set_object_anim(R0, R1);
     RETURN_TO_CALLER();
 }
 
@@ -2177,6 +2487,18 @@ Next battle_EndObjectCurrentAnim_80C44D2(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_setExtraVars ── */
+/* Store the extra-vars word of a battle object.
+ * r0 = battle object address, r1 = value to write into ExtraVars. */
+static void battle_setExtraVars_impl(u32 object, u32 extraVars) {
+    ST32(object + oBattleObject_ExtraVars, extraVars);
+}
+
+Next battle_setExtraVars(void) {
+    battle_setExtraVars_impl(R0, R1);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_initFromRelatedAndLoadSprite_80C4550 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r4, r5; } call_sprite_load_result_battleObject_initFromRelatedAndLoadSprite_80C4550;
@@ -2282,6 +2604,117 @@ static void battleObject_initFromRelatedAndLoadSprite(u32 obj) {
  * -> r5 r8 r9 r10 r11 r12, all left by the copy/sync call. */
 Next battleObject_initFromRelatedAndLoadSprite_80C4550(void) {
     battleObject_initFromRelatedAndLoadSprite(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battleObject_updateSprite_80C464C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2; } call_sprite_getMosaicScalingParameters_result;
+/* register form: generated wrapper: sprite_getMosaicScalingParameters has no typed C interface yet */
+static inline call_sprite_getMosaicScalingParameters_result call_sprite_getMosaicScalingParameters(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sprite_getMosaicScalingParameters);
+    return (call_sprite_getMosaicScalingParameters_result){ R0, R2 };
+}
+
+typedef struct { u32 r2, r3, r7; } call_sprite_setAlpha_result;
+/* register form: generated wrapper: sprite_setAlpha has no typed C interface yet */
+static inline call_sprite_setAlpha_result call_sprite_setAlpha(u32 r0, u32 r2, u32 r5) {
+    R0 = r0;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_setAlpha);
+    return (call_sprite_setAlpha_result){ R2, R3, R7 };
+}
+
+typedef struct { u32 r0, r1; bool z, n; } call_battle_isTimeStop_result_battleObject_updateSprite_80C464C;
+/* register form: generated wrapper: battle_isTimeStop has no typed C interface yet */
+static inline call_battle_isTimeStop_result_battleObject_updateSprite_80C464C call_battle_isTimeStop_battleObject_updateSprite_80C464C(void) {
+    GUEST_CALL(battle_isTimeStop);
+    return (call_battle_isTimeStop_result_battleObject_updateSprite_80C464C){ R0, R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_object_updateSprite_result_battleObject_updateSprite_80C464C;
+/* register form: generated wrapper: object_updateSprite has no typed C interface yet */
+static inline call_object_updateSprite_result_battleObject_updateSprite_80C464C call_object_updateSprite_battleObject_updateSprite_80C464C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateSprite);
+    return (call_object_updateSprite_result_battleObject_updateSprite_80C464C){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_object_updateSpriteTimestop_result_battleObject_updateSprite_80C464C;
+/* register form: generated wrapper: object_updateSpriteTimestop has no typed C interface yet */
+static inline call_object_updateSpriteTimestop_result_battleObject_updateSprite_80C464C call_object_updateSpriteTimestop_battleObject_updateSprite_80C464C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateSpriteTimestop);
+    return (call_object_updateSpriteTimestop_result_battleObject_updateSprite_80C464C){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_battleObject_updateSpriteAnimIfChanged_801BCD0_result;
+/* register form: generated wrapper: battleObject_updateSpriteAnimIfChanged_801BCD0 has no typed C interface yet */
+static inline call_battleObject_updateSpriteAnimIfChanged_801BCD0_result call_battleObject_updateSpriteAnimIfChanged_801BCD0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_updateSpriteAnimIfChanged_801BCD0);
+    return (call_battleObject_updateSpriteAnimIfChanged_801BCD0_result){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Update a battle object's sprite for this frame.
+ *
+ * First the object's related object is asked for its mosaic scaling parameters
+ * and they are applied as the alpha/blend settings. Then the sprite update
+ * itself is picked by the object's Param3:
+ *   1 -> timestop-aware sprite update,
+ *   2 -> only advance the animation if it changed,
+ *   otherwise -> normal sprite update, but skipped while time is stopped.
+ * In the "otherwise" case the update is also skipped when the object carries
+ * one of the collision flags 0x100800 (and ExtraVars+0xC is set), e.g. while
+ * it is in a state where its sprite must not be touched.
+ *
+ * object (r5) is passed through unchanged, as the original leaves it. */
+static u32 battleObject_updateSprite_body(u32 object) {
+    u32 related = LD32(object + oBattleObject_RelatedObject1Ptr);
+
+    call_sprite_getMosaicScalingParameters_result mosaic =
+        call_sprite_getMosaicScalingParameters(related);
+    call_sprite_setAlpha(mosaic.r0, mosaic.r2, object);
+
+    u32 extra = LD32(object + oBattleObject_ExtraVars + 0xC);
+    if (extra != 0) {
+        u32 collision = LD32(related + oBattleObject_CollisionDataPtr);
+        u32 flags1 = LD32(collision + oCollisionData_ObjectFlags1);
+        if (flags1 & 0x100800)
+            return object;              /* flagged: leave the sprite alone */
+    }
+
+    u32 param3 = LD8(object + oBattleObject_Param3);
+    if (param3 == 1) {
+        call_object_updateSpriteTimestop_battleObject_updateSprite_80C464C(object);
+    } else if (param3 == 2) {
+        call_battleObject_updateSpriteAnimIfChanged_801BCD0(object);
+    } else {
+        /* battle_isTimeStop: flags Z set when time is NOT stopped. */
+        if (!call_battle_isTimeStop_battleObject_updateSprite_80C464C().z)
+            return object;              /* time stopped: no update */
+        call_object_updateSprite_battleObject_updateSprite_80C464C(object);
+    }
+    return object;
+}
+
+/* battleObject_updateSprite_80C464C(r5 = object, r10 = battle state) -> r5 */
+Next battleObject_updateSprite_80C464C(void) {
+    R5 = battleObject_updateSprite_body(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_setObjectStateActionPhase8 ── */
+/* Advance an object into action phase 8: store the phase and report it in r1. */
+static u32 battle_setObjectStateActionPhase8_impl(u32 object) {
+    ST32(object + oBattleObject_CurStateActionPhaseAndPhaseInitialized, 8);
+    return 8;
+}
+
+Next battle_setObjectStateActionPhase8(void) {
+    R1 = battle_setObjectStateActionPhase8_impl(R0);
     RETURN_TO_CALLER();
 }
 

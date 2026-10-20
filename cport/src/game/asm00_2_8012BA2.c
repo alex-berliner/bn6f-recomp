@@ -1597,6 +1597,37 @@ Next nullsub_51(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_clearObjectStatusUnlessPhase1 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3; bool z, n; } call_battle_clearObjectStatusFlagsAndTimers_801A264_result;
+/* register form: generated wrapper: battle_clearObjectStatusFlagsAndTimers_801A264 has no typed C interface yet */
+static inline call_battle_clearObjectStatusFlagsAndTimers_801A264_result call_battle_clearObjectStatusFlagsAndTimers_801A264(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_clearObjectStatusFlagsAndTimers_801A264);
+    return (call_battle_clearObjectStatusFlagsAndTimers_801A264_result){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* Skips the per-object status cleanup while the battle is in phase 1;
+ * otherwise runs battle_clearObjectStatusFlagsAndTimers on the current object.
+ * Returns the outgoing r3: the callee's result, or the incoming r3 untouched
+ * when the phase-1 check skips the call (the original leaves r3 alone there). */
+static u32 clear_object_status_unless_phase1(u32 object_r5, u32 toolkit, u32 r3) {
+    u32 battleState = LD32(toolkit + oToolkit_BattleStatePtr);
+    u32 battlePhase = LD8(battleState + oBattleState_BattlePhase);
+
+    if (battlePhase == 1)
+        return r3;
+
+    return call_battle_clearObjectStatusFlagsAndTimers_801A264(object_r5).r3;
+}
+
+/* battle_clearObjectStatusUnlessPhase1(r5 = battle object, r10 = toolkit, lr = return)
+ * -> r3; nz/c/v and r0-r2/lr are clobbered, callers ignore them. */
+Next battle_clearObjectStatusUnlessPhase1(void) {
+    R3 = clear_object_status_unless_phase1(R5, R10, R3);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80147E4 ── */
 /* register form: calls CopyWords outside this file, which has no typed C interface yet */
 static void copy_words(const u32 *src, u32 *dest, u32 size) {

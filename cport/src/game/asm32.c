@@ -705,6 +705,87 @@ Next ai_checkNextPanelFlags(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_refreshCollisionRegionOnPanelChange ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; } call_object_setCollisionRegion_result_battle_refreshCollisionRegionOnPanelChange;
+/* register form: generated wrapper: object_setCollisionRegion has no typed C interface yet */
+static inline call_object_setCollisionRegion_result_battle_refreshCollisionRegionOnPanelChange call_object_setCollisionRegion_battle_refreshCollisionRegionOnPanelChange(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setCollisionRegion);
+    return (call_object_setCollisionRegion_result_battle_refreshCollisionRegionOnPanelChange){ R1 };
+}
+
+/* Battle object fields holding the panel the collision region was last built on. */
+#define OBJ_PREV_PANEL_X 0x82
+#define OBJ_PREV_PANEL_Y 0x83
+
+/* If the object's current panel differs from the one its collision region was built
+ * for, remember the new panel and rebuild the region (region type 1).
+ * Returns the value the caller should see in r1: object_setCollisionRegion's result
+ * after a rebuild, otherwise the panel Y that was just loaded. */
+static u32 refresh_collision_region(u32 object) {
+    u32 panelX = LD8(object + oBattleObject_PanelX);
+    u32 panelY = LD8(object + oBattleObject_PanelY);
+    u32 prevX = LD8(object + OBJ_PREV_PANEL_X);
+    u32 prevY = LD8(object + OBJ_PREV_PANEL_Y);
+
+    if (panelX == prevX && panelY == prevY)
+        return panelY;                          /* region already matches the panel */
+
+    ST8(object + OBJ_PREV_PANEL_X, panelX);
+    ST8(object + OBJ_PREV_PANEL_Y, panelY);
+    return call_object_setCollisionRegion_battle_refreshCollisionRegionOnPanelChange(1, object).r1;
+}
+
+/* battle_refreshCollisionRegionOnPanelChange(r5 = battle object) -> r1 */
+Next battle_refreshCollisionRegionOnPanelChange(void) {
+    R1 = refresh_collision_region(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_applyGuardStatus ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: object_setFlag1 has no typed C interface yet */
+static inline void call_object_setFlag1_battle_applyGuardStatus(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setFlag1);
+}
+
+typedef struct { u32 r0, r2, r3, r7; bool c, v; } call_GetPositiveSignedRNG_result_battle_applyGuardStatus;
+/* register form: generated wrapper: GetPositiveSignedRNG has no typed C interface yet */
+static inline call_GetPositiveSignedRNG_result_battle_applyGuardStatus call_GetPositiveSignedRNG_battle_applyGuardStatus(void) {
+    GUEST_CALL(GetPositiveSignedRNG);
+    return (call_GetPositiveSignedRNG_result_battle_applyGuardStatus){ R0, R2, R3, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Guard reaction on a battle object (r5 = object pointer):
+ * - set the "guarding" and "cannot slide" status flags on it,
+ * - roll a random number, keep the low two bits, and store that in the
+ *   object's extra-var slot 2 (its guard-related state).
+ * Returns the stored roll. Flags: n/z come from the masked roll (the final
+ * `ands`); c/v stay as GetPositiveSignedRNG left them, since `ands`
+ * preserves them. */
+static u32 apply_guard_status(u32 object) {
+    call_object_setFlag1_battle_applyGuardStatus(OBJECT_FLAGS_GUARD, object);
+    call_object_setFlag1_battle_applyGuardStatus(OBJECT_FLAGS_CANNOT_SLIDE, object);
+
+    u32 roll = call_GetPositiveSignedRNG_battle_applyGuardStatus().r0 & 3;
+    ST32(object + oBattleObject_ExtraVars + 8, roll);
+    return roll;
+}
+
+/* battle_applyGuardStatus(r5 = object) -> r0 = roll (0..3), r1 = 3, nz c v */
+Next battle_applyGuardStatus(void) {
+    u32 roll = apply_guard_status(R5);
+
+    R0 = roll;
+    R1 = 3;                       /* the and-mask the original leaves in r1 */
+    SET_FLAGS_NZ(roll);           /* c/v unchanged, as after the RNG call */
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_attackGuardStrike ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: object_setFlag1 has no typed C interface yet */
@@ -1038,6 +1119,72 @@ Next ai_beginNewTurn(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_checkPanelAtObjectOffset ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3; } call_GetAllianceDependentPanelParamArgs_result_battle_checkPanelAtObjectOffset;
+/* register form: generated wrapper: GetAllianceDependentPanelParamArgs has no typed C interface yet */
+static inline call_GetAllianceDependentPanelParamArgs_result_battle_checkPanelAtObjectOffset call_GetAllianceDependentPanelParamArgs_battle_checkPanelAtObjectOffset(u32 r3, u32 r5) {
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(GetAllianceDependentPanelParamArgs);
+    return (call_GetAllianceDependentPanelParamArgs_result_battle_checkPanelAtObjectOffset){ R2, R3 };
+}
+
+typedef struct { u32 r0, r4, r5; } call_object_checkPanelParameters_result_battle_checkPanelAtObjectOffset;
+/* register form: generated wrapper: object_checkPanelParameters has no typed C interface yet */
+static inline call_object_checkPanelParameters_result_battle_checkPanelAtObjectOffset call_object_checkPanelParameters_battle_checkPanelAtObjectOffset(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(object_checkPanelParameters);
+    return (call_object_checkPanelParameters_result_battle_checkPanelAtObjectOffset){ R0, R4, R5 };
+}
+
+/* Result of battle_checkPanelAtObjectOffset: the coordinates that were checked
+ * (x forced to 0 when the check fails) plus the side results that
+ * object_checkPanelParameters leaves behind in r4/r5. */
+typedef struct {
+    u32 x;   /* -> r0 */
+    u32 y;   /* -> r1 */
+    u32 r4;  /* -> r4 */
+    u32 r5;  /* -> r5 */
+} check_panel_at_object_offset_result;
+
+/* Check the panel at (object's panel x + x_offset, object's panel y) against the
+ * alliance-dependent panel rules. Reports the checked x on success, 0 on failure. */
+static check_panel_at_object_offset_result check_panel_at_object_offset(u32 x_offset, u32 object)
+{
+    u32 x = x_offset + LD8(object + oBattleObject_PanelX);
+    u32 y = LD8(object + oBattleObject_PanelY);
+
+    /* Panel rules that depend on which side owns the object. */
+    call_GetAllianceDependentPanelParamArgs_result_battle_checkPanelAtObjectOffset rules =
+        call_GetAllianceDependentPanelParamArgs_battle_checkPanelAtObjectOffset(A_byte_8111F60, object);
+
+    call_object_checkPanelParameters_result_battle_checkPanelAtObjectOffset check =
+        call_object_checkPanelParameters_battle_checkPanelAtObjectOffset(x, y, rules.r2, rules.r3);
+
+    check_panel_at_object_offset_result out;
+    if (check.r0 != 0)
+        out.x = x;
+    else
+        out.x = 0;
+    out.y = y;
+    out.r4 = check.r4;
+    out.r5 = check.r5;
+    return out;
+}
+
+Next battle_checkPanelAtObjectOffset(void) {
+    check_panel_at_object_offset_result res = check_panel_at_object_offset(R0, R5);
+    R0 = res.x;
+    R1 = res.y;
+    R4 = res.r4;
+    R5 = res.r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_checkFrontPanelSide ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0; } call_object_getFrontDirection_result_ai_checkFrontPanelSide;
@@ -1260,6 +1407,139 @@ Next ai_pickTargetObjectFromRow(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_pickRandomPanelByAlliance ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3; } call_GetAllianceDependentPanelParamArgs_result_battle_pickRandomPanelByAlliance;
+/* register form: generated wrapper: GetAllianceDependentPanelParamArgs has no typed C interface yet */
+static inline call_GetAllianceDependentPanelParamArgs_result_battle_pickRandomPanelByAlliance call_GetAllianceDependentPanelParamArgs_battle_pickRandomPanelByAlliance(u32 r3, u32 r5) {
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(GetAllianceDependentPanelParamArgs);
+    return (call_GetAllianceDependentPanelParamArgs_result_battle_pickRandomPanelByAlliance){ R2, R3 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5, r7; } call_panelFlagCheck_8015D80_result;
+/* register form: generated wrapper: panelFlagCheck_8015D80 has no typed C interface yet */
+static inline call_panelFlagCheck_8015D80_result call_panelFlagCheck_8015D80(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(panelFlagCheck_8015D80);
+    return (call_panelFlagCheck_8015D80_result){ R0, R1, R2, R3, R5, R7 };
+}
+
+/* Pick a random panel for a battle object, honouring its current alliance.
+ *
+ * Entry: r4 = context word the panel-flag check expects (passed straight
+ *        through), r5 = pointer to the battle object.
+ * Exit:  r0/r1 = whatever panelFlagCheck_8015D80 leaves in them, r5 unchanged;
+ *        r2/r3 and the flags are scratch, r7 is whatever the flag check left.
+ *
+ * The parameter table at byte_81125E0 describes how the random-panel search
+ * window depends on the object's alliance.  GetAllianceDependentPanelParamArgs
+ * consumes that table plus the object and produces the two arguments (r2, r3)
+ * that panelFlagCheck_8015D80 needs alongside the object's panel coordinates;
+ * the flag check then does the actual pick and updates the battle state. */
+static void pick_random_panel_by_alliance(u32 flagCheckR4, u32 obj) {
+    /* Snapshot the object's panel square up front: the original keeps these
+     * bytes live in r0/r1 across the helper call, so the flag check must see
+     * exactly this snapshot even if the helper rewrites the fields. */
+    u32 panelX = LD8(obj + oBattleObject_PanelX);
+    u32 panelY = LD8(obj + oBattleObject_PanelY);
+
+    call_GetAllianceDependentPanelParamArgs_result_battle_pickRandomPanelByAlliance window =
+        call_GetAllianceDependentPanelParamArgs_battle_pickRandomPanelByAlliance(A_byte_81125E0, obj);
+
+    /* panelFlagCheck_8015D80's r0/r1/r5 (and r7) are the results callers of
+     * this function see, so leave them exactly as the wrapper call leaves
+     * them rather than copying them through return values. */
+    call_panelFlagCheck_8015D80(panelX, panelY, window.r2, window.r3,
+                                flagCheckR4, obj);
+}
+
+/* battle_pickRandomPanelByAlliance(r4 = flag-check context, r5 = battle object)
+ * -> r0 r1 r5: everything visible to callers is left behind by the
+ * panelFlagCheck_8015D80 call, so the adapter has nothing to write back. */
+Next battle_pickRandomPanelByAlliance(void) {
+    pick_random_panel_by_alliance(R4, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_clearAnimationAndFreeTimer_8112630 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: battle_ResetObjectTimerTo8_80C4072 has no typed C interface yet */
+static inline void call_battle_ResetObjectTimerTo8_80C4072(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_ResetObjectTimerTo8_80C4072);
+}
+
+/* Clear a battle object's current animation and release its extra timer slot.
+ * r5 = object; r4 is preserved, everything else is caller-saved. */
+static void battle_clearAnimationAndFreeTimer(u32 object) {
+    ST8(object + oBattleObject_CurAnim, 0);
+
+    u32 timer = LD32(object + oBattleObject_ExtraVars + 0x10);
+    if (timer != 0) {
+        call_battle_ResetObjectTimerTo8_80C4072(timer);
+        ST32(object + oBattleObject_ExtraVars + 0x10, 0);
+    }
+}
+
+/* battle_clearAnimationAndFreeTimer_8112630(r5 = object) */
+Next battle_clearAnimationAndFreeTimer_8112630(void) {
+    battle_clearAnimationAndFreeTimer(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_ensureAuxObject54 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r3, r5, r6, r7; } call_battle_spawnOwnedObject54_result;
+/* register form: generated wrapper: battle_spawnOwnedObject54 has no typed C interface yet */
+static inline call_battle_spawnOwnedObject54_result call_battle_spawnOwnedObject54(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(battle_spawnOwnedObject54);
+    return (call_battle_spawnOwnedObject54_result){ R0, R3, R5, R6, R7 };
+}
+
+/* Offset of the aux-helper handle cached in the battle object. */
+#define AUX_HANDLE_VAR (oBattleObject_ExtraVars + 0x10)
+/* battle_spawnOwnedObject54 arguments used for this helper: type 5, id 0x11504. */
+#define AUX_SPAWN_KIND 5
+#define AUX_SPAWN_ID   0x11504
+
+/* Point the object at its idle animation and make sure its aux helper
+ * (object 0x11504) exists: the handle is cached at ExtraVars+0x10, so the
+ * helper is spawned only once, owned by this object. r4 is passed through
+ * untouched, mirroring the original's push/pop. */
+static u32 battle_ensure_aux_object(u32 object, u32 savedR4) {
+    ST8(object + oBattleObject_CurAnim, 1);
+
+    u32 handle = LD32(object + AUX_HANDLE_VAR);
+    if (handle == 0) {
+        handle = call_battle_spawnOwnedObject54(0, 0, AUX_SPAWN_KIND, 0,
+                                                AUX_SPAWN_ID, object).r0;
+        ST32(object + AUX_HANDLE_VAR, handle);
+    }
+    return savedR4;
+}
+
+/* battle_ensureAuxObject54(r5 = battle object) -> r4 r5 r6 r7
+ * r4 comes back as it entered; r5/r6/r7 are whatever the spawn call left
+ * behind (it preserves r5), which the wrapper already left in place. */
+Next battle_ensureAuxObject54(void) {
+    u32 savedR4 = R4;
+    R4 = battle_ensure_aux_object(R5, savedR4);
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_attackStepTick ── */
 /* Tick one step of the AI's attack animation.
  * r0: attack-started flag (0 = this is the first step, so set the wind-up pose)
@@ -1286,6 +1566,84 @@ static void ai_attack_step_tick(u32 attackStarted, u32 obj, u32 vars) {
 /* ai_attackStepTick(r0 = attack-started flag, r5 = battle object, r7 = AI attack vars) -> none */
 Next ai_attackStepTick(void) {
     ai_attack_step_tick(R0, R5, R7);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_checkAnyHitFlag ── */
+/* Check whether any hit flag in the object's collision data is set and, if so,
+ * raise the object's "was hit" marker in ExtraVars.
+ *
+ * Returns the summed hit flags in r1 (the original's final value of r1). If the
+ * object's current action is 0x0B the check is skipped entirely and r1 passes
+ * through unchanged, as in the original. */
+static u32 battle_checkAnyHitFlag_impl(u32 self, u32 r1_out) {
+    /* Custom actions (0x0B) never run the hit-flag check. */
+    if (LD8(self + oBattleObject_CurAction) == 0xB)
+        return r1_out;
+
+    u32 collision = LD32(self + oBattleObject_CollisionDataPtr);
+
+    /* Sum the five hit-flag halfwords: any nonzero bit means a hit. */
+    u32 hitFlags = LD16(collision + 0x82)
+                 + LD16(collision + 0x84)
+                 + LD16(collision + 0x86)
+                 + LD16(collision + 0x88)
+                 + LD16(collision + 0x8A);
+
+    if (hitFlags != 0)
+        ST32(self + oBattleObject_ExtraVars, 1);
+
+    return hitFlags;
+}
+
+/* battle_checkAnyHitFlag(r5 = object, r1 = pass-through) -> r1 */
+Next battle_checkAnyHitFlag(void) {
+    R1 = battle_checkAnyHitFlag_impl(R5, R1);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_aiSnakeArmStepInitStage4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r5; } call_battle_aiSnakeArmTickStep_8112A78_result;
+/* register form: generated wrapper: battle_aiSnakeArmTickStep_8112A78 has no typed C interface yet */
+static inline call_battle_aiSnakeArmTickStep_8112A78_result call_battle_aiSnakeArmTickStep_8112A78(u32 r4, u32 r5, u32 r6, u32 r7) {
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(battle_aiSnakeArmTickStep_8112A78);
+    return (call_battle_aiSnakeArmTickStep_8112A78_result){ R1, R5 };
+}
+
+/* Stage-4 step initializer for the snake-arm AI: read this AI's version byte,
+ * look up the step timer in the per-version table, store it along with script
+ * id 4 into the AI state, then call the shared tick step, whose r1/r5 results
+ * are this function's results. */
+static call_battle_aiSnakeArmTickStep_8112A78_result snake_arm_init_stage4(u32 data, u32 r5, u32 state, u32 r7) {
+    u32 version_table = A_byte_81129D6;
+    u32 version = LD8(data + oAIData_Version_16);
+
+    ST16(state + oAIState_Timer, LD8(version_table + version));
+    ST8(state + oAIState_ScriptId, 4);
+
+    /* register form: battle_aiSnakeArmTickStep_8112A78 receives the version
+     * table pointer in r1 and passes it straight through to its r1 result,
+     * but the generated wrapper only covers r4-r7, so r1 must be set here. */
+    R1 = version_table;
+
+    return call_battle_aiSnakeArmTickStep_8112A78(data, r5, state, r7);
+}
+
+/* battle_aiSnakeArmStepInitStage4: 08112A64-08112A78 THUMB, bn6f asm32.s:9909 */
+/*   inputs:  r4 r5 r6 r7 r10 lr
+ *   outputs: r1 r5
+ *   clobbers (unused by callers): nz c v r0 r2 r3 lr
+ *   preserved: r4 r5 r6 r7 */
+Next battle_aiSnakeArmStepInitStage4(void) {
+    call_battle_aiSnakeArmTickStep_8112A78_result res =
+        snake_arm_init_stage4(R4, R5, R6, R7);
+    R1 = res.r1;
+    R5 = res.r5;
     RETURN_TO_CALLER();
 }
 
@@ -1766,6 +2124,111 @@ static u32 ai_clearFlagAndSetCurAction_body(u32 obj) {
 
 Next ai_clearFlagAndSetCurAction(void) {
     R1 = ai_clearFlagAndSetCurAction_body(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_deleteBattleObject ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: relatedToIsBattleOver_800A11C has no typed C interface yet */
+static inline void call_relatedToIsBattleOver_800A11C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(relatedToIsBattleOver_800A11C);
+}
+
+typedef struct { u32 r1, r2, r3; bool c, v; } call_RemoveGivenAliveBattleActorFromList_result;
+/* register form: generated wrapper: RemoveGivenAliveBattleActorFromList has no typed C interface yet */
+static inline call_RemoveGivenAliveBattleActorFromList_result call_RemoveGivenAliveBattleActorFromList(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(RemoveGivenAliveBattleActorFromList);
+    return (call_RemoveGivenAliveBattleActorFromList_result){ R1, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Delete a battle object: run the battle-over bookkeeping check, unlink the
+ * object from the alive-actor list, then mark its state as "destroyed".
+ * r1 on exit is whatever RemoveGivenAliveBattleActorFromList leaves there. */
+static void delete_battle_object(u32 object) {
+    call_relatedToIsBattleOver_800A11C(object);
+    (void)call_RemoveGivenAliveBattleActorFromList(object);
+    ST32(object + oBattleObject_CurStateActionPhaseAndPhaseInitialized, CUR_STATE_DESTROY);
+}
+
+/* battle_deleteBattleObject(r5 = object, r10 = battle state) -> r1 */
+Next battle_deleteBattleObject(void) {
+    delete_battle_object(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_conditionalRngRoll ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r7; } call_GetPositiveSignedRNG_result_battle_conditionalRngRoll;
+/* register form: generated wrapper: GetPositiveSignedRNG has no typed C interface yet */
+static inline call_GetPositiveSignedRNG_result_battle_conditionalRngRoll call_GetPositiveSignedRNG_battle_conditionalRngRoll(void) {
+    GUEST_CALL(GetPositiveSignedRNG);
+    return (call_GetPositiveSignedRNG_result_battle_conditionalRngRoll){ R0, R7 };
+}
+
+/* Scan the eight battle-object slots at base+0x60. Count the slots holding a
+ * live object, and among those the ones whose byte-6 sub-type is >= 1
+ * (signed compare). An object whose byte-4 type is 4 aborts the whole check.
+ * If at least five objects are present and three are eligible, roll the RNG:
+ * a value of 4 (mod 8) wins and is returned; any other outcome returns the
+ * value the RNG helper leaves in r7 (the caller cleared r7 before the call,
+ * and the helper passes it through, so that is 0). */
+static u32 battle_conditional_rng_roll(u32 base) {
+    u32 slot = base + 0x60;
+    u32 present = 0;
+    u32 eligible = 0;
+
+    for (int i = 0; i < 8; i++, slot += 4) {
+        u32 object = LD32(slot);
+        if (object == 0)
+            continue;
+        present++;
+        if (LD8(object + 4) == 4)
+            return 0;                    /* early exit: r7 is still 0 here */
+        if ((s32)LD8(object + 6) >= 1)
+            eligible++;
+    }
+
+    if ((s32)present < 5 || (s32)eligible < 3)
+        return 0;                        /* r7 is still 0 -> result 0 */
+
+    call_GetPositiveSignedRNG_result_battle_conditionalRngRoll rng = call_GetPositiveSignedRNG_battle_conditionalRngRoll();
+    if ((rng.r0 & 7) != 4)
+        return rng.r7;                   /* mov r0, r7 with the callee's r7 */
+    return 4;                            /* mov r7, r0 ; mov r0, r7 */
+}
+
+/* battle_conditionalRngRoll(r5 = object-table base) -> r0, r7.
+ * r7 ends as the entry value (the epilogue pop restores it), but it must be
+ * 0 while GetPositiveSignedRNG runs, since the failed-roll path returns the
+ * callee's r7. */
+Next battle_conditionalRngRoll(void) {
+    u32 saved_r7 = R7;
+    u32 result;
+    R7 = 0;                              /* mov r7, #0 at the top of the routine */
+    result = battle_conditional_rng_roll(R5);
+    R0 = result;
+    R7 = saved_r7;                       /* pop {r4,r6,r7,pc} restores entry r7 */
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_decrementHp ── */
+/* Decrement a battle object's HP by one, unless it is already zero (or the
+ * 16-bit value reads as negative, which the original also leaves alone).
+ * Returns the value the original leaves in r1: the (possibly decremented) HP. */
+static u32 battle_decrementHp_typed(u32 object) {
+    u32 hp = LD16(object + oBattleObject_HP);
+    if ((s32)hp <= 0)
+        return hp;
+    hp -= 1;
+    ST16(object + oBattleObject_HP, hp);
+    return hp;
+}
+
+/* battle_decrementHp(r0 = battle object) -> r1 = new HP */
+Next battle_decrementHp(void) {
+    R1 = battle_decrementHp_typed(R0);
     RETURN_TO_CALLER();
 }
 

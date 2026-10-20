@@ -261,6 +261,51 @@ Next clearDword_203CA70Record_80084C0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_battleEndDelayStep ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; } call_eStruct200A008_setUnk02_result;
+/* register form: generated wrapper: eStruct200A008_setUnk02 has no typed C interface yet */
+static inline call_eStruct200A008_setUnk02_result call_eStruct200A008_setUnk02(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(eStruct200A008_setUnk02);
+    return (call_eStruct200A008_setUnk02_result){ R1 };
+}
+
+/* Battle end delay stepper (part of the battle object update loop).
+ * On the first call (state byte still 0) it starts a 30-frame countdown and
+ * moves the object to state 4. Each call then ticks the countdown down; when
+ * it reaches zero it raises the battle-end flag on the object (state byte 4
+ * slot), tells the game state that the battle end substate has begun, and
+ * clears the toolkit's unk02 flag. */
+static void battle_battleEndDelayStep_impl(u32 battleObj, u32 toolkit) {
+    /* First entry: initialize the countdown (30 frames) and enter state 4. */
+    if (LD8(battleObj + 3) == 0) {
+        ST16(battleObj + 8, 30);
+        ST8(battleObj + 3, 4);
+    }
+
+    /* Tick the countdown; stay in this state while it is still positive. */
+    u32 timer = LD16(battleObj + 8) - 1;
+    ST16(battleObj + 8, timer & 0xFFFF);
+    if ((s32)timer > 0)
+        return;
+
+    /* Countdown finished: mark the object's battle-end flag. */
+    ST8(battleObj + 4, 1);
+
+    /* Tell the game state the battle end sequence has started. */
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+    ST8(gameState + oGameState_BattleEndSubState, 1);
+
+    /* Clear the toolkit unk02 flag. */
+    call_eStruct200A008_setUnk02(0);
+}
+
+Next battle_battleEndDelayStep(void) {
+    battle_battleEndDelayStep_impl(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_runBattlePhase_8009158 ── */
 /* Battle state machine tick: runs the current state's phase handler (chosen through the
  * jump table at off_80091BC), then keeps the low-HP warning siren in step with the
@@ -623,6 +668,174 @@ Next battle_waitLinkSync_8009478(void) {
         ST32(state + 0, 0xC);
         SET_FLAGS_NZ(0xC);
     }
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_dispatchByIndex_80099A4 ── */
+/* Battle phase dispatch. The battle state's Index_01 field holds the byte
+ * offset (already 4 * phase number) of the phase handler's address in the
+ * jump table at off_80099B8; entries for unused phases are NULL. */
+
+/*
+ * Tail-dispatch to the phase handler selected by the battle state's phase
+ * index. The handler is entered with the dispatcher's caller's r2-r7 and
+ * r10 argument registers still live (r0 = phase index, r1 = table entry),
+ * and the register state it leaves behind (r2-r6, r8-r12) is exactly what
+ * the callers of this dispatcher observe.
+ *
+ * register form: the call goes through a jump-table address with live
+ * argument registers and pass-through register results (r2-r6, r8-r12),
+ * which cannot be carried through typed C parameters and return values.
+ */
+static u32 run_battle_phase_handler(u32 battleState) {
+    u32 index   = LD8(battleState + oBattleState_Index_01);
+    u32 handler = LD32(A_off_80099B8 + index);
+
+    R0 = index;   /* handlers receive the phase index in r0 ... */
+    R1 = handler; /* ... and their own table entry in r1, as at the bx */
+
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+/* battle_dispatchByIndex_80099A4(r5 = battle state pointer)
+ * Dispatches to the current battle phase's handler and returns whatever it
+ * leaves in r2-r6 and r8-r12; r0/r1/r7 are scratch. */
+Next battle_dispatchByIndex_80099A4(void) {
+    run_battle_phase_handler(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_pauseIntroResumeStateStep ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2; } call_eStruct2035280_SetRequestBits_801BECC_result_battle_pauseIntroResumeStateStep;
+/* register form: generated wrapper: eStruct2035280_SetRequestBits_801BECC has no typed C interface yet */
+static inline call_eStruct2035280_SetRequestBits_801BECC_result_battle_pauseIntroResumeStateStep call_eStruct2035280_SetRequestBits_801BECC_battle_pauseIntroResumeStateStep(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(eStruct2035280_SetRequestBits_801BECC);
+    return (call_eStruct2035280_SetRequestBits_801BECC_result_battle_pauseIntroResumeStateStep){ R1, R2 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_dispatch_801DA48_result_battle_pauseIntroResumeStateStep;
+/* register form: generated wrapper: dispatch_801DA48 has no typed C interface yet */
+static inline call_dispatch_801DA48_result_battle_pauseIntroResumeStateStep call_dispatch_801DA48_battle_pauseIntroResumeStateStep(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(dispatch_801DA48);
+    return (call_dispatch_801DA48_result_battle_pauseIntroResumeStateStep){ R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r5; } call_battle_sceneFrameSetup_801DA24_result;
+/* register form: generated wrapper: battle_sceneFrameSetup_801DA24 has no typed C interface yet */
+static inline call_battle_sceneFrameSetup_801DA24_result call_battle_sceneFrameSetup_801DA24(void) {
+    GUEST_CALL(battle_sceneFrameSetup_801DA24);
+    return (call_battle_sceneFrameSetup_801DA24_result){ R5 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool v; } call_battle_eStruct2035280_postEvent_801E0A0_result;
+/* register form: generated wrapper: battle_eStruct2035280_postEvent_801E0A0 has no typed C interface yet */
+static inline call_battle_eStruct2035280_postEvent_801E0A0_result call_battle_eStruct2035280_postEvent_801E0A0(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(battle_eStruct2035280_postEvent_801E0A0);
+    return (call_battle_eStruct2035280_postEvent_801E0A0_result){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, OVERFLOW_FLAG() };
+}
+
+/* Resume step of the battle-intro pause sequence: ask the battle event system to
+ * advance its state (request bits 0x404), run the dispatch for that request,
+ * refresh the scene frame, then post the empty "step done" event.
+ * All resulting register side effects (r2 r3 r5 r8-r12) come from the final
+ * postEvent call; the earlier calls' results are consumed by it. */
+static call_battle_eStruct2035280_postEvent_801E0A0_result pause_intro_resume(void) {
+    call_eStruct2035280_SetRequestBits_801BECC_battle_pauseIntroResumeStateStep(0x404);   /* set request bits 0x404 */
+    call_dispatch_801DA48_battle_pauseIntroResumeStateStep(0x404);                        /* dispatch that request */
+    call_battle_sceneFrameSetup_801DA24();               /* refresh the scene frame */
+    return call_battle_eStruct2035280_postEvent_801E0A0(0, 0);
+}
+
+/* battle_pauseIntroResumeStateStep() -> r2 r3 r5 r8 r9 r10 r11 r12 */
+Next battle_pauseIntroResumeStateStep(void) {
+    call_battle_eStruct2035280_postEvent_801E0A0_result res = pause_intro_resume();
+    R2 = res.r2, R3 = res.r3, R5 = res.r5, R8 = res.r8,
+    R9 = res.r9, R10 = res.r10, R11 = res.r11, R12 = res.r12;
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_subphaseFadeOut ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r5; bool c, v; } call_SetScreenFade_result;
+/* register form: generated wrapper: SetScreenFade has no typed C interface yet */
+static inline call_SetScreenFade_result call_SetScreenFade(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetScreenFade);
+    return (call_SetScreenFade_result){ R1, R2, R3, R5, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r3; bool z, n, c, v; } call_IsScreenFadeActive_result;
+/* register form: generated wrapper: IsScreenFadeActive has no typed C interface yet */
+static inline call_IsScreenFadeActive_result call_IsScreenFadeActive(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return (call_IsScreenFadeActive_result){ R0, R1, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r4, r5, r6, r7, r10; bool c, v; } call_musicGameState_8000784_result;
+/* register form: generated wrapper: musicGameState_8000784 has no typed C interface yet */
+static inline call_musicGameState_8000784_result call_musicGameState_8000784(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(musicGameState_8000784);
+    return (call_musicGameState_8000784_result){ R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool c, v; } call_FreeAllObjectsOfSpecifiedTypes_result;
+/* register form: generated wrapper: FreeAllObjectsOfSpecifiedTypes has no typed C interface yet */
+static inline call_FreeAllObjectsOfSpecifiedTypes_result call_FreeAllObjectsOfSpecifiedTypes(u32 r0, u32 r4, u32 r5, u32 r6, u32 r7) {
+    R0 = r0;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(FreeAllObjectsOfSpecifiedTypes);
+    return (call_FreeAllObjectsOfSpecifiedTypes_result){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Fade-out subphase of the battle transition (0x08009C2A).
+ *
+ * First entry into the subphase: kick off a screen fade and mark the
+ * subphase initialised so this only happens once.
+ * Every later entry: wait until the fade has finished, then stop the
+ * battle music, free all battle objects and switch battle main to its
+ * next state (8) so it picks up the transition.
+ *
+ * r2/r4/r6/r7 carry no data used here; they are only passed on so the
+ * callees start from the same registers the original leaves for them.
+ */
+static void run_fade_out(u32 state, u32 reg2, u32 reg4, u32 reg6, u32 reg7) {
+    if (LD8(state + oBattleState_SubPhaseInitFlag) == 0) {
+        /* One-time setup: start the fade (mode 0x0C, 0x10 frames). */
+        call_SetScreenFade(0xC, 0x10);
+        ST8(state + oBattleState_SubPhaseInitFlag, 4);
+        return;
+    }
+
+    call_IsScreenFadeActive_result fade = call_IsScreenFadeActive();
+    if (fade.z)                        /* Z set: fade still in progress */
+        return;
+
+    /* Fade finished: silence the battle music, then clear all objects
+     * of type 0x1A. r4-r7 at the object-freeing call are whatever the
+     * music call left behind, exactly as in the original. */
+    call_musicGameState_8000784_result music =
+        call_musicGameState_8000784(fade.r0, reg2);
+    call_FreeAllObjectsOfSpecifiedTypes(0x1A,
+                                        music.r4, music.r5, music.r6, music.r7);
+
+    /* Hand control back to battle main in its next state. */
+    ST32(state + oBattleState_Index_00, 8);
+}
+
+Next battle_subphaseFadeOut(void) {
+    run_fade_out(R5, R2, R4, R6, R7);
     RETURN_TO_CALLER();
 }
 
@@ -1545,6 +1758,20 @@ Next setTwoStructs_800A840(void) {
      * is passed through to the caller. */
     GUEST_CALL(eStruct200A008_setBattleResult);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_getPhase ── */
+/* Read the current battle phase from the toolkit's battle state (r10 = toolkit).
+ * Returns the phase byte. */
+static u32 battle_getPhase_impl(u32 toolkit) {
+    u32 battleState = LD32(toolkit + oToolkit_BattleStatePtr);
+    return LD8(battleState + oBattleState_BattlePhase);
+}
+
+/* battle_getPhase(r10 = toolkit) -> r0 */
+Next battle_getPhase(void) {
+    R0 = battle_getPhase_impl(R10);
     RETURN_TO_CALLER();
 }
 

@@ -1407,6 +1407,151 @@ Next folderEdit_step_813388C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battleObject_submenuFolderEditTick_81338D4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r7; } call_entity_setLookupEntryStateFromFlag_8117D10_result_battleObject_submenuFolderEditTick_81338D4;
+/* register form: generated wrapper: entity_setLookupEntryStateFromFlag_8117D10 has no typed C interface yet */
+static inline call_entity_setLookupEntryStateFromFlag_8117D10_result_battleObject_submenuFolderEditTick_81338D4 call_entity_setLookupEntryStateFromFlag_8117D10_battleObject_submenuFolderEditTick_81338D4(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(entity_setLookupEntryStateFromFlag_8117D10);
+    return (call_entity_setLookupEntryStateFromFlag_8117D10_result_battleObject_submenuFolderEditTick_81338D4){ R7 };
+}
+
+typedef struct { u32 r5; } call_sub_8133E88_result;
+/* register form: generated wrapper: sub_8133E88 has no typed C interface yet */
+static inline call_sub_8133E88_result call_sub_8133E88(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_8133E88);
+    return (call_sub_8133E88_result){ R5 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_submenu_clearBgIfClosed_8134594_result_battleObject_submenuFolderEditTick_81338D4;
+/* register form: generated wrapper: submenu_clearBgIfClosed_8134594 has no typed C interface yet */
+static inline call_submenu_clearBgIfClosed_8134594_result_battleObject_submenuFolderEditTick_81338D4 call_submenu_clearBgIfClosed_8134594_battleObject_submenuFolderEditTick_81338D4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(submenu_clearBgIfClosed_8134594);
+    return (call_submenu_clearBgIfClosed_8134594_result_battleObject_submenuFolderEditTick_81338D4){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_battleObject_runBeastStatusEffect_81345B0_result;
+/* register form: generated wrapper: battleObject_runBeastStatusEffect_81345B0 has no typed C interface yet */
+static inline call_battleObject_runBeastStatusEffect_81345B0_result call_battleObject_runBeastStatusEffect_81345B0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_runBeastStatusEffect_81345B0);
+    return (call_battleObject_runBeastStatusEffect_81345B0_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_object_resolveTableEntryByIndex_8134538_result;
+/* register form: generated wrapper: object_resolveTableEntryByIndex_8134538 has no typed C interface yet */
+static inline call_object_resolveTableEntryByIndex_8134538_result call_object_resolveTableEntryByIndex_8134538(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_resolveTableEntryByIndex_8134538);
+    return (call_object_resolveTableEntryByIndex_8134538_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_object_resolveTableEntryWrapper_8134548_result;
+/* register form: generated wrapper: object_resolveTableEntryWrapper_8134548 has no typed C interface yet */
+static inline call_object_resolveTableEntryWrapper_8134548_result call_object_resolveTableEntryWrapper_8134548(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_resolveTableEntryWrapper_8134548);
+    return (call_object_resolveTableEntryWrapper_8134548_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r5; } call_battleObject_submenuRenderFolderAndChips_81341A0_result;
+/* register form: generated wrapper: battleObject_submenuRenderFolderAndChips_81341A0 has no typed C interface yet */
+static inline call_battleObject_submenuRenderFolderAndChips_81341A0_result call_battleObject_submenuRenderFolderAndChips_81341A0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_submenuRenderFolderAndChips_81341A0);
+    return (call_battleObject_submenuRenderFolderAndChips_81341A0_result){ R5 };
+}
+
+typedef struct { u32 r5; } call_battleObject_drawFolderEditScreenGfx_8134310_result;
+/* register form: generated wrapper: battleObject_drawFolderEditScreenGfx_8134310 has no typed C interface yet */
+static inline call_battleObject_drawFolderEditScreenGfx_8134310_result call_battleObject_drawFolderEditScreenGfx_8134310(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_drawFolderEditScreenGfx_8134310);
+    return (call_battleObject_drawFolderEditScreenGfx_8134310_result){ R5 };
+}
+
+typedef struct { u32 r4, r5; } call_battleObject_alignRowOffsetCheckSN3_81353DC_result;
+/* register form: generated wrapper: battleObject_alignRowOffsetCheckSN3_81353DC has no typed C interface yet */
+static inline call_battleObject_alignRowOffsetCheckSN3_81353DC_result call_battleObject_alignRowOffsetCheckSN3_81353DC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_alignRowOffsetCheckSN3_81353DC);
+    return (call_battleObject_alignRowOffsetCheckSN3_81353DC_result){ R4, R5 };
+}
+
+typedef struct { u32 r2, r3, r5, r6; } call_battle_aiRunTurnHandler_81353F0_result;
+/* register form: generated wrapper: battle_aiRunTurnHandler_81353F0 has no typed C interface yet */
+static inline call_battle_aiRunTurnHandler_81353F0_result call_battle_aiRunTurnHandler_81353F0(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(battle_aiRunTurnHandler_81353F0);
+    return (call_battle_aiRunTurnHandler_81353F0_result){ R2, R3, R5, R6 };
+}
+
+/* Per-frame tick of the folder-edit submenu object (r5 = battle object).
+ *
+ * The slide value at +0x18 is copied to +0x1A, then moved by 2 each frame:
+ * opening slides up toward 0x1E (clamped there, state byte +0xD set to 4),
+ * closing (state byte already 4) slides down toward 0. Sliding past the
+ * bottom notifies the lookup-entry machinery (state 3) and resets both the
+ * slide value and the state byte to 0. Afterwards the regular submenu update
+ * pipeline runs and the AI turn handler is poked with (5,0) then (6,1).
+ *
+ * Returns the entry r5 unchanged: the original moves the object pointer from
+ * r5 into r7 for the state machine, passes r5 down through the pipeline
+ * (each callee may update it), and finally pops r4-r7, restoring the
+ * caller's r5. */
+static u32 submenuFolderEditTick(u32 obj) {
+    u32 callerR5 = obj;
+
+    /* remember this frame's slide value */
+    ST16(obj + 0x1A, LD16(obj + 0x18));
+
+    if (LD8(obj + 0xD) == 4) {
+        /* closing: slide down by 2 */
+        s32 slide = (s16)LDS16(obj + 0x18) - 2;
+        ST16(obj + 0x18, (u16)slide);
+        if (slide < 0) {
+            /* slid past the bottom: tell the lookup table, then reset */
+            call_entity_setLookupEntryStateFromFlag_8117D10_battleObject_submenuFolderEditTick_81338D4(0, 3);
+            ST16(obj + 0x18, 0);
+            ST8(obj + 3, 0);
+        }
+    } else {
+        /* opening: slide up by 2, clamped at 0x1E */
+        s32 slide = (s16)LDS16(obj + 0x18) + 2;
+        ST16(obj + 0x18, (u16)slide);
+        if (slide > 0x1E) {
+            ST16(obj + 0x18, 0x1E);
+            ST8(obj + 3, 4);
+        }
+    }
+
+    /* submenu update pipeline; each callee takes r5 and may update it */
+    obj = call_sub_8133E88(obj).r5;
+    obj = call_submenu_clearBgIfClosed_8134594_battleObject_submenuFolderEditTick_81338D4(obj).r5;
+    obj = call_battleObject_runBeastStatusEffect_81345B0(obj).r5;
+    obj = call_object_resolveTableEntryByIndex_8134538(obj).r5;
+    obj = call_object_resolveTableEntryWrapper_8134548(obj).r5;
+    obj = call_battleObject_submenuRenderFolderAndChips_81341A0(obj).r5;
+    obj = call_battleObject_drawFolderEditScreenGfx_8134310(obj).r5;
+    obj = call_battleObject_alignRowOffsetCheckSN3_81353DC(obj).r5;
+    call_battle_aiRunTurnHandler_81353F0(5, 0, obj);
+    call_battle_aiRunTurnHandler_81353F0(6, 1, obj);
+
+    /* pop {r4-r7} restores the caller's r5 */
+    return callerR5;
+}
+
+Next battleObject_submenuFolderEditTick_81338D4(void) {
+    R5 = submenuFolderEditTick(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battleObject_submenuLoopStep_8133944 ── */
 Next battleObject_submenuLoopStep_8133944(void) {
     /* State-query gate: if battleObject_submenuHandleExitStartOrB_8133C0C returns non-zero (state mismatch), skip the

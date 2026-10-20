@@ -8,6 +8,167 @@
 #include "game.h"
 #include "runtime.h"
 
+/* ── battle_checkPlayerActorStoryFlag_808CC10 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; bool z, n; } call_TestEventFlagFromImmediate_result_battle_checkPlayerActorStoryFlag_808CC10;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_battle_checkPlayerActorStoryFlag_808CC10 call_TestEventFlagFromImmediate_battle_checkPlayerActorStoryFlag_808CC10(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_battle_checkPlayerActorStoryFlag_808CC10){ R3, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r3; } call_SetEventFlagFromImmediate_result;
+/* register form: generated wrapper: SetEventFlagFromImmediate has no typed C interface yet */
+static inline call_SetEventFlagFromImmediate_result call_SetEventFlagFromImmediate(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetEventFlagFromImmediate);
+    return (call_SetEventFlagFromImmediate_result){ R3 };
+}
+
+/* EVENT_9D8, split the way TestEventFlagFromImmediate/SetEventFlagFromImmediate take it:
+ * r0 = flag bank, r1 = flag index within the bank. */
+#define EVENT_9D8_BANK  9
+#define EVENT_9D8_INDEX 0xD8
+
+/* Battle actor header field: the player actor's story/state byte lives at +4. */
+#define ACTOR_STATE_BYTE 4
+
+/* Check the player actor's story state: if it is in state 2 and story flag EVENT_9D8
+ * is not yet set, set the flag and report that we just did.
+ * r4/r5/r6 are only carried through unchanged (the original pops them back). */
+typedef struct {
+    u32 r4, r5, r6;   /* passed through untouched */
+    bool flag_set;    /* true only on the turn where we set EVENT_9D8 */
+} story_flag_check;
+
+static story_flag_check check_player_actor_story_flag(u32 r4, u32 r5, u32 r6)
+{
+    story_flag_check res = { r4, r5, r6, false };
+
+    /* Only the actor in story state 2 triggers the flag. */
+    if (LD8(r5 + ACTOR_STATE_BYTE) != 2)
+        return res;
+
+    /* Already set? (TestEventFlagFromImmediate leaves Z clear when the flag is set.) */
+    if (!call_TestEventFlagFromImmediate_battle_checkPlayerActorStoryFlag_808CC10(EVENT_9D8_BANK, EVENT_9D8_INDEX).z)
+        return res;
+
+    /* First time here: latch the flag and remember it. */
+    call_SetEventFlagFromImmediate(EVENT_9D8_BANK, EVENT_9D8_INDEX);
+    res.flag_set = true;
+    return res;
+}
+
+/* battle_checkPlayerActorStoryFlag_808CC10(r5 = player actor, r10 = flag context) -> nz r3 r4 r5 r6 */
+Next battle_checkPlayerActorStoryFlag_808CC10(void) {
+    story_flag_check res = check_player_actor_story_flag(R4, R5, R6);
+    R4 = res.r4;
+    R5 = res.r5;
+    R6 = res.r6;
+    /* r3 is left behind by the TestEventFlagFromImmediate wrapper itself when it runs. */
+    SET_FLAGS_NZ((u32)res.flag_set);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_checkLockedEventTable_808CDC4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: ai_getAIModeForMapGroup_808D084 has no typed C interface yet */
+static inline u32 call_ai_getAIModeForMapGroup_808D084(void) {
+    GUEST_CALL(ai_getAIModeForMapGroup_808D084);
+    return R0;
+}
+
+typedef struct { u32 r3; bool z, n; } call_TestEventFlag_result_battle_checkLockedEventTable_808CDC4;
+/* register form: generated wrapper: TestEventFlag has no typed C interface yet */
+static inline call_TestEventFlag_result_battle_checkLockedEventTable_808CDC4 call_TestEventFlag_battle_checkLockedEventTable_808CDC4(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(TestEventFlag);
+    return (call_TestEventFlag_result_battle_checkLockedEventTable_808CDC4){ R3, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r3, r4, r5, r6, r7; bool z, n; } call_TestEventFlagRange_result;
+/* register form: generated wrapper: TestEventFlagRange has no typed C interface yet */
+static inline call_TestEventFlagRange_result call_TestEventFlagRange(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(TestEventFlagRange);
+    return (call_TestEventFlagRange_result){ R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* Locked-event table used by the battle AI. Each entry is 8 bytes:
+ *   [0..1] u16 gate flag   - entry only applies when this event flag is set
+ *   [2..3] u16 range start - first flag of the range test
+ *   [4..5] u16 range end   - last flag of the range test
+ *   [6..7] padding
+ * An entry "locks" when its gate flag is set AND one flag in the range is set. */
+
+struct CheckLockedEventsResult {
+    u32 index;  /* r1: ai_mode * 3 + matching entry index (0 when nothing matched) */
+    u32 r3;     /* r3 exactly as the last TestEventFlag/TestEventFlagRange left it */
+    u32 found;  /* 1 when a locked event matched, else 0 - drives the N/Z flags */
+};
+
+/* Scan the locked-event table for the current AI map group.
+ * Returns whether an entry locked and which one; r3 tracking matters because
+ * callers can see the register the last flag-test call left behind. */
+static struct CheckLockedEventsResult check_locked_event_table(void) {
+    struct CheckLockedEventsResult out;
+    u32 ai_mode = call_ai_getAIModeForMapGroup_808D084();
+    u32 table = LD32(A_off_808CEBC + ai_mode * 4);
+    s32 limit = ((s32)ai_mode < 3) ? 3 : 4;
+    u32 last_r3 = 0;
+    u32 found = 0;
+    s32 i = 0;
+
+    while (i < limit) {
+        u32 entry = table + (u32)i * 8;
+
+        /* Gate flag: entry skipped entirely when the flag is clear. */
+        call_TestEventFlag_result_battle_checkLockedEventTable_808CDC4 gate = call_TestEventFlag_battle_checkLockedEventTable_808CDC4(LD16(entry));
+        last_r3 = gate.r3;
+        if (gate.z) {
+            i++;
+            continue;
+        }
+
+        /* Range test: locked when one of the flags in [start, end] is set. */
+        call_TestEventFlagRange_result range =
+            call_TestEventFlagRange(LD16(entry + 2), LD16(entry + 4));
+        last_r3 = range.r3;
+        if (!range.z) {
+            found = 1;
+            break;              /* i stays on the matching entry */
+        }
+        i++;
+    }
+
+    /* On a match the original reports the entry it stopped at; when the whole
+     * table is scanned without a match it resets the index to 0. */
+    out.index = ai_mode * 3 + (found ? (u32)i : 0);
+    out.r3 = last_r3;
+    out.found = found;
+    return out;
+}
+
+/* battle_checkLockedEventTable_808CDC4 (r10 = battle context) ->
+ *   nz: Z clear when a locked event matched (tst of the found flag)
+ *   r1: ai_mode * 3 + matching entry index
+ *   r2: the entry r8 value (the original pops its saved r8 into r2)
+ *   r3: leftover from the last flag-test call
+ *   r4/r6 are pushed and popped by the original, so they keep their entry
+ *   values and the adapter must not touch them. */
+Next battle_checkLockedEventTable_808CDC4(void) {
+    struct CheckLockedEventsResult res = check_locked_event_table();
+    R1 = res.index;
+    R2 = R8;
+    R3 = res.r3;
+    SET_FLAGS_NZ(res.found);
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_testMapGroupEventFlag ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: ai_getAIModeForMapGroup_808D084 has no typed C interface yet */
@@ -54,6 +215,64 @@ Next ai_testMapGroupEventFlag(void) {
     MapGroupFlagCheck out = test_map_group_event_flag(R7);
     R0 = out.result;
     R7 = out.r7;
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_chatbox_setCursorTextFromEventFlag_808CF8C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; bool z, n; } call_TestEventFlagFromImmediate_result_battle_chatbox_setCursorTextFromEventFlag_808CF8C;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_battle_chatbox_setCursorTextFromEventFlag_808CF8C call_TestEventFlagFromImmediate_battle_chatbox_setCursorTextFromEventFlag_808CF8C(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_battle_chatbox_setCursorTextFromEventFlag_808CF8C){ R3, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r5, r6, r7, r10; } call_PlaySoundEffect_result_battle_chatbox_setCursorTextFromEventFlag_808CF8C;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_battle_chatbox_setCursorTextFromEventFlag_808CF8C call_PlaySoundEffect_battle_chatbox_setCursorTextFromEventFlag_808CF8C(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_battle_chatbox_setCursorTextFromEventFlag_808CF8C){ R2, R3, R5, R6, R7, R10 };
+}
+
+/* Battle chatbox: set the cursor text from an event flag (bn6f 0808CF8C).
+ *
+ * r5 points at an object whose halfword at +6 holds a text id, r10 is the
+ * toolkit. If event flag EVENT_9D9 is set, the text id is copied into the
+ * chatbox's cursor text field (offset 0x4C) and sound 0x122 plays; if the
+ * flag is clear, nothing happens.
+ *
+ * Returns 1 when the text was written, 0 when the flag was clear; callers
+ * branch on the result.
+ *
+ * Register notes:
+ *  - The original computes its 0/1 result in r4 but pops the entry value
+ *    back into r4 on exit, so r4 is preserved and the adapter leaves it
+ *    untouched; only the N/Z flags carry the result out.
+ *  - r2/r3/r6 on the taken path are whatever PlaySoundEffect leaves behind
+ *    (and r3 on the early path whatever TestEventFlagFromImmediate leaves);
+ *    the wrapper calls leave those guest registers in exactly that state,
+ *    so nothing is passed through return values. */
+static u32 battle_chatbox_setCursorTextFromEventFlag(u32 textSource, u32 toolkit) {
+    /* movflag EVENT_9D9: the flag id travels as page in r0, index in r1.
+     * TestEventFlagFromImmediate leaves Z set when the flag is clear. */
+    if (call_TestEventFlagFromImmediate_battle_chatbox_setCursorTextFromEventFlag_808CF8C(EVENT_9D9 >> 8, EVENT_9D9 & 0xFF).z)
+        return 0;
+
+    u32 chatbox = LD32(toolkit + oToolkit_ChatboxPtr);
+    ST32(chatbox + 0x4C, LD16(textSource + 6));
+
+    /* r2 still holds the 0x4C cursor-text offset here, as in the original. */
+    call_PlaySoundEffect_battle_chatbox_setCursorTextFromEventFlag_808CF8C(0x122, 0x4C);
+    return 1;
+}
+
+Next battle_chatbox_setCursorTextFromEventFlag_808CF8C(void) {
+    u32 written = battle_chatbox_setCursorTextFromEventFlag(R5, R10);
+    SET_FLAGS_NZ(written);
     RETURN_TO_CALLER();
 }
 

@@ -272,6 +272,51 @@ Next battleObject_computeMoveTargetPanel_80E16CC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_pickClosestPanelObject_80E1730 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r6; } call_sub_80E175C_result;
+/* register form: generated wrapper: sub_80E175C has no typed C interface yet */
+static inline call_sub_80E175C_result call_sub_80E175C(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(sub_80E175C);
+    return (call_sub_80E175C_result){ R0, R6 };
+}
+
+/*
+ * Pick which of two battle objects is "closest" to a reference object by
+ * panel row: if the reference's PanelY matches exactly one of the two
+ * candidates, that candidate is returned directly. If it matches both or
+ * neither, sub_80E175C breaks the tie (it is called with the candidates
+ * swapped: candidate B first, then candidate A, then the reference).
+ *
+ * r0 = candidate A, r3 = candidate B, r6 = reference object.
+ * Returns the chosen object in r0; r4/r6/r7 end exactly as they started.
+ */
+static u32 pick_closest_panel_object(u32 objA, u32 objB, u32 ref) {
+    u32 refY = LD8(ref + oBattleObject_PanelY);
+    u32 aY   = LD8(objA + 0x13);            /* same PanelY field as above */
+    u32 bY   = LD8(objB + oBattleObject_PanelY);
+
+    if (refY == aY) {
+        if (refY == bY)                     /* row matches both: tie-break */
+            return call_sub_80E175C(objB, objA, ref).r0;
+        return objA;                        /* row matches only candidate A */
+    }
+    if (refY == bY)
+        return objB;                        /* row matches only candidate B */
+
+    return call_sub_80E175C(objB, objA, ref).r0;  /* matches neither */
+}
+
+/* battle_pickClosestPanelObject_80E1730(r0 = candidate A, r3 = candidate B,
+ * r6 = reference object) -> r0 = chosen object; r4/r6/r7 preserved. */
+Next battle_pickClosestPanelObject_80E1730(void) {
+    R0 = pick_closest_panel_object(R0, R3, R6);
+    RETURN_TO_CALLER();
+}
+
 /* ── t4_0x10_80E17E8 ── */
 /* t4_0x10_80E17E8: state dispatcher for the time-freeze battle object.
  *
@@ -941,6 +986,63 @@ Next battle_objectFreeWrapper_80E1D72(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_despawnEnemyObject ── */
+#define oBattleObject_Param1_battle_despawnEnemyObject 0x4u
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1; bool v; } call_unpackVerActorTyAndAIIdx_800F29C_result;
+/* register form: generated wrapper: unpackVerActorTyAndAIIdx_800F29C has no typed C interface yet */
+static inline call_unpackVerActorTyAndAIIdx_800F29C_result call_unpackVerActorTyAndAIIdx_800F29C(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(unpackVerActorTyAndAIIdx_800F29C);
+    return (call_unpackVerActorTyAndAIIdx_800F29C_result){ R0, R1, OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_sub_8011044_result;
+/* register form: generated wrapper: battle_runObjectTeardownByNameID has no typed C interface yet */
+static inline call_sub_8011044_result call_sub_8011044(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(battle_runObjectTeardownByNameID);
+    return (call_sub_8011044_result){ R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5; bool z, n, c, v; } call_object_freeMemory_result_battle_despawnEnemyObject;
+/* register form: generated wrapper: object_freeMemory has no typed C interface yet */
+static inline call_object_freeMemory_result_battle_despawnEnemyObject call_object_freeMemory_battle_despawnEnemyObject(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_freeMemory);
+    return (call_object_freeMemory_result_battle_despawnEnemyObject){ R0, R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Despawn an enemy's battle object (r5 = object).
+ *
+ * If the object's Param1 is 0xFF it is chained to a related object; set that
+ * object's "clean up with owner" flag (bit 2) so it is removed as well.
+ * Then unpack the version-specific actor type / AI index from the object's
+ * NameID, run the actor-slot bookkeeping (battle_runObjectTeardownByNameID), and finally free the
+ * object's memory. Register and flag state on return is exactly what
+ * object_freeMemory leaves behind; battle_runObjectTeardownByNameID's r4-r12 results are likewise
+ * left in place by its wrapper, so nothing needs to be copied through here. */
+static void despawn_enemy_object(u32 obj) {
+    if (LD8(obj + oBattleObject_Param1_battle_despawnEnemyObject) == 0xFF) {
+        u32 related = LD32(obj + oBattleObject_RelatedObject2Ptr);
+        if (related != 0)
+            ST8(related + oObjectHeader_Flags,
+                LD8(related + oObjectHeader_Flags) | 4);
+    }
+
+    call_unpackVerActorTyAndAIIdx_800F29C_result ids =
+        call_unpackVerActorTyAndAIIdx_800F29C(LD16(obj + oBattleObject_NameID));
+    call_sub_8011044_result slot = call_sub_8011044(ids.r0, ids.r1, obj);
+    call_object_freeMemory_battle_despawnEnemyObject(slot.r5);
+}
+
+Next battle_despawnEnemyObject(void) {
+    despawn_enemy_object(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── t4_0x30_80E3B70 ── */
 /* Dispatch to the BattleObject's state handler from the jump table at
  * 0x080E3B88, then always call object_updateSprite.
@@ -1209,6 +1311,487 @@ Next sub_80E3D1A(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_spawnArmAttackObject ── */
+#define oBattleObject_CurStateActionPhaseAndPhaseInitialized_battle_spawnArmAttackObject 0x8u
+#define CUR_STATE_UPDATE_battle_spawnArmAttackObject 0x4u
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5; } call_sprite_load_result_battle_spawnArmAttackObject;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_battle_spawnArmAttackObject call_sprite_load_battle_spawnArmAttackObject(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_battle_spawnArmAttackObject){ R4, R5 };
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_battle_spawnArmAttackObject;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battle_spawnArmAttackObject call_sprite_loadAnimationData_battle_spawnArmAttackObject(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battle_spawnArmAttackObject){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_battle_spawnArmAttackObject(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battle_spawnArmAttackObject(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r3, r4, r5; bool c, v; } call_sprite_update_result;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result call_sprite_update(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result){ R2, R3, R4, R5, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_battle_spawnArmAttackObject;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_battle_spawnArmAttackObject call_object_getFlip_battle_spawnArmAttackObject(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_battle_spawnArmAttackObject){ R0 };
+}
+
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline void call_sprite_setFlip_battle_spawnArmAttackObject(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+}
+
+typedef struct { u32 r5; } call_battleObject_updateAttachedArmCoords_80E4AAE_result;
+/* register form: generated wrapper: battleObject_updateAttachedArmCoords_80E4AAE has no typed C interface yet */
+static inline call_battleObject_updateAttachedArmCoords_80E4AAE_result call_battleObject_updateAttachedArmCoords_80E4AAE(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_updateAttachedArmCoords_80E4AAE);
+    return (call_battleObject_updateAttachedArmCoords_80E4AAE_result){ R5 };
+}
+
+/* Spawn the "arm attack" effect object: load its sprite, flag the object,
+ * start its spawn animation and hand control to the per-frame update state. */
+
+/* battle_spawnArmAttackObject body: obj lives in r5 throughout and is the
+ * only value callers see afterwards (r4 is popped, so its callee value dies). */
+static u32 spawn_arm_attack_object(u32 obj) {
+    /* Load the arm-attack sprite resources (0x80/0xC/0x20 as in the original). */
+    obj = call_sprite_load_battle_spawnArmAttackObject(0x80, 0xC, 0x20, obj).r5;
+    obj = call_sprite_loadAnimationData_battle_spawnArmAttackObject(obj).r5;
+    call_sprite_noShadow_battle_spawnArmAttackObject(obj);
+
+    /* Mark the object with the arm-attack flag bit. */
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | 2);
+
+    /* Start animation #2 (the spawn animation) and refresh its data. */
+    ST8(obj + oBattleObject_CurAnim, 2);
+    ST8(obj + oBattleObject_CurAnimCopy, 2);
+    call_sprite_setAnimation_battle_spawnArmAttackObject(2, obj);
+
+    obj = call_sprite_loadAnimationData_battle_spawnArmAttackObject(obj).r5;
+    obj = call_sprite_update(obj).r5;
+
+    /* Mirror the object's facing onto the sprite. */
+    call_sprite_setFlip_battle_spawnArmAttackObject(call_object_getFlip_battle_spawnArmAttackObject(obj).r0, obj);
+
+    /* Hand the object over to the update state. */
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized_battle_spawnArmAttackObject, CUR_STATE_UPDATE_battle_spawnArmAttackObject);
+    return call_battleObject_updateAttachedArmCoords_80E4AAE(obj).r5;
+}
+
+/* battle_spawnArmAttackObject(r5 = object, r10 = battle context) -> r5 = object */
+Next battle_spawnArmAttackObject(void) {
+    R5 = spawn_arm_attack_object(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_spawnLinkedObj3C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3, r4, r5, r6, r7; } call_object_spawnType4_result;
+/* register form: generated wrapper: object_spawnType4 has no typed C interface yet */
+static inline call_object_spawnType4_result call_object_spawnType4(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(object_spawnType4);
+    return (call_object_spawnType4_result){ R3, R4, R5, R6, R7 };
+}
+
+/* battle_spawnLinkedObj3C: spawn battle object type 0x3C and link it to a parent object.
+ *
+ * Inputs (r1-r4): spawn arguments passed straight through to object_spawnType4.
+ * r5: parent battle object — the new object inherits its alliance/direction-flip
+ *     halfword and stores a back-pointer to it.
+ * r7: extra-vars block of the owner; its first word receives the new object.
+ *
+ * If the spawn fails (object_spawnType4 returns NULL in r5) nothing is linked.
+ * r3 and r6 are whatever object_spawnType4 left behind; r5 passes through unchanged
+ * (the original saves and restores it around the spawn call). */
+typedef struct {
+    u32 r3;      /* untouched leftover from object_spawnType4 */
+    u32 parent;  /* r5: the parent object, unchanged */
+    u32 r6;      /* untouched leftover from object_spawnType4 */
+} linked_obj3c_result_t;
+
+static linked_obj3c_result_t spawn_linked_object_3C(u32 arg1, u32 arg2, u32 arg3, u32 arg4,
+                                                    u32 parent, u32 extraVars) {
+    call_object_spawnType4_result spawn = call_object_spawnType4(0x3C, arg1, arg2, arg3, arg4);
+    u32 newObject = spawn.r5;
+
+    if (newObject != 0) {
+        /* Copy the parent's alliance/direction-flip and record the mutual link. */
+        ST16(newObject + oBattleObject_AllianceAndDirectionFlip,
+             LD16(parent + oBattleObject_AllianceAndDirectionFlip));
+        ST32(newObject + oBattleObject_RelatedObject1Ptr, parent);
+        ST32(newObject + oBattleObject_ExtraVars, extraVars);
+        ST32(extraVars, newObject);
+
+        /* Mark the new object with flag bits 0x14. */
+        ST8(newObject + oObjectHeader_Flags,
+            LD8(newObject + oObjectHeader_Flags) | 0x14u);
+    }
+
+    return (linked_obj3c_result_t){ spawn.r3, parent, spawn.r6 };
+}
+
+/* r1-r4: spawn args, r5: parent object, r7: extra-vars block -> r3 r5 r6 */
+Next battle_spawnLinkedObj3C(void) {
+    linked_obj3c_result_t res = spawn_linked_object_3C(R1, R2, R3, R4, R5, R7);
+    R3 = res.r3;
+    R5 = res.parent;
+    R6 = res.r6;
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_scanPanelRunEnd ── */
+#define oBattleObject_Param1_battle_scanPanelRunEnd 0x4u
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r3, r5, r7; } call_object_findMatchingPanelRunEnd_result;
+/* register form: generated wrapper: object_findMatchingPanelRunEnd has no typed C interface yet */
+static inline call_object_findMatchingPanelRunEnd_result call_object_findMatchingPanelRunEnd(u32 r1, u32 r5) {
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(object_findMatchingPanelRunEnd);
+    return (call_object_findMatchingPanelRunEnd_result){ R0, R1, R3, R5, R7 };
+}
+
+typedef struct { u32 r1, r2, r3, r5; bool c, v; } call_battle_spawnObject49_result;
+/* register form: generated wrapper: battle_spawnObject49 has no typed C interface yet */
+static inline call_battle_spawnObject49_result call_battle_spawnObject49(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r6, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(battle_spawnObject49);
+    return (call_battle_spawnObject49_result){ R1, R2, R3, R5, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* battle_scanPanelRunEnd (0x080E52B0): periodic check, run from the scan
+ * phase driver, for whether this battle object's panel run has reached its
+ * end tile.
+ *
+ * Gates (any of these ends the scan with no side effects):
+ *   - Param3 set and the alliance's battle-state slot already occupied;
+ *   - both scratch bytes at obj+0x60/0x61 non-zero (run already marked).
+ *
+ * Otherwise the run counter at ExtraVars+0xC steps (0 wraps back to 3),
+ * object_findMatchingPanelRunEnd looks for the run's end tile, and if it is
+ * found object 49 is spawned and the object moves to phase 4 with a
+ * 12-frame timer.
+ *
+ * The original pushes {r4,r6,r7} around the two calls and pops them on the
+ * way out, so those registers are preserved even though both callees
+ * clobber them; the saved entry values are threaded through and written
+ * back by the adapter. r5 is likewise left exactly as the original leaves
+ * it: untouched on early paths, and whatever battle_spawnObject49 left on
+ * the success path, so the adapter does not write it.
+ */
+typedef struct {
+    u32 r4;
+    u32 r6;
+    u32 r7;
+} scan_panel_run_end_saved;
+
+static scan_panel_run_end_saved scan_panel_run_end_body(u32 obj, u32 toolkit,
+                                                        u32 r4_in, u32 r6_in,
+                                                        u32 r7_in) {
+    scan_panel_run_end_saved saved = { r4_in, r6_in, r7_in };
+
+    /* Gate 1: with Param3 set, the alliance's battle-state slot must be free. */
+    if (LD8(obj + oBattleObject_Param3) != 0) {
+        u32 battleState = LD32(toolkit + oToolkit_BattleStatePtr);
+        u32 slotOffset = (LD8(obj + oBattleObject_Alliance) << 2) + 0xC0;
+        if (LD32(battleState + slotOffset) != 0)
+            return saved;
+    }
+
+    /* Gate 2: the scratch byte pair at obj+0x60 must not both be non-zero.
+     * r7 ends up pointing at the second of the two bytes either way. */
+    u32 scratch = obj + 0x60;
+    if (LD8(scratch) != 0) {
+        scratch++;
+        if (LD8(scratch) != 0)
+            return saved;
+    }
+
+    /* Step the run counter, wrapping 0 back to 3. */
+    u32 counterAddr = obj + oBattleObject_ExtraVars + 0xC;
+    u32 count = LD32(counterAddr) - 1;
+    ST32(counterAddr, count);
+    if (count == 0) {
+        count = 3;
+        ST32(counterAddr, count);
+    }
+
+    /* register form: the original enters object_findMatchingPanelRunEnd with
+     * r7 = scratch (the pointer the search works from); the wrapper's
+     * parameters (r1, r5) cannot carry it. */
+    R7 = scratch;
+
+    call_object_findMatchingPanelRunEnd_result find =
+        call_object_findMatchingPanelRunEnd(count, obj);
+    if (find.r0 == 0)
+        return saved;
+
+    /* Run end found: spawn the follow-up object from the found tile data and
+     * this object's alliance/Param1, then advance the state machine. */
+    call_battle_spawnObject49(find.r0, find.r1,
+                              LD16(obj + oBattleObject_AllianceAndDirectionFlip),
+                              find.r3, LD8(obj + oBattleObject_Param1_battle_scanPanelRunEnd),
+                              0, find.r7);
+
+    ST16(obj + oBattleObject_Timer2, 0xC);
+    ST16(obj + oBattleObject_CurPhaseAndPhaseInitialized, 4);
+    return saved;
+}
+
+Next battle_scanPanelRunEnd(void) {
+    scan_panel_run_end_saved saved =
+        scan_panel_run_end_body(R5, R10, R4, R6, R7);
+    R4 = saved.r4;
+    R6 = saved.r6;
+    R7 = saved.r7;
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_phaseWaitTimer2 ── */
+/* Tick down a battle object's phase-wait timer; when it reaches zero, reset the
+ * object's current phase (clearing the "phase initialized" bit with it). */
+static void battle_phaseWaitTimer2_impl(u32 obj)
+{
+    u32 timer = LD16(obj + oBattleObject_Timer2) - 1;
+
+    ST16(obj + oBattleObject_Timer2, timer);
+    if (timer != 0)
+        return;
+
+    ST16(obj + oBattleObject_CurPhaseAndPhaseInitialized, 0);
+}
+
+/* battle_phaseWaitTimer2(r5 = battle object) -> nothing */
+Next battle_phaseWaitTimer2(void) {
+    battle_phaseWaitTimer2_impl(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_clearDropEntryById ── */
+/* Clear the drop entry whose id matches, in the battle state's two-slot drop table.
+ *
+ * r10 holds the toolkit pointer; the drop table hangs off the battle state and
+ * holds two entries: an id word at +0/+4 and a paired word at +8/+12 for the
+ * first/second slot. Matching entries get both words zeroed.
+ *
+ * Returns the id word last read from the second slot (0 if the second slot
+ * matched and was cleared), which the original leaves behind in r3. */
+static u32 clear_drop_entry_by_id(u32 id, u32 toolkit) {
+    u32 drops = LD32(toolkit + oToolkit_BattleStatePtr) + oBattleState_Drop;
+    u32 lastId = 0;
+
+    for (u32 slot = 0; slot < 2; slot++) {
+        u32 entryId = LD32(drops);
+        if (entryId == id) {
+            ST32(drops, 0);
+            ST32(drops + 8, 0);
+            entryId = 0;
+        }
+        drops += 4;
+        lastId = entryId;
+    }
+
+    return lastId;
+}
+
+/* battle_clearDropEntryById(r0 = drop id, r10 = toolkit) -> r3 */
+Next battle_clearDropEntryById(void) {
+    R3 = clear_drop_entry_by_id(R0, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_restoreBaseSprite ── */
+#define oBattleObject_CurStateActionPhaseAndPhaseInitialized_battle_restoreBaseSprite 0x8u
+#define CUR_STATE_UPDATE_battle_restoreBaseSprite 0x4u
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5; } call_sprite_load_result_battle_restoreBaseSprite;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_battle_restoreBaseSprite call_sprite_load_battle_restoreBaseSprite(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_battle_restoreBaseSprite){ R4, R5 };
+}
+
+typedef struct { u32 r1, r2, r4, r5; } call_sprite_loadAnimationData_result_battle_restoreBaseSprite;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_battle_restoreBaseSprite call_sprite_loadAnimationData_battle_restoreBaseSprite(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_battle_restoreBaseSprite){ R1, R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_battle_restoreBaseSprite(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_battle_restoreBaseSprite(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r3; bool c, v; } call_sprite_setPalette_result_battle_restoreBaseSprite;
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline call_sprite_setPalette_result_battle_restoreBaseSprite call_sprite_setPalette_battle_restoreBaseSprite(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+    return (call_sprite_setPalette_result_battle_restoreBaseSprite){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_battle_restoreBaseSprite;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_battle_restoreBaseSprite call_object_getFlip_battle_restoreBaseSprite(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_battle_restoreBaseSprite){ R0 };
+}
+
+typedef struct { u32 r1, r2, r3; bool c, v; } call_sprite_setFlip_result_battle_restoreBaseSprite;
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline call_sprite_setFlip_result_battle_restoreBaseSprite call_sprite_setFlip_battle_restoreBaseSprite(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+    return (call_sprite_setFlip_result_battle_restoreBaseSprite){ R1, R2, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/*
+ * battle_restoreBaseSprite (0x080e70f8)
+ *
+ * Put a battle object back onto its base (idle) sprite: copy the sprite
+ * parameters the related object saved at +0x34 back into this object, reload
+ * the base graphics/animation, reapply palette and flip, and switch the
+ * object's state machine back to the normal update state.
+ *
+ * Takes the object pointer in r5 and hands it back unchanged (the callees
+ * all keep it); r4/r5 end exactly as they started.
+ */
+static u32 battle_restore_base_sprite(u32 obj) {
+    /* Copy the 12 saved bytes at +0x34 of the related object back onto us.
+     * Load all three words first, like ldmia/stmia does, in case the ranges
+     * ever overlap. */
+    u32 src = LD32(obj + oBattleObject_RelatedObject1Ptr) + 0x34;
+    u32 dst = obj + 0x34;
+    u32 saved0 = LD32(src);
+    u32 saved1 = LD32(src + 4);
+    u32 saved2 = LD32(src + 8);
+    ST32(dst, saved0);
+    ST32(dst + 4, saved1);
+    ST32(dst + 8, saved2);
+
+    /* Reload the base sprite graphics (tile 0x80, 8 x 15) and its frames. */
+    call_sprite_load_battle_restoreBaseSprite(0x80, 8, 0xF, obj);
+    call_sprite_loadAnimationData_battle_restoreBaseSprite(obj);
+    call_sprite_noShadow_battle_restoreBaseSprite(obj);
+
+    /* Mark the object header as needing a sprite refresh (set flag bit 1). */
+    ST8(obj + oObjectHeader_Flags, LD8(obj + oObjectHeader_Flags) | 2);
+
+    /* Restart the base animation (index 8) and load its frame data. */
+    ST8(obj + oBattleObject_CurAnim, 8);
+    ST8(obj + oBattleObject_CurAnimCopy, 8);
+    call_sprite_setAnimation_battle_restoreBaseSprite(8, obj);
+    call_sprite_loadAnimationData_battle_restoreBaseSprite(obj);
+
+    /* Back to palette 0, then reapply whatever flip the object currently has. */
+    call_sprite_setPalette_battle_restoreBaseSprite(0, obj);
+    call_sprite_setFlip_battle_restoreBaseSprite(call_object_getFlip_battle_restoreBaseSprite(obj).r0, obj);
+
+    /* Hand control back to the normal per-frame update state. */
+    ST32(obj + oBattleObject_CurStateActionPhaseAndPhaseInitialized_battle_restoreBaseSprite, CUR_STATE_UPDATE_battle_restoreBaseSprite);
+
+    return obj;   /* r5 passes through unchanged */
+}
+
+Next battle_restoreBaseSprite(void) {
+    R5 = battle_restore_base_sprite(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_objectFlinchStep ── */
+/* Advance a battle object's flinch state machine:
+ *  - if it is already finishing the flinch (action 8), do nothing;
+ *  - if it is not yet flinching (action != 4), start the flinch pose
+ *    (action 4) with a 15-frame timer;
+ *  - count the timer down each frame, and once it reaches zero switch to
+ *    the recovery animation (anim 9) and end the flinch (action 8). */
+static void flinch_step(u32 obj) {
+    u32 action = LD8(obj + oBattleObject_CurAction);
+
+    if (action == 8)
+        return;                        /* flinch already finished */
+
+    if (action != 4) {
+        /* Enter the flinch pose and start its timer. */
+        ST8(obj + oBattleObject_CurAction, 4);
+        ST16(obj + oBattleObject_Timer, 15);
+    }
+
+    /* Tick the timer; keep flinching while it is still positive. */
+    u16 timer = (u16)(LD16(obj + oBattleObject_Timer) - 1);
+    ST16(obj + oBattleObject_Timer, timer);
+
+    if ((s32)timer <= 0) {
+        /* Timer expired: play the recovery animation and end the flinch. */
+        ST8(obj + oBattleObject_CurAnim, 9);
+        ST8(obj + oBattleObject_CurAction, 8);
+    }
+}
+
+/* battle_objectFlinchStep(r5 = battle object) -> nothing */
+Next battle_objectFlinchStep(void) {
+    flinch_step(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486 ── */
 /* ifPanelFlagSetFindBattleActorWithCollisionOnPanelXY_80E7486
  *   r0 = panel X, r1 = panel Y, r2 = panel-flag selector, r10 = toolkit.
@@ -1353,6 +1936,198 @@ static void nullsub_105_body(void) {
 
 Next nullsub_105(void) {
     nullsub_105_body();
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_runPwrAtkStep ── */
+/* Offsets into the battle object (r7) used by the PowerAtk action. */
+#define PWR_ATK_STEP_BYTE 0x1E /* current step number; also the byte offset into the handler table */
+#define PWR_ATK_ARM_BYTE  0x22 /* set to 1 once the A button is pressed in time */
+#define PWR_ATK_WAIT_BYTE 0x23 /* per-call countdown; the A button is only read while it is 0 */
+
+/* register form: the PowerAtk step handler is reached through the jump table
+ * at off_80EADD0 (mov lr, pc / bx r1) and is entered with the caller's whole
+ * register state -- r0 = step byte, r1 = handler address, r3 = &step byte,
+ * r7 = battle object, r2/r4-r6/r8-r12 passed through -- which no typed call
+ * can express. The tail after the call also has to live here: it patches r1
+ * and r7 in place, and r1/r5/r8-r12 are this function's outputs, so the
+ * handler's exit values must survive untouched. */
+static u32 call_pwr_atk_handler(u32 obj, u32 r2, u32 r4, u32 r5, u32 r6,
+                                u32 r8, u32 r9, u32 r10, u32 r11, u32 r12)
+{
+    u32 step = LD8(obj + PWR_ATK_STEP_BYTE);
+    u32 handler = LD32(A_off_80EADD0 + step);
+
+    R0 = step;         /* the step byte's value, exactly as the original loads it */
+    R1 = handler;      /* Thumb address from the jump table */
+    R2 = r2;
+    R3 = obj + PWR_ATK_STEP_BYTE; /* the handler gets a pointer to the step byte */
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = obj;
+    R8 = r8;
+    R9 = r9;
+    R10 = r10;
+    R11 = r11;
+    R12 = r12;
+
+    GUEST_CALL_ADDR(handler);
+
+    /* pop {r7}: the original continues with r7 = obj + 0x1E, so its
+     * [r7,#4]/[r7,#5] accesses are the object's +0x22/+0x23 bytes. */
+    u32 wait = LD8(obj + PWR_ATK_WAIT_BYTE);
+    if (wait != 0) {
+        /* Still waiting: count one frame down and ignore input.
+         * r1 keeps whatever the handler left in it. */
+        ST8(obj + PWR_ATK_WAIT_BYTE, wait - 1);
+    } else {
+        R1 = 1; /* mov r1, #1 happens before the button test */
+        if ((LD16(R4 + oAIData_JoypadPressed) & 1) != 0) /* bit 0 = A */
+            ST8(obj + PWR_ATK_ARM_BYTE, 1);
+    }
+
+    /* pop {r7,pc}: the original returns with the caller's r7 restored. */
+    R7 = obj;
+
+    return R0;
+}
+
+/* One frame of the PowerAtk action: run the current step's handler, then
+ * either tick the input-wait counter or arm the attack on an A press.
+ * The registers the handler leaves in r1/r5/r8-r12 stay in place for this
+ * function's callers, exactly as in the original. */
+static void run_pwr_atk_step(u32 r2, u32 r4, u32 obj, u32 r5, u32 r6,
+                             u32 r8, u32 r9, u32 r10, u32 r11, u32 r12)
+{
+    call_pwr_atk_handler(obj, r2, r4, r5, r6, r8, r9, r10, r11, r12);
+}
+
+/* battle_runPwrAtkStep(r2, r4 = AIData, r7 = battle object, r5, r6, r8-r12)
+ * Outputs r1/r5/r8-r12 are whatever the step handler left there (r1 = 1 when
+ * the wait counter had run out); r7 comes back restored. */
+Next battle_runPwrAtkStep(void) {
+    run_pwr_atk_step(R2, R4, R7, R5, R6, R8, R9, R10, R11, R12);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_commitPanelMove ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: object_clearFlag has no typed C interface yet */
+static inline void call_object_clearFlag_battle_commitPanelMove(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_clearFlag);
+}
+
+typedef struct { u32 r3; } call_object_removePanelReserve_result;
+/* register form: generated wrapper: object_removePanelReserve has no typed C interface yet */
+static inline call_object_removePanelReserve_result call_object_removePanelReserve(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(object_removePanelReserve);
+    return (call_object_removePanelReserve_result){ R3 };
+}
+
+/* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
+static inline void call_object_setCoordinatesFromPanels_battle_commitPanelMove(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setCoordinatesFromPanels);
+}
+
+typedef struct { u32 r3, r4, r6; bool c, v; } call_object_updateCollisionPanels_result_battle_commitPanelMove;
+/* register form: generated wrapper: object_updateCollisionPanels has no typed C interface yet */
+static inline call_object_updateCollisionPanels_result_battle_commitPanelMove call_object_updateCollisionPanels_battle_commitPanelMove(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_updateCollisionPanels);
+    return (call_object_updateCollisionPanels_result_battle_commitPanelMove){ R3, R4, R6, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: object_clearFlag2 has no typed C interface yet */
+static inline void call_object_clearFlag2(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_clearFlag2);
+}
+
+typedef struct { u32 r3; bool c, v; } call_object_reservePanel_result;
+/* register form: generated wrapper: object_reservePanel has no typed C interface yet */
+static inline call_object_reservePanel_result call_object_reservePanel(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(object_reservePanel);
+    return (call_object_reservePanel_result){ R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2; } call_object_setFlag1_result;
+/* register form: generated wrapper: object_setFlag1 has no typed C interface yet */
+static inline call_object_setFlag1_result call_object_setFlag1_battle_commitPanelMove(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setFlag1);
+    return (call_object_setFlag1_result){ R1, R2 };
+}
+
+/*
+ * Commit a battle object's queued panel move: the panel the object was moving
+ * to becomes its current panel, the reservation on the old panel is released,
+ * position and collision data are refreshed, the new panel is reserved and
+ * sliding is locked until the move animation has played. Also resets the
+ * move-request struct pointed to by r3.
+ *
+ * Register notes carried over from the original:
+ *  - r1 is left as object_setFlag1 leaves it and r4 as
+ *    object_updateCollisionPanels leaves it; callers read both, and running
+ *    the real callees reproduces them, so nothing is written here.
+ *  - r6 is preserved (the original saves/restores it), but
+ *    object_updateCollisionPanels clobbers it, so the adapter keeps a copy.
+ */
+static void battle_commitPanelMove_run(u32 moveState, u32 obj) {
+    /* Cancel the "panel move pending" flag (bit 22 of the object flags). */
+    call_object_clearFlag_battle_commitPanelMove(1u << 22, obj);
+
+    /* The planned panel becomes the current panel. */
+    u32 x = LD8(obj + oBattleObject_FuturePanelX);
+    ST8(obj + oBattleObject_PanelX, x);
+    u32 y = LD8(obj + oBattleObject_FuturePanelY);
+    ST8(obj + oBattleObject_PanelY, y);
+
+    /* Give up the old panel's reservation, then recompute the object's
+     * pixel coordinates and collision panels from its new panel. */
+    call_object_removePanelReserve(x, y, obj);
+    call_object_setCoordinatesFromPanels_battle_commitPanelMove(obj);
+    call_object_updateCollisionPanels_battle_commitPanelMove(obj);
+
+    /* Clear the step/slide bookkeeping flags (pool literal dword_80EB03C
+     * = 0x1040) and the 0x10 flag. */
+    call_object_clearFlag_battle_commitPanelMove(0x1040, obj);
+    call_object_clearFlag2(0x10, obj);
+
+    /* Reserve the panel we now stand on, keeping the planned coordinates
+     * in step with the current ones. */
+    x = LD8(obj + oBattleObject_PanelX);
+    y = LD8(obj + oBattleObject_PanelY);
+    ST8(obj + oBattleObject_FuturePanelX, x);
+    ST8(obj + oBattleObject_FuturePanelY, y);
+    call_object_reservePanel(x, y, obj);
+
+    /* Forbid further sliding until the move has finished. */
+    call_object_setFlag1_battle_commitPanelMove(OBJECT_FLAGS_CANNOT_SLIDE, obj);
+
+    /* Reset the move request: step index 0, wait timer 12, state 4. */
+    ST8(moveState + 4, 0);
+    ST8(moveState + 5, 0xC);
+    ST16(moveState, 4);
+}
+
+/* battle_commitPanelMove(r3 = move-request struct, r5 = battle object)
+ * -> r1, r4 left behind by the callees; flags and r0/r2/r3 are clobbered. */
+Next battle_commitPanelMove(void) {
+    u32 savedR6 = R6;    /* preserved overall, but clobbered by a callee */
+    battle_commitPanelMove_run(R3, R5);
+    R6 = savedR6;
     RETURN_TO_CALLER();
 }
 

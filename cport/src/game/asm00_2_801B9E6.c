@@ -2542,6 +2542,85 @@ Next custGauge_Init_801DED0(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_customGaugeResetForNewTurn ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: ClearCustGauge has no typed C interface yet */
+static inline void call_ClearCustGauge(void) {
+    GUEST_CALL(ClearCustGauge);
+}
+
+typedef struct { u32 r3, r4, r5, r6, r7; } call_QueueGFXTransfersInList_result;
+/* register form: generated wrapper: QueueGFXTransfersInList has no typed C interface yet */
+static inline call_QueueGFXTransfersInList_result call_QueueGFXTransfersInList(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(QueueGFXTransfersInList);
+    return (call_QueueGFXTransfersInList_result){ R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r1, r2; } call_eStruct2035280_SetRequestBits_801BECC_result_battle_customGaugeResetForNewTurn;
+/* register form: generated wrapper: eStruct2035280_SetRequestBits_801BECC has no typed C interface yet */
+static inline call_eStruct2035280_SetRequestBits_801BECC_result_battle_customGaugeResetForNewTurn call_eStruct2035280_SetRequestBits_801BECC_battle_customGaugeResetForNewTurn(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(eStruct2035280_SetRequestBits_801BECC);
+    return (call_eStruct2035280_SetRequestBits_801BECC_result_battle_customGaugeResetForNewTurn){ R1, R2 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool v; } call_dispatch_801DA48_result_battle_customGaugeResetForNewTurn;
+/* register form: generated wrapper: dispatch_801DA48 has no typed C interface yet */
+static inline call_dispatch_801DA48_result_battle_customGaugeResetForNewTurn call_dispatch_801DA48_battle_customGaugeResetForNewTurn(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(dispatch_801DA48);
+    return (call_dispatch_801DA48_result_battle_customGaugeResetForNewTurn){ R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, OVERFLOW_FLAG() };
+}
+
+/* Start-of-turn reset of the custom gauge:
+ *   - empty the gauge,
+ *   - queue the graphics transfers that redraw the gauge GUI,
+ *   - raise the gauge-refill request bit (0x20000) twice: once via the
+ *     request setter and once through the 0x801DA48 dispatcher,
+ *   - clear the two gauge state bytes in eStruct2035280.
+ * Everything visible to callers (r1..r12) is just what the callees leave
+ * behind, so the typed function relays those register values. */
+
+typedef struct {
+    u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12;
+} GaugeResetOutputs;
+
+static GaugeResetOutputs reset_custom_gauge_for_new_turn(void) {
+    GaugeResetOutputs out;
+
+    /* Empty the custom gauge. */
+    call_ClearCustGauge();
+
+    /* Queue the data list that redraws the gauge display. */
+    call_QueueGFXTransfersInList(A_off_801DF60);
+
+    /* Set request bit 17 (0x20000) on eStruct2035280; its r1 survives
+     * everything after it, so keep it for the caller. */
+    out.r1 = call_eStruct2035280_SetRequestBits_801BECC_battle_customGaugeResetForNewTurn(1u << 17).r1;
+
+    /* Dispatch the same request bit. */
+    call_dispatch_801DA48_result_battle_customGaugeResetForNewTurn dispatched = call_dispatch_801DA48_battle_customGaugeResetForNewTurn(1u << 17);
+
+    /* Reset the gauge byte counters. */
+    ST8(A_eStruct2035280 + 0x18, 0);    /* byte_2035298 */
+    ST8(A_eStruct2035280 + 0x19, 0);    /* byte_2035299 */
+
+    out.r2 = dispatched.r2, out.r3 = dispatched.r3, out.r4 = dispatched.r4,
+    out.r5 = dispatched.r5, out.r6 = dispatched.r6, out.r7 = dispatched.r7,
+    out.r8 = dispatched.r8, out.r9 = dispatched.r9, out.r10 = dispatched.r10,
+    out.r11 = dispatched.r11, out.r12 = dispatched.r12;
+    return out;
+}
+
+Next battle_customGaugeResetForNewTurn(void) {
+    GaugeResetOutputs out = reset_custom_gauge_for_new_turn();
+    R1 = out.r1, R2 = out.r2, R3 = out.r3, R4 = out.r4, R5 = out.r5,
+    R6 = out.r6, R7 = out.r7, R8 = out.r8, R9 = out.r9, R10 = out.r10,
+    R11 = out.r11, R12 = out.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_setEnemyCountFromNaviStats_801DF8C ── */
 /* battle_setEnemyCountFromNaviStats_801DF8C(r0 = value): store a halfword into word_20352A2 (the 0x22 field of
  * the eStruct2035280 struct). */
@@ -2560,6 +2639,19 @@ Next ClearCustGauge(void) {
     R0 = 0x12;
     GUEST_CALL(battle_clearFlags);
 
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_getTotalDamageTakenForActor_801DFE4 ── */
+/* Total damage the player has taken in the current battle, kept as a halfword
+ * at +0x20 of the battle stats struct (2035280). */
+static u16 battle_getTotalDamageTakenForActor(void) {
+    return LD16(A_eStruct2035280 + 0x20);
+}
+
+/* battle_getTotalDamageTakenForActor() -> r0 */
+Next battle_getTotalDamageTakenForActor_801DFE4(void) {
+    R0 = battle_getTotalDamageTakenForActor();
     RETURN_TO_CALLER();
 }
 

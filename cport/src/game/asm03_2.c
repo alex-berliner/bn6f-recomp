@@ -3738,3 +3738,197 @@ Next chatbox_copyNaviSpriteState_804C298(void) {
 
     RETURN_TO_CALLER();
 }
+
+/* ── battle_dispatchJumpByActorSlotAndAction_804C404 ── */
+/* Tables used by the jump/blink dispatcher (addresses from the disassembly). */
+#define SLOT_RECORD_TABLE A_byte_804C3F0 /* one 0x14-byte record per actor slot */
+#define SLOT_RECORD_SIZE  0x14
+#define HANDLER_TABLE     A_off_804C420  /* one entry per action; indexed by raw byte offset */
+
+/* register form: indirect call through the action-handler table. The original
+ * wraps the call in push/pop {r4-r7}, so the handler may clobber those
+ * registers even though this function must preserve them, while the handler's
+ * results in r2 and r8-r12 stay live and become this function's outputs.
+ * The handlers are entered with r0 = their own table entry, r1 = the action
+ * selector, r5 = actor block, r7 = the slot's record, r10 = battle context. */
+static void call_action_handler(u32 handler, u32 action, u32 actorPtr,
+                                u32 record, u32 battleCtxR10)
+{
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
+
+    R0 = handler;
+    R1 = action;
+    R5 = actorPtr;
+    R7 = record;
+    R10 = battleCtxR10;
+    GUEST_CALL_ADDR(handler);
+
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+    R7 = savedR7;
+}
+
+/* Dispatch one actor's jump/blink update: pick the slot's record and the
+ * handler for the actor's current action, then call it. */
+static void dispatch_actor_jump(u32 actorPtr, u32 battleCtxR10)
+{
+    u32 slot    = LD8(actorPtr + 0x0C);
+    u32 action  = LD8(actorPtr + 0x10);
+    u32 record  = SLOT_RECORD_TABLE + slot * SLOT_RECORD_SIZE;
+    /* The table is indexed by the raw action byte, not by word index. */
+    u32 handler = LD32(HANDLER_TABLE + action);
+
+    call_action_handler(handler, action, actorPtr, record, battleCtxR10);
+}
+
+/* battle_dispatchJumpByActorSlotAndAction_804C404
+ * inputs: r5 = actor block, r10 = battle context (lr is only the return
+ * address, which RETURN_TO_CALLER() handles). Outputs r2, r8-r12 are whatever
+ * the chosen handler leaves behind. */
+Next battle_dispatchJumpByActorSlotAndAction_804C404(void) {
+    dispatch_actor_jump(R5, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_render_setBlurAndAnimUpdate_804C478 ── */
+/* Bit in the render-info control word that enables the blur/animation
+ * redraw path for this frame (dword_804C4AC = 0x4800). */
+#define RENDER_INFO_BLUR_FLAG 0x4800
+
+/*
+ * Sprite-draw callee loc_80024D8 has no generated wrapper, so drive it
+ * directly through the guest registers: r0 = draw-packet address,
+ * r1 = palette, r2 = layer, r3 = priority.  Its leftovers in r2/r8/r9
+ * are this function's outputs, so nothing here may touch them afterwards.
+ */
+static void draw_sprite_packet(u32 packet, u32 palette, u32 layer, u32 priority)
+{ /* register form: calls loc_80024D8, which has no typed C interface yet (noted by the tool) */
+    R0 = packet;
+    R1 = palette;
+    R2 = layer;
+    R3 = priority;
+    GUEST_CALL(loc_80024D8);
+}
+
+/*
+ * Turn on the blur/animation-update flag in the toolkit's render-info
+ * control word, then submit one sprite draw: a 12-byte (x, y, z) packet
+ * built on the guest stack, plus the sprite's palette, layer and priority.
+ * The sprite's z is lowered by the blur object's +0xD byte, shifted into
+ * the upper halfword (a fixed-point subpixel offset).
+ *
+ * blur_obj (r5)  – object whose +0xD byte subtracts from the z position
+ * sprite   (r7)  – x/y/z at +0/+4/+8, palette at +0xC, layer +0x10, priority +0x11
+ * toolkit  (r10) – toolkit, render-info pointer at oToolkit_RenderInfoPtr
+ */
+static void battle_render_setBlurAndAnimUpdate(u32 blur_obj, u32 sprite, u32 toolkit)
+{
+    u32 render_info;
+    u32 x, y, z;
+    u32 palette, layer, priority;
+
+    /* Enable the blur + animation-update path in the render info. */
+    render_info = LD32(toolkit + oToolkit_RenderInfoPtr);
+    ST16(render_info, LD16(render_info) | RENDER_INFO_BLUR_FLAG);
+
+    /* Gather the draw position; the blur byte subtracts from the high
+     * halfword of z. */
+    x = LD32(sprite);
+    y = LD32(sprite + 4);
+    z = LD32(sprite + 8) - ((u32)LD8(blur_obj + 0xD) << 16);
+
+    palette  = LD32(sprite + 0xC);
+    layer    = LD8(sprite + 0x10);
+    priority = LD8(sprite + 0x11);
+
+    /* register form: the 12-byte draw packet lives on the guest stack and
+     * the callee receives its guest address (SP) as its first argument */
+    SP -= 12;
+    ST32(SP, x);
+    ST32(SP + 4, y);
+    ST32(SP + 8, z);
+    draw_sprite_packet(SP, palette, layer, priority);
+    SP += 12;
+}
+
+/* battle_render_setBlurAndAnimUpdate_804C478
+ * (r5 = blur object, r7 = sprite, r10 = toolkit)
+ * -> r2, r8, r9 are simply what the draw callee left behind. */
+Next battle_render_setBlurAndAnimUpdate_804C478(void)
+{
+    battle_render_setBlurAndAnimUpdate(R5, R7, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_setupBackgroundGfx ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3, r4, r5, r6, r7; } call_QueueEightWordAlignedGFXTransfer_result_battle_setupBackgroundGfx;
+/* register form: generated wrapper: QueueEightWordAlignedGFXTransfer has no typed C interface yet */
+static inline call_QueueEightWordAlignedGFXTransfer_result_battle_setupBackgroundGfx call_QueueEightWordAlignedGFXTransfer_battle_setupBackgroundGfx(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+    return (call_QueueEightWordAlignedGFXTransfer_result_battle_setupBackgroundGfx){ R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r5; } call_sub_804C844_result;
+/* register form: generated wrapper: sub_804C844 has no typed C interface yet */
+static inline call_sub_804C844_result call_sub_804C844(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_804C844);
+    return (call_sub_804C844_result){ R5 };
+}
+
+typedef struct { u32 r2, r8, r9, r10, r11, r12; } call_battleObject_initBattleFieldTilesAndSfxTimer_804C770_result;
+/* register form: generated wrapper: battleObject_initBattleFieldTilesAndSfxTimer_804C770 has no typed C interface yet */
+static inline call_battleObject_initBattleFieldTilesAndSfxTimer_804C770_result call_battleObject_initBattleFieldTilesAndSfxTimer_804C770(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_initBattleFieldTilesAndSfxTimer_804C770);
+    return (call_battleObject_initBattleFieldTilesAndSfxTimer_804C770_result){ R2, R8, R9, R10, R11, R12 };
+}
+
+/* battle_setupBackgroundGfx: queue the battle background GFX transfers, program
+ * the render-info blend word, advance the battle state one setup step, and
+ * initialise the battlefield tiles/SFX timer.
+ *
+ * r5 = battle state object, r10 = toolkit.
+ * Outputs r2 r8 r9 r10 r11 r12 are exactly what
+ * battleObject_initBattleFieldTilesAndSfxTimer_804C770 leaves behind, so they
+ * are passed straight through from its wrapper. */
+
+static call_battleObject_initBattleFieldTilesAndSfxTimer_804C770_result
+setup_background_gfx(u32 battleState, u32 toolkit) {
+    /* Battle background tiles: 0x80 bytes of ROM GFX into VRAM at 0x0600CF40. */
+    call_QueueEightWordAlignedGFXTransfer_battle_setupBackgroundGfx(A_byte_86A2C00, 0x600CF40, 0x80);
+
+    /* 32-byte companion block (palette data) from ROM into the IWRAM buffer. */
+    call_QueueEightWordAlignedGFXTransfer_battle_setupBackgroundGfx(A_byte_86A2BE0, A_byte_3001B00, 0x20);
+
+    /* Fixed blend control word into the render info halfword at +0xA. */
+    u32 renderInfo = LD32(toolkit + oToolkit_RenderInfoPtr);
+    ST16(renderInfo + 0xA, 0x1F09);
+
+    /* Update the battle state, then record setup step 4 in it at +0x10. */
+    battleState = call_sub_804C844(battleState).r5;
+    ST8(battleState + 0x10, 4);
+
+    /* Bring up the battlefield tiles and reset the SFX timer; its register
+     * results (r2, r8-r12) are this function's outputs. */
+    return call_battleObject_initBattleFieldTilesAndSfxTimer_804C770(battleState);
+}
+
+/* battle_setupBackgroundGfx(r5 = battle state, r10 = toolkit)
+ *   -> r2 r8 r9 r10 r11 r12 */
+Next battle_setupBackgroundGfx(void) {
+    call_battleObject_initBattleFieldTilesAndSfxTimer_804C770_result out =
+        setup_background_gfx(R5, R10);
+    R2 = out.r2;
+    R8 = out.r8;
+    R9 = out.r9;
+    R10 = out.r10;
+    R11 = out.r11;
+    R12 = out.r12;
+    RETURN_TO_CALLER();
+}

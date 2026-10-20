@@ -327,6 +327,42 @@ Next battleObject_initNaviRosterEntry_811DF40(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_rosterIconSetShade ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sprite_setUnk0x2c has no typed C interface yet */
+static inline void call_sprite_setUnk0x2c(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setUnk0x2c);
+}
+
+/* Set the roster icon's shade field on a battle object.
+ * r6 points to the object: +4 holds the shade index, +0x20 a flag word.
+ * Shade 0xFF means "fully lit": the whole 0x3F800000 bit pattern is written.
+ * Any other value clears bit (0x1D - shade) of the existing word.
+ * Either way sprite_setUnk0x2c is called with the (new) word in r0 and the
+ * sprite handle in r5. */
+static void roster_icon_set_shade(u32 sprite, u32 obj) {
+    u32 shade = LD8(obj + 4);
+
+    if (shade == 0xFF) {
+        ST32(obj + 0x20, 0x3F800000);
+        call_sprite_setUnk0x2c(0x3F800000, sprite);
+    } else {
+        u32 shift = (0x1Du - shade) & 0xFF;      /* LSL count is taken from the low byte */
+        u32 mask = (shift < 32) ? (1u << shift) : 0;
+        u32 word = LD32(obj + 0x20) & ~mask;
+
+        ST32(obj + 0x20, word);
+        call_sprite_setUnk0x2c(word, sprite);
+    }
+}
+
+Next battle_rosterIconSetShade(void) {
+    roster_icon_set_shade(R5, R6);
+    RETURN_TO_CALLER();
+}
+
 /* ── TestPETMenuDataFlag ── */
 /* TestPETMenuDataFlag(r0 = flag mask):
  * Tests the PET menu flags byte (eFlags200DF25) against the mask in r0 and

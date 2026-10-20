@@ -868,6 +868,45 @@ Next sub_80ECAA4(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── bubbleShotAttack_80ECBB0 ── */
+/* bubbleShotAttack_80ECBB0 — trampoline for the "bubble shot" AI attack.
+ *
+ * This routine only selects a follow-up handler based on the element the
+ * attack last hit (the HitElement byte in the AI attack vars) and tail-calls
+ * it with r0 = that element and r1 = the selected handler address. The
+ * handler runs and returns straight to bubbleShotAttack's caller, leaving
+ * its results in r1, r5 and r8-r12.
+ *
+ * Handler table at off_80ECBC4, indexed by the HitElement byte:
+ *   +0 -> ai_attackFrontStrikeStep   (struck an enemy: step in and strike)
+ *   +4 -> ai_attackHoldTimeoutUpdate (attack timed out while holding the shot)
+ */
+
+/* Helper for the one call no wrapper covers: the jump through the table word.
+ * The original enters the handler with r0 = HitElement and r1 = handler
+ * address; every other register (r2 r3 r5 r6 r7 r10) passes through as it
+ * was on entry, and the handler's register results stay in place. */
+static void call_hit_element_handler_bubbleShotAttack_80ECBB0(u32 element, u32 handler) { /* register form: calls through a guest code address (noted by the tool) */
+    R0 = element; /* ldrb r0, [r7, #oAIAttackVars_HitElement] before the branch */
+    R1 = handler; /* ldr r1, [table, r0] gives the Thumb handler address */
+    GUEST_CALL_ADDR(handler);
+}
+
+/* Look up the follow-up handler for the element that was hit and jump to it.
+ * attackVars (r7 in the original) points at the AI attack vars; the handler
+ * receives the untouched r2/r3/r5/r6/r10 and leaves its results in the
+ * output registers for bubbleShotAttack's caller. */
+static void dispatch_hit_element_handler(u32 attackVars) {
+    u32 element = LD8(attackVars + oAIAttackVars_HitElement);
+    u32 handler = LD32(A_off_80ECBC4 + element);
+    call_hit_element_handler_bubbleShotAttack_80ECBB0(element, handler);
+}
+
+Next bubbleShotAttack_80ECBB0(void) {
+    dispatch_hit_element_handler(R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_attackHoldTimeoutUpdate ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r6, r7; bool z, n, c, v; } call_object_exitAttackState_result_ai_attackHoldTimeoutUpdate;
@@ -1185,6 +1224,48 @@ Next ai_attack_dispatch_80ED13E(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_elementHitDispatcher ── */
+/* battle_elementHitDispatcher (0x080ED374).
+ *
+ * Trampoline: it picks one of three AI attack handlers from the jump table at
+ * off_80ED388 using the hit-element byte stored in the AI attack vars, then
+ * jumps to it (mov lr, pc / bx r1, so the handler returns through pop {pc}
+ * straight back to the dispatcher's caller). The handler is entered with
+ * r0 = HitElement byte and r1 = its own table entry address; r3, r5, r6, r7
+ * and r10 pass through untouched. Everything the dispatcher "outputs"
+ * (r1, r5, r8-r12) is simply whatever the chosen handler leaves behind, so
+ * nothing needs to be copied through return values here. */
+
+/* register form: the call target is read from the game's jump table at
+ * off_80ED388, and the callee both consumes live guest registers
+ * (r3, r5, r6, r7, r10) and produces the dispatcher's live outputs
+ * (r1, r5, r8-r12), so this call cannot be typed. */
+static void element_hit_dispatch(u32 r3, u32 r5, u32 r6, u32 r7, u32 r10) {
+    u32 element = LD8(r7 + oAIAttackVars_HitElement);
+
+    /* ldr with a register offset is not scaled: the byte already holds the
+     * byte offset into the table (0, 4 or 8). */
+    u32 handler = LD32(A_off_80ED388 + element);
+
+    R0 = element;   /* handler sees the hit-element byte in r0 */
+    R1 = handler;   /* ...and its own table entry address in r1 */
+    R3 = r3;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    R10 = r10;
+
+    GUEST_CALL_ADDR(handler);
+
+    /* On return r1, r5, r8, r9, r10, r11, r12 hold the handler's results;
+     * those are exactly the dispatcher's outputs, left in place. */
+}
+
+Next battle_elementHitDispatcher(void) {
+    element_hit_dispatch(R3, R5, R6, R7, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_attackSpawnTimedTempObject ── */
 /* AI attack step: drive the temporary attack object spawned by an AI attack.
  *
@@ -1430,6 +1511,69 @@ Next ai_attackWaitThenCleanup(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_aiAttackTickDown_80EF608 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2; } call_object_clearFlag_result;
+/* register form: generated wrapper: object_clearFlag has no typed C interface yet */
+static inline call_object_clearFlag_result call_object_clearFlag_battle_aiAttackTickDown_80EF608(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_clearFlag);
+    return (call_object_clearFlag_result){ R2 };
+}
+
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_object_exitAttackState_result_battle_aiAttackTickDown_80EF608;
+/* register form: generated wrapper: object_exitAttackState has no typed C interface yet */
+static inline call_object_exitAttackState_result_battle_aiAttackTickDown_80EF608 call_object_exitAttackState_battle_aiAttackTickDown_80EF608(u32 r5, u32 r6, u32 r7) {
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    GUEST_CALL(object_exitAttackState);
+    return (call_object_exitAttackState_result_battle_aiAttackTickDown_80EF608){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Tick down an in-progress AI attack (r7 = AI attack state, r5/r6 = battle
+ * object pointers passed through to the object helpers).
+ *
+ * Each call decrements the attack's step timer; while it is still positive
+ * there is nothing more to do this tick. Once it reaches zero, the charge
+ * cycle counter is decremented too: as long as charge remains, the stored hit
+ * element is reset, and on the tick where the charge runs out the object's
+ * "elemental hit" flag bit is cleared and the object leaves its attack state.
+ *
+ * Returns the r1 value the original leaves behind: whatever
+ * object_exitAttackState produced, or the incoming r1 on the early paths. */
+static u32 ai_attack_tick_down(u32 r1_in, u32 object, u32 obj_state, u32 vars)
+{
+    u32 step_timer = LD16(vars + oAIAttackVars_StepTimer);
+    step_timer -= 1;
+    ST16(vars + oAIAttackVars_StepTimer, step_timer);
+    if ((s32)step_timer > 0)
+        return r1_in;                       /* still stepping through the attack */
+
+    u32 charge = LD16(vars + oAIAttackVars_ChargeCycles);
+    charge -= 1;
+    ST16(vars + oAIAttackVars_ChargeCycles, charge);
+    if (charge != 0) {
+        /* Charge not spent yet: just forget the hit element for this cycle. */
+        ST16(vars + oAIAttackVars_HitElement, 0);
+        return r1_in;
+    }
+
+    /* Charge spent: clear the flag bit and return to the idle state. */
+    call_object_clearFlag_battle_aiAttackTickDown_80EF608(1u << 22, object);
+    call_object_exitAttackState_result_battle_aiAttackTickDown_80EF608 exit_state =
+        call_object_exitAttackState_battle_aiAttackTickDown_80EF608(object, obj_state, vars);
+    return exit_state.r1;
+}
+
+/* battle_aiAttackTickDown_80EF608
+ * inputs: r5 r6 r7 lr   outputs: r1 r4 r6 r7   (r4/r6/r7 pass through) */
+Next battle_aiAttackTickDown_80EF608(void) {
+    R1 = ai_attack_tick_down(R1, R5, R6, R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_EndRelatedObject2Anim_80F06CE ── */
 /* battle_EndRelatedObject2Anim_80F06CE(r4, r5 = battle object):
  * If the battle object has a secondary ("related object 2") sprite attached,
@@ -1650,6 +1794,75 @@ static void nullsub_106_impl(void) {
  * preserved: - */
 Next nullsub_106(void) {
     nullsub_106_impl();
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_aiGetAttackIndex ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2; } call_sub_800FE28_result_battle_aiGetAttackIndex;
+/* register form: generated wrapper: sub_800FE28 has no typed C interface yet */
+static inline call_sub_800FE28_result_battle_aiGetAttackIndex call_sub_800FE28_battle_aiGetAttackIndex(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sub_800FE28);
+    return (call_sub_800FE28_result_battle_aiGetAttackIndex){ R0, R2 };
+}
+
+/* register form: generated wrapper: object_getFlag has no typed C interface yet */
+static inline u32 call_object_getFlag_battle_aiGetAttackIndex(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlag);
+    return R0;
+}
+
+/* battle_aiGetAttackIndex: pick the attack the AI wants to use.
+ * sub_800FE28 looks up the base attack index from the AI config data
+ * (dword_80F85D0 holds a pointer to it); if the battle object's flag word
+ * has bits 15 or 13 set, the alternate attack (base index + 60) is used. */
+static u32 ai_pick_attack(u32 config, u32 object) {
+    u32 index = call_sub_800FE28_battle_aiGetAttackIndex(config, object).r0;
+    u32 flags = call_object_getFlag_battle_aiGetAttackIndex(object);
+
+    if (flags & 0xA000)
+        index += 0x3C;
+    return index;
+}
+
+/* battle_aiGetAttackIndex(r5 = battle object) -> r0 */
+Next battle_aiGetAttackIndex(void) {
+    R0 = ai_pick_attack(A_dword_80F85D0, R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_aiLoadAttackVarsFromTables ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2; } call_battle_aiGetVersionedTableEntry_800FE12_result_battle_aiLoadAttackVarsFromTables;
+/* register form: generated wrapper: battle_aiGetVersionedTableEntry_800FE12 has no typed C interface yet */
+static inline call_battle_aiGetVersionedTableEntry_800FE12_result_battle_aiLoadAttackVarsFromTables call_battle_aiGetVersionedTableEntry_800FE12_battle_aiLoadAttackVarsFromTables(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(battle_aiGetVersionedTableEntry_800FE12);
+    return (call_battle_aiGetVersionedTableEntry_800FE12_result_battle_aiLoadAttackVarsFromTables){ R0, R2 };
+}
+
+/* Load the AI attack parameters for one battle object from the two
+ * versioned data tables (low and high half of the damage word, entries
+ * are 8 bytes apart) and store the combined value at offset 0xA0 in the
+ * object's AI data block. */
+static void load_attack_vars(u32 entryIndex, u32 battleObject) {
+    u32 lowWord  = call_battle_aiGetVersionedTableEntry_800FE12_battle_aiLoadAttackVarsFromTables(
+                       entryIndex * 8 + A_byte_80F86BC, battleObject).r0;
+    u32 highWord = call_battle_aiGetVersionedTableEntry_800FE12_battle_aiLoadAttackVarsFromTables(
+                       entryIndex * 8 + A_byte_80F86E0, battleObject).r0;
+    u32 damage   = lowWord | (highWord << 16);
+
+    u32 aiData = LD32(battleObject + oBattleObject_AIDataPtr);
+    ST32(aiData + 0xA0 + oAIAttackVars_Damage, damage);
+}
+
+/* battle_aiLoadAttackVarsFromTables(r0 = table entry index, r5 = battle object) */
+Next battle_aiLoadAttackVarsFromTables(void) {
+    load_attack_vars(R0, R5);
     RETURN_TO_CALLER();
 }
 
@@ -4402,6 +4615,77 @@ Next ai_chargedPanelAttack(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_endRelatedObjectAnims ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r4, r5; bool z, n, c, v; } call_battle_EndObjectCurrentAnim_80C44D2_result;
+/* register form: generated wrapper: battle_EndObjectCurrentAnim_80C44D2 has no typed C interface yet */
+static inline call_battle_EndObjectCurrentAnim_80C44D2_result call_battle_EndObjectCurrentAnim_80C44D2(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_EndObjectCurrentAnim_80C44D2);
+    return (call_battle_EndObjectCurrentAnim_80C44D2_result){ R0, R1, R2, R3, R4, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* battle_endRelatedObjectAnims: end the current animation of the battle object's
+ * related object and of its "extra vars" object, skipping either one when its
+ * pointer is NULL. r5 on entry is the battle object.
+ *
+ * Outputs r1-r5: battle_EndObjectCurrentAnim_80C44D2 leaves its own r1-r5 behind,
+ * and that is what callers of this routine see; when no call runs, r1-r5 pass
+ * through unchanged (r4/r5 are preserved on every path). */
+typedef struct {
+    u32 r1, r2, r3, r4, r5;
+} EndRelatedAnimsResult;
+
+static EndRelatedAnimsResult battle_end_related_object_anims(u32 obj, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    EndRelatedAnimsResult out = { r1, r2, r3, r4, r5 };
+
+    u32 related = LD32(obj + oBattleObject_RelatedObject2Ptr);
+    if (related != 0) {
+        call_battle_EndObjectCurrentAnim_80C44D2_result res = call_battle_EndObjectCurrentAnim_80C44D2(related);
+        out.r1 = res.r1;
+        out.r2 = res.r2;
+        out.r3 = res.r3;
+        out.r4 = res.r4;
+        out.r5 = res.r5;
+    }
+
+    u32 extra = LD32(obj + oBattleObject_ExtraVars);
+    if (extra != 0) {
+        call_battle_EndObjectCurrentAnim_80C44D2_result res = call_battle_EndObjectCurrentAnim_80C44D2(extra);
+        out.r1 = res.r1;
+        out.r2 = res.r2;
+        out.r3 = res.r3;
+        out.r4 = res.r4;
+        out.r5 = res.r5;
+    }
+
+    return out;
+}
+
+/* inputs: r5 (battle object), lr; outputs: r1 r2 r3 r4 r5; clobbers: nz c v r0 lr */
+Next battle_endRelatedObjectAnims(void) {
+    EndRelatedAnimsResult out = battle_end_related_object_anims(R5, R1, R2, R3, R4, R5);
+    R1 = out.r1;
+    R2 = out.r2;
+    R3 = out.r3;
+    R4 = out.r4;
+    R5 = out.r5;
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_objectHasExtraVars ── */
+/* Does the battle object carry any extra-variables bits?
+ * (reads oBattleObject_ExtraVars; yields 1 when nonzero, else 0) */
+static u32 battle_object_has_extra_vars(u32 object) {
+    return LD32(object + oBattleObject_ExtraVars) != 0;
+}
+
+/* battle_objectHasExtraVars(r5 = object) -> r0 */
+Next battle_objectHasExtraVars(void) {
+    R0 = battle_object_has_extra_vars(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_attackStrikeStep ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; } call_object_removePanelReserve_result_ai_attackStrikeStep;
@@ -5725,6 +6009,78 @@ Next ai_attackStepPlayIntroAnim(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_getFrontPanelParamChecked ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0; } call_object_getFrontDirection_result_battle_getFrontPanelParamChecked;
+/* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
+static inline call_object_getFrontDirection_result_battle_getFrontPanelParamChecked call_object_getFrontDirection_battle_getFrontPanelParamChecked(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFrontDirection);
+    return (call_object_getFrontDirection_result_battle_getFrontPanelParamChecked){ R0 };
+}
+
+typedef struct { u32 r2, r3; } call_GetAllianceDependentPanelParamArgs_result_battle_getFrontPanelParamChecked;
+/* register form: generated wrapper: GetAllianceDependentPanelParamArgs has no typed C interface yet */
+static inline call_GetAllianceDependentPanelParamArgs_result_battle_getFrontPanelParamChecked call_GetAllianceDependentPanelParamArgs_battle_getFrontPanelParamChecked(u32 r3, u32 r5) {
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(GetAllianceDependentPanelParamArgs);
+    return (call_GetAllianceDependentPanelParamArgs_result_battle_getFrontPanelParamChecked){ R2, R3 };
+}
+
+typedef struct { u32 r0, r4, r5; } call_object_checkPanelParameters_result_battle_getFrontPanelParamChecked;
+/* register form: generated wrapper: object_checkPanelParameters has no typed C interface yet */
+static inline call_object_checkPanelParameters_result_battle_getFrontPanelParamChecked call_object_checkPanelParameters_battle_getFrontPanelParamChecked(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(object_checkPanelParameters);
+    return (call_object_checkPanelParameters_result_battle_getFrontPanelParamChecked){ R0, R4, R5 };
+}
+
+/* Result of the checked front-panel lookup: the panel coordinates to return,
+ * plus r4/r5 which the original leaves exactly as it found them. */
+typedef struct {
+    u32 r0, r1, r4, r5;
+} FrontPanelCheckedResult;
+
+/* battle_getFrontPanelParamChecked body.
+ * Looks up the panel in front of the object (direction offset + PanelX/Y),
+ * validates it against the alliance-dependent panel parameters, and returns
+ * the coordinates. If the parameter check fails, x is forced to 0 while the
+ * y coordinate is still returned unchanged, matching the original.
+ * r4/r5 are pass-through outputs: the original never modifies them. */
+static FrontPanelCheckedResult getFrontPanelParamChecked(u32 obj, u32 r4, u32 r5) {
+    u32 direction = call_object_getFrontDirection_battle_getFrontPanelParamChecked(obj).r0;
+    u32 x = direction + LD8(obj + oBattleObject_PanelX);
+    u32 y = LD8(obj + oBattleObject_PanelY);
+
+    call_GetAllianceDependentPanelParamArgs_result_battle_getFrontPanelParamChecked params =
+        call_GetAllianceDependentPanelParamArgs_battle_getFrontPanelParamChecked(A_byte_810B6E0, obj);
+
+    u32 valid = call_object_checkPanelParameters_battle_getFrontPanelParamChecked(x, y, params.r2, params.r3).r0;
+    if (valid == 0)
+        x = 0;
+
+    FrontPanelCheckedResult res;
+    res.r0 = x;
+    res.r1 = y;
+    res.r4 = r4;
+    res.r5 = r5;
+    return res;
+}
+
+/* battle_getFrontPanelParamChecked(r5 = object) -> r0 = x, r1 = y, r4/r5 unchanged */
+Next battle_getFrontPanelParamChecked(void) {
+    FrontPanelCheckedResult res = getFrontPanelParamChecked(R5, R4, R5);
+    R0 = res.r0;
+    R1 = res.r1;
+    R4 = res.r4;
+    R5 = res.r5;
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_swordyTryStepOrFlipDir ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r4, r5; bool z, n; } call_battle_checkAlliancePanelAtObjectPos_result;
@@ -5777,6 +6133,69 @@ Next ai_swordyTryStepOrFlipDir(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_checkAlliancePanelAtObjectPos ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3; } call_GetAllianceDependentPanelParamArgs_result_battle_checkAlliancePanelAtObjectPos;
+/* register form: generated wrapper: GetAllianceDependentPanelParamArgs has no typed C interface yet */
+static inline call_GetAllianceDependentPanelParamArgs_result_battle_checkAlliancePanelAtObjectPos call_GetAllianceDependentPanelParamArgs_battle_checkAlliancePanelAtObjectPos(u32 r3, u32 r5) {
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(GetAllianceDependentPanelParamArgs);
+    return (call_GetAllianceDependentPanelParamArgs_result_battle_checkAlliancePanelAtObjectPos){ R2, R3 };
+}
+
+typedef struct { u32 r0, r2, r3, r4, r5; } call_object_checkPanelParameters_result_battle_checkAlliancePanelAtObjectPos;
+/* register form: generated wrapper: object_checkPanelParameters has no typed C interface yet */
+static inline call_object_checkPanelParameters_result_battle_checkAlliancePanelAtObjectPos call_object_checkPanelParameters_battle_checkAlliancePanelAtObjectPos(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(object_checkPanelParameters);
+    return (call_object_checkPanelParameters_result_battle_checkAlliancePanelAtObjectPos){ R0, R2, R3, R4, R5 };
+}
+
+/* Check whether the panel a battle object occupies is valid for its side.
+ *
+ * The panel position is (PanelX, PanelY + ExtraVars[2]); the alliance-dependent
+ * panel parameter table byte_810B6E0 supplies the limits via
+ * GetAllianceDependentPanelParamArgs, and object_checkPanelParameters validates
+ * the position against them. Returns the panel coordinates in r0/r1 with Z
+ * clear when the check passed. r0/r1 are the coordinates, not the check's
+ * result: the original pushes them before the calls and pops them back over
+ * the callee's r0/r1 right after reading the flags. r4/r5 end exactly as
+ * object_checkPanelParameters leaves them, as in the original. */
+
+typedef struct {
+    u32 panel_x;   /* -> r0 */
+    u32 panel_y;   /* -> r1 */
+    u32 check_r0;  /* object_checkPanelParameters' result, feeds the NZ flags */
+} PanelCheckResult_battle_checkAlliancePanelAtObjectPos;
+
+static PanelCheckResult_battle_checkAlliancePanelAtObjectPos check_alliance_panel_at_object(u32 object) {
+    PanelCheckResult_battle_checkAlliancePanelAtObjectPos result;
+
+    result.panel_x = LD8(object + oBattleObject_PanelX);
+    result.panel_y = LD8(object + oBattleObject_PanelY)
+                   + LD32(object + (oBattleObject_ExtraVars + 8));
+
+    call_GetAllianceDependentPanelParamArgs_result_battle_checkAlliancePanelAtObjectPos params =
+        call_GetAllianceDependentPanelParamArgs_battle_checkAlliancePanelAtObjectPos(A_byte_810B6E0, object);
+
+    result.check_r0 = call_object_checkPanelParameters_battle_checkAlliancePanelAtObjectPos(
+        result.panel_x, result.panel_y, params.r2, params.r3).r0;
+    return result;
+}
+
+/* battle_checkAlliancePanelAtObjectPos(r5 = object) -> nz r0 r1 (r4 r5 pass through) */
+Next battle_checkAlliancePanelAtObjectPos(void) {
+    PanelCheckResult_battle_checkAlliancePanelAtObjectPos result = check_alliance_panel_at_object(R5);
+    R0 = result.panel_x;
+    R1 = result.panel_y;
+    SET_FLAGS_NZ(result.check_r0);
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_waitThenScript4 ── */
 /* ai_waitThenScript4 — AI state handler that counts a delay, then hands control
  * to script 4. r4 = AI data (holds the version byte selecting the delay table),
@@ -5801,5 +6220,104 @@ static u32 wait_then_script4(u32 ai_data, u32 ai_state) {
 
 Next ai_waitThenScript4(void) {
     R1 = wait_then_script4(R4, R6);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_objectUpdateInitOnce ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r5; } call_ai_attackHitClearState8_result;
+/* register form: generated wrapper: ai_attackHitClearState8 has no typed C interface yet */
+static inline call_ai_attackHitClearState8_result call_ai_attackHitClearState8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(ai_attackHitClearState8);
+    return (call_ai_attackHitClearState8_result){ R5 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; bool c, v; } call_ai_attackFreeAuxObjects_result;
+/* register form: generated wrapper: ai_attackFreeAuxObjects has no typed C interface yet */
+static inline call_ai_attackFreeAuxObjects_result call_ai_attackFreeAuxObjects(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(ai_attackFreeAuxObjects);
+    return (call_ai_attackFreeAuxObjects_result){ R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool z, n, c, v; } call_battle_objectUpdateDispatchPhase_80165C2_result;
+/* register form: generated wrapper: battle_objectUpdateDispatchPhase_80165C2 has no typed C interface yet */
+static inline call_battle_objectUpdateDispatchPhase_80165C2_result call_battle_objectUpdateDispatchPhase_80165C2(u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7, u32 r8, u32 r9, u32 r11, u32 r12) {
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    R6 = r6;
+    R7 = r7;
+    R8 = r8;
+    R9 = r9;
+    R11 = r11;
+    R12 = r12;
+    GUEST_CALL(battle_objectUpdateDispatchPhase_80165C2);
+    return (call_battle_objectUpdateDispatchPhase_80165C2_result){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* battle_objectUpdateInitOnce: run an battle object's once-per-spawn initialisation
+ * (when its CurPhase is still 0: clear its attack hit state and release its aux
+ * objects), then hand the object on to the phase dispatcher.
+ *
+ * Register notes:
+ *  - ai_attackHitClearState8 returns the (possibly updated) object pointer in r5,
+ *    which ai_attackFreeAuxObjects consumes and refreshes in r4-r7; those updated
+ *    r4-r7 are what the phase dispatcher receives on the init path.
+ *  - The dispatcher preserves r10 (and so do the two init helpers), so R10 leaves
+ *    this function exactly as it entered and the adapter never touches it.
+ *  - All flags are clobbered; callers do not branch on them after this call.
+ */
+typedef struct {
+    u32 r1;
+    u32 r5;
+    u32 r8;
+    u32 r9;
+    u32 r11;
+    u32 r12;
+} object_update_init_once_result;
+
+static object_update_init_once_result object_update_init_once(
+    u32 r2, u32 r3, u32 r4, u32 r5, u32 r6, u32 r7,
+    u32 r8, u32 r9, u32 r11, u32 r12)
+{
+    /* First update of this object: reset its attack state before dispatching. */
+    if (LD8(r5 + oBattleObject_CurPhase) == 0) {
+        /* Attack-state pointer lives at offset 0x64 in the object. */
+        u32 attackState = LD32(r5 + 0x64);
+        u32 cleared = call_ai_attackHitClearState8(attackState).r5;
+
+        call_ai_attackFreeAuxObjects_result aux = call_ai_attackFreeAuxObjects(cleared);
+        r4 = aux.r4;
+        r5 = aux.r5;
+        r6 = aux.r6;
+        r7 = aux.r7;
+    }
+
+    call_battle_objectUpdateDispatchPhase_80165C2_result dispatch =
+        call_battle_objectUpdateDispatchPhase_80165C2(r2, r3, r4, r5, r6, r7, r8, r9, r11, r12);
+
+    object_update_init_once_result out;
+    out.r1  = dispatch.r1;
+    out.r5  = dispatch.r5;
+    out.r8  = dispatch.r8;
+    out.r9  = dispatch.r9;
+    out.r11 = dispatch.r11;
+    out.r12 = dispatch.r12;
+    return out;
+}
+
+/* battle_objectUpdateInitOnce: object update entry (r5 = object, r2-r4/r6-r9/r11/r12 = dispatch state) */
+Next battle_objectUpdateInitOnce(void) {
+    object_update_init_once_result out =
+        object_update_init_once(R2, R3, R4, R5, R6, R7, R8, R9, R11, R12);
+    R1 = out.r1;
+    R5 = out.r5;
+    R8 = out.r8;
+    R9 = out.r9;
+    R11 = out.r11;
+    R12 = out.r12;
     RETURN_TO_CALLER();
 }

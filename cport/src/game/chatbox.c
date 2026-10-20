@@ -1036,6 +1036,44 @@ Next chatbox_advanceNextState_8040C9C(void) {
 #undef CHATBOX_1F1
 #undef CHATBOX_1F2
 
+/* ── chatbox_8040DDC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; } call_ZeroFillByWord_result;
+/* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
+static inline call_ZeroFillByWord_result call_ZeroFillByWord(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByWord);
+    return (call_ZeroFillByWord_result){ R3 };
+}
+
+/* Clear the chatbox work buffers at unk_200BEA0 (0x60 bytes per slot, 14 slots).
+ *
+ * The caller passes a size/index in r0; the original scales it by 8
+ * (mul 0x10, lsr 1) and then calls ZeroFillByWord 14 times, once per slot,
+ * always with that same scaled size. The fills overlap: slot i covers
+ * base + i*0x60 .. +size, exactly as in the original.
+ *
+ * The original wraps everything in push {r0-r5,lr} / pop {r0-r5,pc}, so
+ * r0-r3 leave exactly as they entered even though ZeroFillByWord's wrapper
+ * clobbers r0/r1 (and leaves the callee's r3 behind); the adapter saves and
+ * restores them around the call. */
+static void clear_chatbox_work_buffers(u32 index) {
+    u32 fill_size = index * 0x10 / 2;   /* mov r4,r0; mul r4,#0x10; lsr r4,#1 */
+    u32 slot;
+
+    for (slot = 0; (s32)slot <= 0xD; slot++)
+        call_ZeroFillByWord(A_unk_200BEA0 + slot * 0x60, fill_size);
+}
+
+/* chatbox_8040DDC(r0 = size/index) -> r0-r5 preserved (push/pop in original) */
+Next chatbox_8040DDC(void) {
+    u32 in0 = R0, in1 = R1, in2 = R2, in3 = R3;
+    clear_chatbox_work_buffers(in0);
+    R0 = in0; R1 = in1; R2 = in2; R3 = in3;
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_E5_nop ── */
 /* chatbox_E5_nop(script) -> 2
  * No-op script opcode (0xE5): advance the script pointer past the opcode byte,
@@ -3164,6 +3202,48 @@ Next chatbox_setFlag0x1000AndAdvanceStep_80426E0(void) {
 
     R0 = 1;
     SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── chatbox_8042820 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r4, r5, r6, r7; } call_sub_809CA84_result;
+/* register form: generated wrapper: sub_809CA84 has no typed C interface yet */
+static inline call_sub_809CA84_result call_sub_809CA84(void) {
+    GUEST_CALL(sub_809CA84);
+    return (call_sub_809CA84_result){ R0, R2, R4, R5, R6, R7 };
+}
+
+/* Chatbox step (0x08042820).
+ *
+ * sub_809CA84 does the per-frame chatbox processing. It returns the value the
+ * chatbox control block should remember (r0) and refreshes the box's working
+ * registers (r2, r4, r5, r6, r7); it runs with the caller's r4/r5/r10 still
+ * in place, since the wrapper passes no argument registers.
+ *
+ * This function then:
+ *   - stores the returned value into the control block at r5+0x4C, and
+ *   - advances the r4 counter by 2.
+ *
+ * The caller only consumes r0 (= 1, "continue") and the registers sub_809CA84
+ * left behind; N/Z/C/V, r1 and lr are clobbered per the contract, so no flag
+ * setting is needed here. */
+static u32 chatbox_step(void) {
+    call_sub_809CA84_result box = call_sub_809CA84();
+
+    /* Record the value sub_809CA84 produced in the chatbox control block. */
+    ST32(box.r5 + 0x4C, box.r0);
+
+    /* The chatbox cursor/counter moves up by two each step. */
+    return box.r4 + 2;
+}
+
+Next chatbox_8042820(void) {
+    /* r4 exits advanced by 2 and r0 is the success value; r2/r5/r6/r7 were
+       already left in the guest registers by the call to sub_809CA84, so the
+       adapter must not write them again. */
+    R4 = chatbox_step();
+    R0 = 1;
     RETURN_TO_CALLER();
 }
 

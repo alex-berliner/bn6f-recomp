@@ -1331,6 +1331,37 @@ Next pickBBSMsgForMapGroup_80A5764(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_dispatchCustomJumptableByIndex_80A8208 ── */
+/* Custom jumptable dispatch for a battle object (0x080A8208).
+ *
+ * r5 points at an object whose byte at +8 selects an entry from a three-way
+ * handler table; the selected handler is called with r0 = its own address,
+ * r1 = the selector byte, r5 = the object and r6 = the shared work area
+ * (unk_2000B40). Whatever the handler leaves in r2-r5 and r8-r12 is this
+ * function's output, so those registers must pass straight through. */
+
+/* register form: dispatch through a jumptable address. The callee's results
+ * in r2-r5/r8-r12 are our caller's outputs and no typed call form can carry
+ * them, so the guest register file itself must carry them across the call. */
+static void run_jumptable_handler(u32 handler, u32 index, u32 object) {
+    R0 = handler;                       /* the original calls with r0 = target */
+    R1 = index;
+    R5 = object;
+    R6 = A_unk_2000B40;                 /* work area the handlers expect */
+    GUEST_CALL_ADDR(handler);
+}
+
+static void dispatch_object_handler(u32 object) {
+    u32 index = LD8(object + 8);
+    u32 handler = LD32(A_off_80A821C + index);
+    run_jumptable_handler(handler, index, object);
+}
+
+Next battle_dispatchCustomJumptableByIndex_80A8208(void) {
+    dispatch_object_handler(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_dispatchObjectBehaviorStep_80A9B70 ── */
 /* battle_dispatchObjectBehaviorStep_80A9B70: dispatch one battle-object behaviour step.
  *
