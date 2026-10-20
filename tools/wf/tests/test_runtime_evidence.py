@@ -4,8 +4,10 @@ fold into a RuntimeFacts block, how the judge's reply is parsed, and the YAML bo
 writes under build/runtime/RUN_ID. The graph end-to-end is exercised with fakes (no mGBA, no
 LLM)."""
 import json
+import random
 import shutil
 import struct
+import sys
 from pathlib import Path
 from typing import cast
 
@@ -18,10 +20,13 @@ from wf.tools import runtime_evidence as rt
 from wf.tools.runtime_evidence import (DEFAULT_COUNT, DEFAULT_JOBS, DEFAULT_MODEL, DEFAULT_STATES,
                                        EvidenceYAML, IOWrite, MemoryChange, MemoryRegionWrite,
                                        METHOD, Probe, RuntimeFacts, SNAP_HEADER_BYTES, SNAP_MEMORY_BYTES,
-                                       SNAP_REGIONS, Snap, Verdict, ask_judge, evidence_yaml, io_name,
-                                       judge_prompt, parse_judge, parse_snap, region_of, _diff_memory,
-                                       _offset_to_address, _register, register_entries, select_runtime_targets,
-                                       summarise, write_per_function)
+                                       SNAP_REGIONS, Snap, Verdict, ask_judge, ask_contrastive_judge,
+                                       build_contrastive_candidates, contrastive_judge_prompt, evidence_yaml,
+                                       investigate_sources_names, io_name, judge_prompt,
+                                       ContrastiveCandidate, parse_contrastive, parse_judge, parse_snap,
+                                       region_of, _diff_memory, _offset_to_address, _register,
+                                       register_entries, select_runtime_targets, summarise,
+                                       write_per_function)
 from wf.types import (FunctionName, GuestAddress, ModelSpec, RouteName, SymbolName, ToolMessage)
 
 
@@ -558,6 +563,164 @@ def test_write_per_function_creates_a_review_file(tmp_path: Path) -> None:
     assert "wf runtime-evidence run1" in text
 
 
+# ── YAML output: every file parses and the evidence item validates ─
+
+@pytest.mark.parametrize("reason", [
+    "r5 holds a battle object pointer: 0x0203AA88 — writes to eCollisionData",   # colon-space
+    "matches: r0 was 0x00000000 -> 0x08000020 (call site)",                      # colon-space
+    "if zero: set flag; else: clear it",                                         # colon in mid-sentence
+    "no colons in this reason at all",                                           # plain
+    "1:2:3:4:5",                                                                 # many colons
+    # JSON-style interior:
+    "json keys: {\"foo\": \"bar\", \"baz\": 1}",
+])
+def test_evidence_yaml_round_trips_with_a_reason_full_of_colons(tmp_path: Path,
+                                                                  reason: str) -> None:
+    """A judge reason with `colon-space` (or several colons) must round-trip through yaml.
+
+    This is the bug the previous version had: it built the file by hand with an f-string
+    and emitted `reason: {verdict.reason}` unquoted -- the YAML scanner took the colon as
+    a mapping separator and stopped mid-value. 28 of the 300 review files in
+    build-wf-runs/runtime-evidence-20261019-180951/ failed to re-parse on round trip."""
+    facts = RuntimeFacts(name=FunctionName("probe_me"), address=GuestAddress(0x08000100),
+                         probes=1, returned=1,
+                         register_inputs=(), register_outputs=(), registers_written=(),
+                         written_patterns=(), io_writes=(), memory_writes=(),
+                         route_coverage=())
+    verdict = Verdict(name=FunctionName("probe_me"), address=GuestAddress(0x08000100),
+                      verdict="contradicts", reason=ToolMessage(reason), tokens=10, seconds=0.1)
+    evidence = evidence_yaml(FunctionName("probe_me"), GuestAddress(0x08000100),
+                              ToolMessage("Initializes the battle state buffer."),
+                              SymbolName("probe_me"), facts, verdict, "run1", tmp_path)
+    parsed = yaml.safe_load(evidence.evidence_yaml)
+    assert isinstance(parsed, dict)
+    assert parsed["verdict"] == "contradicts"
+    assert parsed["reason"] == reason
+    # the detail / reproduce / result are `_LiteralStr` strings in the body
+    item = parsed["evidence"][0]
+    assert item["method"] == METHOD
+    assert isinstance(item["detail"], str) and len(item["detail"]) > 0
+
+
+def test_write_per_function_round_trips_through_yaml_safe_load(tmp_path: Path) -> None:
+    """The standalone review file round-trips through `yaml.safe_load` -- the previous
+    hand-rolled version produced files that failed yaml parsing on ~10% of cases."""
+    facts = RuntimeFacts(name=FunctionName("probe_me"), address=GuestAddress(0x08000100),
+                         probes=1, returned=1,
+                         register_inputs=(), register_outputs=(), registers_written=(),
+                         written_patterns=(), io_writes=(), memory_writes=(),
+                         route_coverage=())
+    # A reason known to break the hand-rolled f-string YAML (colon-space).
+    reason_text = "writes match: r5 (battle object 0x0203AA88) -> controls flag"
+    verdict = Verdict(name=FunctionName("probe_me"), address=GuestAddress(0x08000100),
+                      verdict="contradicts", reason=ToolMessage(reason_text), tokens=10, seconds=0.1)
+    evidence = evidence_yaml(FunctionName("probe_me"), GuestAddress(0x08000100),
+                              ToolMessage("Initializes the battle state buffer."),
+                              SymbolName("probe_me"), facts, verdict, "run1", tmp_path)
+    path = write_per_function(evidence, tmp_path)
+    text = path.read_text()
+    loaded = yaml.safe_load(text)
+    assert isinstance(loaded, dict)
+    # the literal block scalars come back as plain strings on round trip
+    assert loaded["name"] == "probe_me"
+    assert loaded["address"] == "0x08000100"
+    assert loaded["verdict"] == "contradicts"
+    assert loaded["reason"] == reason_text
+    assert isinstance(loaded["evidence"], list)
+    item = loaded["evidence"][0]
+    assert item["method"] == METHOD
+    assert isinstance(item["detail"], str) and "probe_me" not in item["detail"].lower()[:1]
+
+
+def test_write_per_function_evidence_item_validates_with_symdb_loader(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The same check `tools/investigate_land.py` runs on its written entries: the file
+    parses via `symdb.load_full` and its evidence item carries method+detail. The check
+    enforces `method in METHODS` and `has_detail` -- a missing method or empty detail
+    would raise here. We do NOT require kind/status/summary to be present (the review
+    file is not yet a full symbols/db entry)."""
+    sys.path.insert(0, str(Path("/home/alex/Code/recomp/tools")))
+    sys.path.insert(0, str(Path("/home/alex/Code/recomp/tools/wf")))
+    import symdb
+    facts = RuntimeFacts(name=FunctionName("probe_me"), address=GuestAddress(0x08000100),
+                         probes=1, returned=1,
+                         register_inputs=(), register_outputs=(), registers_written=(),
+                         written_patterns=(), io_writes=(), memory_writes=(),
+                         route_coverage=())
+    verdict = Verdict(name=FunctionName("probe_me"), address=GuestAddress(0x08000100),
+                      verdict="consistent",
+                      reason=ToolMessage("writes match the summary"), tokens=10, seconds=0.1)
+    evidence = evidence_yaml(FunctionName("probe_me"), GuestAddress(0x08000100),
+                              ToolMessage("Initializes the battle state buffer."),
+                              SymbolName("probe_me"), facts, verdict, "run1", tmp_path)
+    path = write_per_function(evidence, tmp_path)
+    # same loader investigate_land uses on a written entry: parse + slim
+    loaded = symdb.load_full([str(path)])[0]
+    assert not loaded.get("_unparsed"), f"the file did not parse: {loaded!r}"
+    slim_ = symdb.slim(loaded)
+    slim_["_file"] = str(path)
+    # the evidence item must survive slim -> _evidence with method+detail; the loader's
+    # problem check requires this.
+    methods_with_detail = [(m, d) for m, d in slim_["_evidence"] if m == METHOD and d]
+    assert len(methods_with_detail) >= 1, f"evidence item not slim-valid: {slim_['_evidence']}"
+
+
+def test_evidence_yaml_long_text_uses_block_scalar(tmp_path: Path) -> None:
+    """The multi-line fields (`detail`, `reproduce`, `result`) are emitted as `|` block
+    scalars so a `: ` inside them does not break the scanner. The text round-trips
+    byte-for-byte (modulo the leading strip) so the human sees exactly what we wrote."""
+    facts = RuntimeFacts(name=FunctionName("probe_me"), address=GuestAddress(0x08000100),
+                         probes=2, returned=2,
+                         register_inputs=(ToolMessage("inputs r0 = 0x00000010"),),
+                         register_outputs=(ToolMessage("outputs r0 = 0x000000AA"),),
+                         registers_written=(ToolMessage("writes r0"),),
+                         written_patterns=(ToolMessage("r0: constant=0x000000AA"),),
+                         io_writes=(), memory_writes=(),
+                         route_coverage=())
+    verdict = Verdict(name=FunctionName("probe_me"), address=GuestAddress(0x08000100),
+                      verdict="consistent", reason=ToolMessage("ok"),
+                      tokens=10, seconds=0.1)
+    evidence = evidence_yaml(FunctionName("probe_me"), GuestAddress(0x08000100),
+                              ToolMessage("init state"), SymbolName("probe_me"), facts, verdict,
+                              "run1", tmp_path)
+    # yaml.safe_dump with our literal-string representer emits `detail: |\n      ...`
+    body = evidence.evidence_yaml
+    assert "detail: |" in body
+    assert "result: |" in body
+    # The whole body parses
+    parsed = yaml.safe_load(body)
+    assert isinstance(parsed["evidence"][0]["detail"], str)
+
+
+def test_evidence_yaml_short_reason_is_quoted_or_plain(tmp_path: Path) -> None:
+    """A short reason without a colon is a plain string; with a colon it gets quoted so
+    it is not misparsed as a mapping key."""
+    facts = RuntimeFacts(name=FunctionName("probe_me"), address=GuestAddress(0x08000100),
+                         probes=1, returned=1,
+                         register_inputs=(), register_outputs=(), registers_written=(),
+                         written_patterns=(), io_writes=(), memory_writes=(),
+                         route_coverage=())
+    # Safe reason (no colon)
+    verdict_ok = Verdict(name=FunctionName("probe_me"), address=GuestAddress(0x08000100),
+                          verdict="consistent", reason=ToolMessage("ok"),
+                          tokens=10, seconds=0.1)
+    e_ok = evidence_yaml(FunctionName("probe_me"), GuestAddress(0x08000100),
+                          ToolMessage("init"), SymbolName("probe_me"), facts, verdict_ok,
+                          "run1", tmp_path)
+    p1 = yaml.safe_load(e_ok.evidence_yaml)
+    assert p1["reason"] == "ok"
+
+    # Unsafe reason (colon)
+    verdict_bad = Verdict(name=FunctionName("probe_me"), address=GuestAddress(0x08000100),
+                           verdict="contradicts", reason=ToolMessage("a: b"),
+                           tokens=10, seconds=0.1)
+    e_bad = evidence_yaml(FunctionName("probe_me"), GuestAddress(0x08000100),
+                          ToolMessage("init"), SymbolName("probe_me"), facts, verdict_bad,
+                          "run1", tmp_path)
+    p2 = yaml.safe_load(e_bad.evidence_yaml)
+    assert p2["reason"] == "a: b"
+
+
 # ── selection: which `wf investigate` entries get probed ─────────────
 
 def test_select_runtime_targets_only_picks_investigate_entries_with_captured_calls(
@@ -730,3 +893,252 @@ def test_ask_judge_short_circuits_to_unknown_when_402(monkeypatch: pytest.Monkey
                         ToolMessage("(r0) -> void"), run_id="run-402")
     assert verdict.verdict == "unknown"
     assert verdict.problem is not None and "HTTP 402" in verdict.problem
+
+
+# ── contrastive judge: candidates, prompt, parse, verdict mapping ─────
+
+
+def test_build_contrastive_candidates_picks_two_hard_two_random() -> None:
+    """The 5 options: the truth plus 4 decoys (2 hard, 2 random), shuffled with a recorded
+    seed so a re-run is reproducible. The `is_truth` flag is set on exactly one option."""
+    facts = RuntimeFacts(name=FunctionName("ai_attackStepCommitAndHit"),
+                          address=GuestAddress(0x08000000), probes=2, returned=2,
+                          register_inputs=(), register_outputs=(), registers_written=(),
+                          written_patterns=(), io_writes=(),
+                          memory_writes=(MemoryRegionWrite(symbol="eAIData1_AttackVars",
+                                                              address=0, bytes=84,
+                                                              distinct_values=9),),
+                          route_coverage=())
+    pool = frozenset({"ai_attackStepCommitAndHit", "ai_attackStepLand", "ai_attackCommit",
+                       "ai_attackPanelHandler", "ai_attackSetupVars",
+                       "battle_clearAttackVars", "battle_runPwrAtkStep",
+                       "ow_applySpawnEntry"})
+    rng = random.Random(7)
+    candidates = build_contrastive_candidates(FunctionName("ai_attackStepCommitAndHit"),
+                                                "Sets up an attacker's attack state.",
+                                                pool, facts,
+                                                lambda n: f"summary of {n}", rng)
+    assert len(candidates) == 5
+    labels = [c.label for c in candidates]
+    assert sorted(labels) == [1, 2, 3, 4, 5]
+    truth = [c for c in candidates if c.is_truth]
+    assert len(truth) == 1
+    assert truth[0].name == "ai_attackStepCommitAndHit"
+    decoys = [c for c in candidates if not c.is_truth]
+    assert len(decoys) == 4
+    # all decoys are pool members (no overlap with truth)
+    assert {c.name for c in decoys} <= pool - {"ai_attackStepCommitAndHit"}
+
+
+def test_build_contrastive_candidates_uses_recognised_prefix_for_hard_decoys() -> None:
+    """A function whose name starts with `ai_attack` should pick other `ai_attack*` functions as
+    hard decoys (the prefix is the only signal we have without loading each decoy's facts)."""
+    facts = RuntimeFacts(name=FunctionName("ai_attackStepCommitAndHit"),
+                          address=GuestAddress(0x08000000), probes=2, returned=2,
+                          register_inputs=(), register_outputs=(), registers_written=(),
+                          written_patterns=(), io_writes=(), memory_writes=(),
+                          route_coverage=())
+    pool = frozenset({"ai_attackStepCommitAndHit", "ai_attackStepLand",
+                       "ai_attackCommitMoveAttack", "ai_attackStepDispatchSubStep",
+                       "battle_clearAttackVars", "battle_runPwrAtkStep"})
+    rng = random.Random(3)
+    candidates = build_contrastive_candidates(FunctionName("ai_attackStepCommitAndHit"),
+                                                "summary", pool, facts,
+                                                lambda n: f"summary of {n}", rng)
+    hard = [c for c in candidates if not c.is_truth]
+    hard_names = [c.name for c in hard[:2]] if len(hard) >= 2 else [c.name for c in hard]
+    # the first two decoys should prefer the ai_attack* pool
+    assert sum(1 for name in hard_names if name.startswith("ai_attack")) >= 1
+
+
+def test_contrastive_judge_prompt_does_not_leak_the_truth_label() -> None:
+    """The prompt shows the runtime facts and five (label, name, summary) candidates without
+    any marker that says which is the truth. If the truth were leaked, the judge could pin the
+    answer by string-matching, defeating the contrastive design."""
+    facts = RuntimeFacts(name=FunctionName("foo"), address=GuestAddress(0x08000000),
+                          probes=1, returned=1,
+                          register_inputs=(), register_outputs=(), registers_written=(),
+                          written_patterns=(), io_writes=(), memory_writes=(),
+                          route_coverage=())
+    candidates = [ContrastiveCandidate(label=idx, name=FunctionName(f"name_{idx}"),
+                                          summary=f"summary_{idx}", is_truth=(idx == 3))
+                    for idx in range(1, 6)]
+    prompt = contrastive_judge_prompt(facts, candidates)
+    assert "name_3" in prompt
+    assert "is_truth" not in prompt and "truth_label" not in prompt
+    # the 5 candidates are present, each as `[N] name: ...`
+    for idx in range(1, 6):
+        assert f"[{idx}] name: `name_{idx}`" in prompt
+
+
+def test_parse_contrastive_extracts_choice_confidence_reason() -> None:
+    choice, conf, reason, problem = parse_contrastive(json.dumps({"choice": 3, "confidence": 0.9,
+                                                                    "reason": "RAM symbol matches"}))
+    assert problem is None
+    assert choice == 3 and abs(conf - 0.9) < 1e-6
+    assert "RAM symbol" in reason
+
+
+def test_parse_contrastive_picks_choice_zero_when_nothing_fits() -> None:
+    choice, conf, _reason, problem = parse_contrastive(json.dumps({"choice": 0, "confidence": 1.0,
+                                                                     "reason": "no fit"}))
+    assert problem is None and choice == 0
+
+
+def test_parse_contrastive_rejects_an_unparseable_reply() -> None:
+    choice, conf, reason, problem = parse_contrastive("no json here at all")
+    assert problem is not None
+    assert choice == 0 and conf == 0.0 and reason == ""
+
+
+def test_parse_contrastive_rejects_boolean_choice_and_confidence() -> None:
+    """`bool` is a subclass of `int` in Python; a reply with `"choice": true` must NOT be
+    accepted as choice 1 (which would silently make the model look like it picked the first
+    candidate with full confidence). The current parser rejects both choices and confidences
+    that are booleans, falling back to `unparsed`."""
+    choice, conf, reason, problem = parse_contrastive(json.dumps({"choice": True,
+                                                                    "confidence": 0.9,
+                                                                    "reason": "x"}))
+    assert problem is not None
+    assert choice == 0 and conf == 0.0 and reason == ""
+    choice, conf, reason, problem = parse_contrastive(json.dumps({"choice": 1,
+                                                                    "confidence": True,
+                                                                    "reason": "x"}))
+    assert problem is not None
+    assert choice == 0 and conf == 0.0 and reason == ""
+
+
+def test_ask_contrastive_judge_returns_supported_when_truth_picked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The model picks the truth in the 5 options with confidence above the threshold."""
+    fake_reply = json.dumps({"choice": 3, "confidence": 0.9,
+                              "reason": "matches the writes"})
+    monkeypatch.setattr(rt.llm, "complete", lambda *args, **kwargs: fake_reply)
+    candidates = [ContrastiveCandidate(label=idx, name=FunctionName(f"name_{idx}"),
+                                          summary=f"summary_{idx}", is_truth=(idx == 3))
+                    for idx in range(1, 6)]
+    facts = RuntimeFacts(name=FunctionName("name_3"), address=GuestAddress(0x08000000),
+                          probes=2, returned=2,
+                          register_inputs=(), register_outputs=(), registers_written=(),
+                          written_patterns=(), io_writes=(), memory_writes=(),
+                          route_coverage=())
+    verdict = ask_contrastive_judge(ModelSpec("minimax/MiniMax-M3"), facts, candidates, "run-x")
+    assert verdict.verdict == "supported"
+    assert "name_3" in verdict.reason
+
+
+def test_ask_contrastive_judge_returns_contradicted_when_decoy_picked_at_high_confidence(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_reply = json.dumps({"choice": 2, "confidence": 0.8,
+                              "reason": "looks like a panel handler"})
+    monkeypatch.setattr(rt.llm, "complete", lambda *args, **kwargs: fake_reply)
+    candidates = [ContrastiveCandidate(label=idx, name=FunctionName(f"name_{idx}"),
+                                          summary=f"summary_{idx}", is_truth=(idx == 3))
+                    for idx in range(1, 6)]
+    facts = RuntimeFacts(name=FunctionName("name_3"), address=GuestAddress(0x08000000),
+                          probes=2, returned=2,
+                          register_inputs=(), register_outputs=(), registers_written=(),
+                          written_patterns=(), io_writes=(), memory_writes=(),
+                          route_coverage=())
+    verdict = ask_contrastive_judge(ModelSpec("minimax/MiniMax-M3"), facts, candidates, "run-x")
+    assert verdict.verdict == "contradicted"
+    assert "name_2" in verdict.reason
+    assert "0.8" in verdict.reason
+
+
+def test_ask_contrastive_judge_returns_inconclusive_for_low_confidence_decoy(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """A pick at confidence below the threshold (0.7) becomes `inconclusive`, not
+    `contradicted` -- the test would otherwise overstate the contradiction rate."""
+    fake_reply = json.dumps({"choice": 2, "confidence": 0.5,
+                              "reason": "matches some"})
+    monkeypatch.setattr(rt.llm, "complete", lambda *args, **kwargs: fake_reply)
+    candidates = [ContrastiveCandidate(label=idx, name=FunctionName(f"name_{idx}"),
+                                          summary=f"summary_{idx}", is_truth=(idx == 3))
+                    for idx in range(1, 6)]
+    facts = RuntimeFacts(name=FunctionName("name_3"), address=GuestAddress(0x08000000),
+                          probes=2, returned=2,
+                          register_inputs=(), register_outputs=(), registers_written=(),
+                          written_patterns=(), io_writes=(), memory_writes=(),
+                          route_coverage=())
+    verdict = ask_contrastive_judge(ModelSpec("minimax/MiniMax-M3"), facts, candidates, "run-x")
+    assert verdict.verdict == "inconclusive"
+
+
+def test_ask_contrastive_judge_returns_inconclusive_when_choice_zero(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The model honestly says it cannot pick any candidate (choice 0 = none fit)."""
+    fake_reply = json.dumps({"choice": 0, "confidence": 0.95,
+                              "reason": "no candidate matches"})
+    monkeypatch.setattr(rt.llm, "complete", lambda *args, **kwargs: fake_reply)
+    candidates = [ContrastiveCandidate(label=idx, name=FunctionName(f"name_{idx}"),
+                                          summary=f"summary_{idx}", is_truth=(idx == 3))
+                    for idx in range(1, 6)]
+    facts = RuntimeFacts(name=FunctionName("name_3"), address=GuestAddress(0x08000000),
+                          probes=2, returned=2,
+                          register_inputs=(), register_outputs=(), registers_written=(),
+                          written_patterns=(), io_writes=(), memory_writes=(),
+                          route_coverage=())
+    verdict = ask_contrastive_judge(ModelSpec("minimax/MiniMax-M3"), facts, candidates, "run-x")
+    assert verdict.verdict == "inconclusive"
+
+
+def test_ask_contrastive_judge_returns_inconclusive_when_402(monkeypatch: pytest.MonkeyPatch) -> None:
+    """HTTP 402: same surface as the legacy judge's `unknown`: the verdict is `inconclusive`
+    and the problem carries the error."""
+    def error_complete(*args: object, **kwargs: object) -> str:
+        raise RuntimeError("minimax/MiniMax-M3: HTTP 402: out of credits")
+
+    monkeypatch.setattr(rt.llm, "complete", error_complete)
+    candidates = [ContrastiveCandidate(label=idx, name=FunctionName(f"name_{idx}"),
+                                          summary=f"summary_{idx}", is_truth=(idx == 3))
+                    for idx in range(1, 6)]
+    facts = RuntimeFacts(name=FunctionName("name_3"), address=GuestAddress(0x08000000),
+                          probes=2, returned=2,
+                          register_inputs=(), register_outputs=(), registers_written=(),
+                          written_patterns=(), io_writes=(), memory_writes=(),
+                          route_coverage=())
+    verdict = ask_contrastive_judge(ModelSpec("minimax/MiniMax-M3"), facts, candidates, "run-402")
+    assert verdict.verdict == "inconclusive"
+    assert verdict.problem is not None and "HTTP 402" in verdict.problem
+
+
+# ── regression: reproduce every hostile-reason shape the previous batch tripped on ─
+
+
+@pytest.mark.parametrize("nasty_reason", [
+    # from the actual previous 28 broken files (each had a "colon-space" mid-sentence)
+    "R3 cleared (-1 -> 0). Interface matches: dx<0 yields direction 3.",
+    "matches: r0 was 0x00000000 -> 0x08000020 (call site)",
+    "AI object pointer: r5 holds 0x0203AA88. reset path: release panel reservations.",
+    "phase counter updates: r0: 0x50->0x80020064, panel: cleared",
+    "if value is non-zero: branch taken; else: branch not taken",
+    "check: r0 = 0; flags: cleared; panel: released",
+    "1:2:3:4:5 (a ratio, not a mapping)",
+    "two-step: A) read B) write",
+    "{\\\"foo\\\": \\\"bar\\\"}",
+])
+def test_write_per_function_survives_a_hostile_reason(tmp_path: Path,
+                                                       nasty_reason: str) -> None:
+    """For every shape of `colon-space`-bearing reason text the previous batch produced
+    (the batch had 28 files that failed to round-trip), the new code round-trips the
+    file through yaml.safe_load and keeps the reason byte-for-byte."""
+    facts = RuntimeFacts(name=FunctionName("ai_attackFrontPanel"),
+                          address=GuestAddress(0x080F7E40), probes=8, returned=8,
+                          register_inputs=(), register_outputs=(), registers_written=(),
+                          written_patterns=(), io_writes=(),
+                          memory_writes=(MemoryRegionWrite(symbol="eAIData3_AttackVars",
+                                                              address=0, bytes=84,
+                                                              distinct_values=8),),
+                          route_coverage=())
+    verdict = Verdict(name=FunctionName("ai_attackFrontPanel"),
+                       address=GuestAddress(0x080F7E40),
+                       verdict="consistent",
+                       reason=ToolMessage(nasty_reason), tokens=100, seconds=1.0)
+    evidence = evidence_yaml(FunctionName("ai_attackFrontPanel"), GuestAddress(0x080F7E40),
+                              ToolMessage("a summary"), SymbolName("ai_attackFrontPanel"), facts,
+                              verdict, "run-1", tmp_path)
+    path = write_per_function(evidence, tmp_path)
+    loaded = yaml.safe_load(path.read_text())
+    assert loaded["reason"] == nasty_reason, f"mangled: {loaded['reason']!r}"
+    assert loaded["evidence"][0]["method"] == "runtime"
+    assert "eAIData3_AttackVars" in loaded["evidence"][0]["detail"]

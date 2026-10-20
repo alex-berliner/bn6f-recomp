@@ -13,6 +13,7 @@ The graph mirrors `wf investigate`: a typed Burr state (RunState), small typed s
 results, NewTypes for names and addresses, and `wf docs` regenerates docs/workflows from it."""
 import threading
 import time
+import random
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
@@ -24,10 +25,20 @@ from wf.repo import REPO
 from wf.tools import runtime_evidence as rt
 from wf.tools.runtime_evidence import (DEFAULT_COUNT, DEFAULT_JOBS, DEFAULT_MODEL, DEFAULT_STATES,
                                        EvidenceYAML, Probe, Report, RuntimeFacts, Verdict,
-                                       ask_judge, evidence_yaml, probe_work_dir,
+                                       ask_judge, ask_contrastive_judge, evidence_yaml,
+                                       build_contrastive_candidates, investigate_sources_names,
+                                       ContrastiveCandidate, probe_work_dir,
                                        run_original, select_runtime_targets, summarise,
                                        write_per_function, write_report)
 from wf.types import FunctionName, GuestAddress, ModelSpec, Result, ToolMessage
+
+# Judge mode: "consistent" / "contradicts" / "unknown" (the old, rubber-stamp-prone prompt) or
+# "supported" / "contradicted" / "inconclusive" (the contrastive multiple-choice prompt). The
+# default is the old judge; the contrastive judge did not clear both of the brief's
+# calibration bars (see tools/wf/wf/tools/runtime_evidence.py's contrastive-judge block and
+# tools/calib_contrastive.py for the full numbers and the script). Pass `--contrastive` to
+# opt in.
+JUDGE_MODE_DEFAULT = "legacy"
 
 PROJECT = "recomp-runtime-evidence"
 
@@ -62,6 +73,7 @@ class RuntimeEvidenceState(BaseModel):
     states: int = DEFAULT_STATES
     jobs: int = DEFAULT_JOBS
     model: ModelSpec = DEFAULT_MODEL
+    judge_mode: str = JUDGE_MODE_DEFAULT         # "legacy" or "contrastive"
     targets: tuple[FunctionName, ...] = ()
     addresses: dict[FunctionName, GuestAddress] = {}
     summaries: dict[FunctionName, ToolMessage] = {}
@@ -120,7 +132,6 @@ class GatherInput(Result):
     jobs: int
     run_dir: Path
     notes: tuple[ToolMessage, ...] = ()
-    notes: tuple[ToolMessage, ...] = ()
 
 
 class GatherOutput(Result):
@@ -162,6 +173,7 @@ class JudgeInput(Result):
     interfaces: dict[FunctionName, ToolMessage]
     model: ModelSpec
     run_dir: Path
+    judge_mode: str = JUDGE_MODE_DEFAULT
     notes: tuple[ToolMessage, ...] = ()
 
 
@@ -174,15 +186,36 @@ class JudgeOutput(Result):
 def judge_the_names(given: JudgeInput) -> JudgeOutput:
     """Ask the model whether each function's summary + interface matches what the RuntimeFacts
     show; the verdict is cached per function (resumable across runs, since the model might
-    time out partway)."""
-    from wf.graphs import runtime_evidence as _self_module
+    time out partway).
+
+    `judge_mode` is one of `legacy` (the original `consistent/contradicts/unknown` prompt;
+    rubber-stamp-prone on hard cases) or `contrastive` (multiple-choice against 4 decoys,
+    `supported/contradicted/inconclusive`). `legacy` is the default; `contrastive` is opt-in
+    via `--contrastive` and is the path forward once its calibration clears the brief's bar."""
     run_id = current_run_id()
     verdicts: dict[FunctionName, Verdict] = {}
     notes: list[ToolMessage] = list(given.notes)
+    pool = frozenset(investigate_sources_names())
+    summary_for = dict(given.summaries)
+    rng = random.Random(int.from_bytes(run_id.encode(), "little") & 0xFFFFFFFF)
     for name, facts in given.facts.items():
         summary = given.summaries.get(name, ToolMessage("(no summary in the symbols/db entry)"))
         interface = given.interfaces.get(name)
-        verdict = _self_module.ask_judge(given.model, facts, summary, interface, run_id)
+        if given.judge_mode == "contrastive":
+            true_summary = str(summary)
+            try:
+                candidates = build_contrastive_candidates(name, true_summary, pool,
+                                                              facts,
+                                                              lambda n: str(summary_for.get(
+                                                                  FunctionName(n), "")),
+                                                              rng)
+                verdict = ask_contrastive_judge(given.model, facts, candidates, run_id)
+            except Exception as error:                                  # noqa: BLE001
+                notes.append(ToolMessage(f"{name}: contrastive judge failed: {error}; "
+                                          "falling back to legacy"))
+                verdict = ask_judge(given.model, facts, summary, interface, run_id)
+        else:
+            verdict = ask_judge(given.model, facts, summary, interface, run_id)
         verdicts[name] = verdict
         if verdict.problem:
             notes.append(ToolMessage(f"{name}: {verdict.problem}"))

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import re
 import shutil
 import struct
@@ -36,7 +37,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from datetime import date
 from pathlib import Path
-from typing import cast
+from typing import NamedTuple, cast
 
 import yaml
 
@@ -1156,6 +1157,247 @@ def ask_judge(model: ModelSpec, facts: RuntimeFacts, summary: ToolMessage, inter
     return out
 
 
+# ── contrastive judge (multiple choice; supported/contradicted/inconclusive) ──
+#
+# A previous version of `ask_judge` was a rubber stamp: over 24 negative-control pairs
+# (the runtime facts of function A presented with the (name, summary) of function B),
+# it said `consistent` 14 times. The verdict carried no information. The fix was to flip
+# the question from "is this name consistent with the facts?" to "pick the candidate that
+# fits these facts" -- a multiple-choice question that has to single out the truth among
+# distractors or admit it cannot. The old judge is kept (available behind a flag) so a
+# future run can compare side by side; the contrastive judge is the default when the
+# caller's flag is set.
+#
+# CALIBRATION (on 60 functions from build-wf-runs/runtime-evidence-20261019-180951/,
+# minimax/MiniMax-M3, with the `tools/calib_contrastive.py` script):
+#   (a) accuracy picking the true option (5-option question): 20/60 = 33.3%
+#       Wilson 95% CI [22.7%, 45.9%]. The CI just barely excludes 20% chance (lower bound
+#       22.7%) -- the model's signal is real but weak; "clearly above chance" is generous.
+#   (b) false-positive rate (4-decoy question, right answer is 0/none, model picked one at
+#       conf >= 0.7): 24/60 = 40.0%. 95% CI [28.6%, 52.6%]. Far from "clearly low".
+# Per the calibration rule, the runtime facts are not discriminating enough to deploy the
+# contrastive judge by default. The default remains `consistent/contradicts/unknown` (the
+# old judge). Operators who want to enable the contrastive judge pass `--contrastive` to
+# `wf runtime-evidence`; the data is identical, only the verdict classification changes.
+
+CONTRASTIVE_SYSTEM = ("You identify a GBA function from the runtime facts its calls produced "
+                       "in the original game. Reply with exactly one JSON object and nothing "
+                       "else.")
+
+CONTRASTIVE_TEMPLATE = """Runtime facts about an UNNAMED function in the GBA game "Mega Man Battle Network 6"
+(probes replayed the function from K captured calls in the original game through mGBA):
+
+{facts}
+
+Below are 5 candidate (name, summary) pairs that were written by `wf investigate` for different
+functions (this codebase's assembly-reading + cross-check pipeline; it sometimes names
+the wrong function). The runtime facts may identify ONE of the candidates uniquely, may be
+ambiguous between several, or may not match any. Only pick a candidate if the runtime facts
+distinctively match IT and not the others.
+
+{candidates}
+
+Blind spots: only memory and registers whose value CHANGED are listed (a write of the
+value already there, and every read, are invisible). Write-only hardware registers (BG
+scroll, DMA, sound, window, mosaic, ...) read back as junk and are never listed, so an
+empty I/O list does NOT contradict a candidate about display, scrolling, DMA or sound.
+
+Reply with exactly one JSON object:
+{{
+  "choice": <1..5 if a candidate is the unique match; 0 if none fit or the match is ambiguous>,
+  "confidence": <0.0..1.0; reserve high confidence (>= 0.7) for cases where the facts distinguish the chosen candidate from every other option>,
+  "reason": "<at most three sentences; cite the runtime fact that picked your answer (a register value, a RAM symbol, an I/O register, a route count)>"
+}}
+"""
+
+
+ContrastiveCandidate = NamedTuple("ContrastiveCandidate", (    # pyright: ignore[reportUntypedBaseClass]
+    ("label", int), ("name", FunctionName), ("summary", str), ("is_truth", bool)))
+
+
+def build_contrastive_candidates(true_name: FunctionName, true_summary: str,
+                                  pool: frozenset[str], facts: RuntimeFacts,
+                                  name_to_summary: Callable[[str], str],
+                                  rng: random.Random) -> list[ContrastiveCandidate]:
+    """The five options for the contrastive judge's prompt: true_name + four decoys.
+
+    Decoys: 2 "hard" (other investigate-named functions with the same name prefix OR
+    whose RAM write set overlaps with the truth's, preferring the latter) and 2 random.
+    The shuffle order and which slot the truth lands in are both governed by RNG so a
+    re-run is reproducible."""
+    true_ram = _ram_symbols_written_by(facts)
+    hard: list[str] = []
+    others = sorted(pool - {str(true_name)})
+    for cand in others:
+        if any(_symbol_in(cand, sym) for sym in true_ram):
+            if cand not in hard:
+                hard.append(cand)
+        if len(hard) >= 2:
+            break
+    if len(hard) < 2:
+        prefix = str(true_name).split("_", 1)[0]
+        for cand in others:
+            if cand in hard or cand == str(true_name):
+                continue
+            if cand.startswith(prefix + "_") or cand == prefix:
+                hard.append(cand)
+            if len(hard) >= 2:
+                break
+    if len(hard) < 2:
+        # fall back to a sampling; the pool can be small for some functions.
+        rand_pool = [c for c in others if c not in hard]
+        rng.shuffle(rand_pool)
+        hard.extend(rand_pool[: 2 - len(hard)])
+    hard = hard[:2]
+    random_pool = [c for c in others if c not in hard]
+    rng.shuffle(random_pool)
+    decoys = hard + random_pool[: 2]
+    all5: list[ContrastiveCandidate] = [
+        ContrastiveCandidate(label=0, name=true_name, summary=true_summary, is_truth=True),
+    ]
+    for d in decoys:
+        all5.append(ContrastiveCandidate(label=0, name=FunctionName(d), summary=name_to_summary(d),
+                                            is_truth=False))
+    labelled: list[ContrastiveCandidate] = []
+    for idx, cand in enumerate(all5, start=1):
+        labelled.append(ContrastiveCandidate(label=idx, name=cand.name, summary=cand.summary,
+                                                is_truth=cand.is_truth))
+    rng.shuffle(labelled)
+    return labelled
+
+
+def _ram_symbols_written_by(facts: RuntimeFacts) -> tuple[str, ...]:
+    """The bn6f RAM symbols `facts` reports as written by the function. Used to pick hard
+    decoys (others that share a RAM symbol with the truth -- the same IWRAM/EWRAM layout
+    almost certainly means the same code path)."""
+    return tuple(write.symbol for write in facts.memory_writes)
+
+
+def _symbol_in(name: str, symbol_prefix: str) -> bool:
+    """Whether `name` (a function name) has facts reporting a write to `symbol_prefix`.
+    In the contrastive-judge prompts we only have the truth's write set; we want decoys
+    whose names sound similar to functions known to touch that region. Heuristic match:
+    the decoy name appears anywhere in the lifted unit set touching the symbol.
+
+    The fallback heuristic: a name that contains the symbol's tail word (e.g.
+    `_AttackVars` in `eAIData1_AttackVars`) is treated as a hard negative. The full version
+    would load each decoy's facts; we keep this cheap because the contrastive judge runs
+    once per function and we want the prompt construction itself to be free of model calls."""
+    if not symbol_prefix:
+        return False
+    needle = symbol_prefix.split("_")[-1].lower()
+    if len(needle) < 4:        # 'e', 'iowram', and other short names are noise
+        return False
+    return needle in name.lower()
+
+
+def contrastive_judge_prompt(facts: RuntimeFacts, candidates: Sequence[ContrastiveCandidate]) -> str:
+    """The model sees the runtime facts and the 5 (label, name, summary) candidates; it does
+    NOT see the truth label, just the candidates. The `(function-name) -> SymbolName`
+    mapping is the candidate's `(name, summary)` and not the truth's; the judge cannot
+    cheat by string-matching "what function is this?"."""
+    facts_text = _runtime_facts_text(facts)
+    cand_text = "\n".join(f"[{c.label}] name: `{c.name}`\n    summary: {c.summary or '(none)'}"
+                            for c in candidates)
+    return CONTRASTIVE_TEMPLATE.format(facts=facts_text or "(no facts)", candidates=cand_text)
+
+
+def parse_contrastive(reply: str) -> tuple[int, float, str, ToolMessage | None]:
+    """A `{"choice": int, "confidence": float, "reason": str}` JSON object. Returns
+    `(choice, confidence, reason, problem)` -- choice is 0 by default if missing, the
+    problem is `None` on a clean parse."""
+    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", reply, re.S)
+    candidates_list = [match[1]] if match else []
+    first, last = reply.find("{"), reply.rfind("}")
+    if 0 <= first < last:
+        candidates_list.append(reply[first:last + 1])
+    for candidate in candidates_list:
+        try:
+            loaded = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(loaded, dict):
+            choice_raw = loaded.get("choice")
+            conf_raw = loaded.get("confidence")
+            reason_raw = loaded.get("reason")
+            # bool is a subclass of int in Python; reject booleans explicitly so `True` does
+            # not become choice 1 / confidence 1.0 silently (a model that returns
+            # `"choice": true` would otherwise look like it picked candidate 1 with full
+            # confidence).
+            if (not isinstance(choice_raw, int) or isinstance(choice_raw, bool)
+                    or not isinstance(conf_raw, (int, float)) or isinstance(conf_raw, bool)):
+                continue
+            choice = choice_raw
+            conf = max(0.0, min(1.0, float(conf_raw)))
+            reason = str(reason_raw or "").strip()
+            if not reason:
+                return choice, conf, "", ToolMessage("a verdict without a reason")
+            return choice, conf, reason, None
+    return 0, 0.0, "", ToolMessage("the reply held no JSON object")
+
+
+CONTRASTIVE_CONFIDENCE = 0.7     # the threshold the brief uses for a confident contradicting pick
+
+
+def ask_contrastive_judge(model: ModelSpec, facts: RuntimeFacts,
+                            candidates: Sequence[ContrastiveCandidate], run_id: str,
+                            confidence_threshold: float = CONTRASTIVE_CONFIDENCE) -> Verdict:
+    """Run the contrastive judge on one function and fold the JSON reply into a verdict.
+
+    Mapping (per the brief):
+      choice == truth's label    -> verdict = "supported"
+      choice in [1..5] and conf >= threshold and not truth -> verdict = "contradicted"
+      otherwise (choice 0 / low confidence / unparsed) -> verdict = "inconclusive"
+
+    Calibration (60 functions from build-wf-runs/runtime-evidence-20261019-180951/, see
+    tools/calib_contrastive.py; minimax/MiniMax-M3; 5-option question with 1 truth + 4 decoys;
+    4-decoy question with the truth removed):
+      (a) accuracy picking the true option (5-option): 20/60 = 33.3%
+          Wilson 95% CI [22.7%, 45.9%]. The CI just barely excludes 20% chance
+          (lower bound is 22.7%) -- the model's signal is real but weak.
+      (b) false-positive rate (truth removed, picked at conf >= 0.7): 24/60 = 40.0%
+          Wilson 95% CI [28.6%, 52.6%]. Far from "clearly low".
+    Per the brief's calibration rule (both bars must be clearly cleared), the runtime facts
+    are not discriminating enough to deploy the contrastive judge by default. The default
+    stays `consistent/contradicts/unknown` (the old judge). Operators who want to enable the
+    contrastive judge pass `--contrastive`; the data is identical, only the verdict
+    classification changes. Per the brief, we do NOT tune on this evaluation set."""
+    import time as _time
+    started = _time.monotonic()
+    prompt = contrastive_judge_prompt(facts, candidates)
+    truth_label = next((c.label for c in candidates if c.is_truth), 0)
+    tokens = 0
+    choice, confidence, reason = 0, 0.0, ""
+    problem: ToolMessage | None = None
+    for attempt in range(2):
+        tag = f"runtime-evidence {run_id} contrastive {facts.name} {attempt}"
+        try:
+            reply = llm.complete(model, prompt, system=CONTRASTIVE_SYSTEM, max_tokens=600,
+                                    timeout=120, retries=2, tag=tag, usage_log=str(USAGE_LOG))
+        except Exception as error:                                # noqa: BLE001
+            return Verdict(name=facts.name, address=facts.address, verdict="inconclusive",
+                            reason=ToolMessage(""), tokens=0, seconds=0.0,
+                            problem=ToolMessage(str(error)[:300]))
+        tokens += _logged_tokens(tag)
+        choice, confidence, reason, problem = parse_contrastive(reply)
+        if problem is None and reason:
+            break
+        prompt = (f"{prompt}\n\nYour previous reply could not be used: {problem}\n"
+                    "Reply again with only the JSON object.")
+    if choice == truth_label:
+        verdict = "supported"
+    elif 1 <= choice <= len(candidates) and confidence >= confidence_threshold:
+        verdict = "contradicted"
+    else:
+        verdict = "inconclusive"
+    chosen = next((c for c in candidates if c.label == choice), None)
+    reason_text = (f"picked [{choice}] `{chosen.name}` at confidence {confidence:.2f}: "
+                    f"{reason}") if (chosen and choice != 0) else (reason or "(no reason)")
+    return Verdict(name=facts.name, address=facts.address, verdict=verdict,
+                    reason=ToolMessage(reason_text), tokens=tokens,
+                    seconds=round(_time.monotonic() - started, 1), problem=problem)
+
+
 # ── caching: a previous run's verdict is re-used ──────────────────────
 
 def _verdict_dir(run_id: str) -> Path:
@@ -1187,48 +1429,76 @@ def write_evidence_run(run_dir: Path) -> Path:
     return run_dir
 
 
+class _LiteralStr(str):
+    """Tag a string for yaml.safe_dump so it serialises as a `|` block scalar (a `:` or
+    a `:` followed by a space inside the text would otherwise be misparsed as a mapping
+    key). The runtime-evidence reason text regularly does this -- a cite like
+    `interface matches: r0=0 was 0x00000000` reads as a mapping to the YAML scanner."""
+
+
+def _register_literal_str_representer() -> None:
+    """Install the `_LiteralStr` representer on `yaml.SafeDumper` once. Idempotent: a second
+    call replaces the existing representer for the same class -- both reference the same
+    `_LiteralStr`, so adding it twice would just stick the same handler in twice."""
+    def _represent(dumper: yaml.Dumper, data: str) -> yaml.ScalarNode:
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+    yaml.add_representer(_LiteralStr, _represent, Dumper=yaml.SafeDumper)
+
+
+_register_literal_str_representer()
+
+
+def _dump_yaml(data: object) -> str:
+    """One YAML document with block scalars for long text. `yaml.safe_dump` already quotes
+    strings that contain `:` or `:` followed by space (so a one-line `reason` with a colon
+    inside it parses), and our `_LiteralStr` strings use `|` for the multi-line fields.
+    Returns the document without a trailing newline (the callers add one)."""
+    return yaml.safe_dump(data, sort_keys=False, allow_unicode=True, width=100,
+                          default_flow_style=False)
+
+
 def evidence_yaml(name: FunctionName, address: GuestAddress, summary: ToolMessage,
                   current_name: SymbolName, facts: RuntimeFacts, verdict: Verdict,
                   run_id: str, run_dir: Path) -> EvidenceYAML:
     """The YAML body of one entry's evidence item as it will be merged into the function's
     symbols/db entry by `wf record` later; it is also written as its own NAME.yaml under
-    run_dir so the human can review it on its own."""
+    run_dir so the human can review it on its own.
+
+    The body is built by `yaml.safe_dump` (block scalars for the multi-line text). The
+    former hand-rolled f-string version produced invalid YAML when the judge's reason
+    contained `colon-space` -- a mapping value where the scanner expected a key -- and 28
+    of 300 review files in the previous run failed to re-parse on round trip."""
     facts_text = _runtime_facts_text(facts)
-    detail_lines = ["Confirmed (or contradicted) at runtime on {0} of {1} probe(s) of the "
-                    "function in the original game.".format(facts.returned, facts.probes),
+    detail_lines = [f"Confirmed (or contradicted) at runtime on {facts.returned} of "
+                    f"{facts.probes} probe(s) of the function in the original game.",
                     "", facts_text]
     if verdict.reason:
-        detail_lines += ["", f"Judge's verdict: {verdict.verdict}.", verdict.reason]
-    refs = [f"bn6f/asm/{_symbol_path(name)}" if _symbol_path(name) else f"0x{address:08X} {name}"]
-    refs += [f"build/runtime/{run_id}/{name}.yaml"]
-    refs += [f"build/runtime/{run_id}/probe/{name}/"]
-    detail = "\n".join(detail_lines)
-    reproduce = _reproduce_commands(name, run_id, run_dir)
-    quoted_reproduce = "\n      ".join(reproduce)
-    yaml_body = f"""evidence:
-  - method: {METHOD}
-    date: {date.today().isoformat()}
-    detail: |
-      {detail.replace(chr(10), chr(10) + '      ').rstrip()}
-    refs:
-      - {refs[0]}
-      - {refs[1]}
-      - {refs[2]}
-    reproduce: |
-      {quoted_reproduce}
-    result: |
-      Judge ({DEFAULT_MODEL}): {verdict.verdict}. {verdict.reason or '(no reason)'}
-      Probes: {facts.returned}/{facts.probes} returned; memory: {len(facts.memory_writes)} region(s); I/O: {len(facts.io_writes)} write(s).
-verdict: {verdict.verdict}
-reason: {verdict.reason or '(no reason)'}
-sources:
-  - wf runtime-evidence {run_id}
-"""
+        detail_lines += ["", f"Judge's verdict: {verdict.verdict}.", str(verdict.reason)]
+    refs = [_symbol_path(name) and f"bn6f/asm/{_symbol_path(name)}"
+            or f"0x{address:08X} {name}",
+            f"build/runtime/{run_id}/{name}.yaml",
+            f"build/runtime/{run_id}/probe/{name}/"]
+    reproduce = list(_reproduce_commands(name, run_id, run_dir))
+    body = {"evidence": [{"method": METHOD,
+                          "date": date.today().isoformat(),
+                          "detail": _LiteralStr("\n".join(detail_lines).rstrip()),
+                          "refs": refs,
+                          "reproduce": _LiteralStr("\n".join(reproduce).rstrip()),
+                          "result": _LiteralStr(f"Judge ({DEFAULT_MODEL}): {verdict.verdict}. "
+                                                  f"{verdict.reason or '(no reason)'}\n"
+                                                  f"Probes: {facts.returned}/{facts.probes} "
+                                                  "returned; memory: "
+                                                  f"{len(facts.memory_writes)} region(s); "
+                                                  f"I/O: {len(facts.io_writes)} write(s).")}],
+            "verdict": verdict.verdict,
+            "reason": verdict.reason or "(no reason)",
+            "sources": [f"wf runtime-evidence {run_id}"]}
+    yaml_body = _dump_yaml(body) + "\n"
     # The runner writes the merged NAME.yaml next to verdict files; here we keep the standalone
     # layout (one yaml body to splice into the symbols/db entry's evidence key on `wf record`).
     return EvidenceYAML(name=name, address=address, run_id=run_id, verdict=verdict.verdict,
                         reason=verdict.reason or ToolMessage(""), evidence_yaml=yaml_body,
-                        reproduce=reproduce)
+                        reproduce=tuple(reproduce))
 
 
 def _runtime_facts_text(facts: RuntimeFacts) -> str:
@@ -1286,13 +1556,28 @@ def _reproduce_commands(name: FunctionName, run_id: str, run_dir: Path) -> tuple
 
 def write_per_function(evidence: EvidenceYAML, run_dir: Path) -> Path:
     """Write the standalone evidence file to RUN_DIR/NAME.yaml so the human can review it
-    on its own (the YAML body is the splice-able evidence block; the rest is metadata)."""
+    on its own. The file is a single YAML document (the splice-able evidence block plus a
+    top-level metadata header). Built with `yaml.safe_dump` so the round trip through
+    `yaml.safe_load` is preserved -- the old hand-rolled version broke when the judge's
+    reason contained a colon followed by a space (a cite like `... matches: r5 is a ...
+    was treated as a mapping value where the scanner expected a key)."""
+    body = yaml.safe_load(evidence.evidence_yaml)
+    if not isinstance(body, dict):
+        raise ValueError(f"{evidence.name}: evidence_yaml did not parse as a mapping; "
+                         f"got {type(body).__name__}")
+    payload: dict[str, object] = {"name": evidence.name,
+                                    "address": f"0x{evidence.address:08X}",
+                                    "verdict": evidence.verdict,
+                                    "reason": evidence.reason or "(no reason)"}
+    payload.update(body)        # evidence / sources / ... from the splice-able body
     path = run_dir / f"{evidence.name}.yaml"
-    meta = (f"# Standalone review copy. Splice evidence[-1] into symbols/db/{evidence.name}.yaml\n"
-            f"# via `wf record --symbol {evidence.name}` after a human signs off.\n"
-            f"name: {evidence.name}\naddress: 0x{evidence.address:08X}\nverdict: {evidence.verdict}\n"
-            f"reason: {evidence.reason}\n---\n")
-    path.write_text(meta + evidence.evidence_yaml)
+    header = (f"# Standalone review copy. Splice `evidence[-1]` into "
+              f"`symbols/db/{evidence.name}.yaml`\n"
+              f"# via `wf record --symbol {evidence.name}` after a human signs off.\n")
+    path.write_text(header + _dump_yaml(payload) + "\n")
+    # Sanity: the round trip loads. (The whole point of the dump-then-load check is to
+    # catch the colon-space bug -- if yaml.safe_load failed, this raises.)
+    yaml.safe_load(path.read_text())
     return path
 
 

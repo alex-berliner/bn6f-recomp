@@ -64,7 +64,7 @@ from wf.graphs.queue import QueueState, ledger_summary, queue_graph, request_sto
 from wf.graphs.record import RecordState, record_graph
 from wf.graphs.verify import VerifyReport, VerifyState, all_readable, run_verify, what_it_checks
 from wf.graphs.investigate import InvestigateState, run_investigate
-from wf.graphs.runtime_evidence import RuntimeEvidenceState, run_runtime_evidence
+from wf.graphs.runtime_evidence import RuntimeEvidenceState, run_runtime_evidence, JUDGE_MODE_DEFAULT
 from wf.tools.runtime_evidence import DEFAULT_COUNT as DEFAULT_RE_COUNT
 from wf.tools.runtime_evidence import DEFAULT_MODEL as DEFAULT_RE_MODEL
 from wf.tools.runtime_evidence import DEFAULT_STATES as DEFAULT_RE_STATES
@@ -156,6 +156,7 @@ class RuntimeEvidenceCommand(BaseModel):
     states: int
     jobs: int
     model: ModelSpec
+    contrastive: bool = False                # opt into the contrastive judge
 
 
 class ConvertCommand(BaseModel):
@@ -407,10 +408,12 @@ def start_runtime_evidence(command: RuntimeEvidenceCommand) -> None:
     """Gather runtime evidence for the names `wf investigate` proposed (build/runtime/RUN_ID)."""
     run_id, run_dir = new_run("runtime-evidence")
     (run_dir).mkdir(parents=True, exist_ok=True)
+    judge_mode = "contrastive" if command.contrastive else JUDGE_MODE_DEFAULT
     start = RuntimeEvidenceState(run_dir=run_dir, count=command.count, only=command.only,
-                                 states=command.states, jobs=command.jobs, model=command.model)
+                                 states=command.states, jobs=command.jobs, model=command.model,
+                                 judge_mode=judge_mode)
     print(f"selected {command.count} function(s) (states={command.states}, jobs={command.jobs}, "
-          f"model={command.model})")
+          f"model={command.model}, judge={judge_mode})")
     report = run_runtime_evidence(start, run_id)
     print_json(report)
     contradictions = run_dir / "contradictions.tsv"
@@ -657,6 +660,13 @@ def parse_command() -> Command:
                          help=f"mgba_run calls in flight (default {DEFAULT_RE_JOBS})")
     runtime.add_argument("--model", default=DEFAULT_RE_MODEL,
                          help=f"the judge model (default {DEFAULT_RE_MODEL})")
+    runtime.add_argument("--contrastive", action="store_true",
+                         help="use the contrastive (multiple-choice) judge instead of the legacy "
+                              "consistent/contradicts/unknown prompt; calibration on 60 of the "
+                              "runtime-evidence-20261019-180951 batch's functions gave (a) 33.3% "
+                              "accuracy (95% CI [22.7%, 45.9%]) and (b) 40.0% false-positive rate "
+                              "(95% CI [28.6%, 52.6%]); the brief requires both bars clearly "
+                              "cleared, so the legacy judge remains the default")
 
     convert = commands.add_parser("convert", help="a strong model converts a subsystem; stops for review")
     convert.add_argument("functions", nargs="+")
