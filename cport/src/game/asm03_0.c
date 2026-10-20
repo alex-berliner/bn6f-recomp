@@ -1815,6 +1815,102 @@ Next battle_customScreenExitRotateChips_8027796(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── initBackgroundTilemap ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: CopyByEightWords has no typed C interface yet */
+static inline void call_CopyByEightWords_initBackgroundTilemap(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyByEightWords);
+}
+
+typedef struct { u32 r2, r6; } call_sub_8027CCC_result;
+/* register form: generated wrapper: sub_8027CCC has no typed C interface yet */
+static inline call_sub_8027CCC_result call_sub_8027CCC(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(sub_8027CCC);
+    return (call_sub_8027CCC_result){ R2, R6 };
+}
+
+typedef struct { u32 r2, r3, r6, r7; } call_CopyBackgroundTiles_result_initBackgroundTilemap;
+/* register form: generated wrapper: CopyBackgroundTiles has no typed C interface yet */
+static inline call_CopyBackgroundTiles_result_initBackgroundTilemap call_CopyBackgroundTiles_initBackgroundTilemap(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles);
+    return (call_CopyBackgroundTiles_result_initBackgroundTilemap){ R2, R3, R6, R7 };
+}
+
+/*
+ * initBackgroundTilemap: copies the compressed tileset into the working tile buffer,
+ * iterates the 6-byte tile-attribute entries (terminator 0xFF) calling sub_8027CCC
+ * for each, then renders the full 15×20 tile block 3 into the background.
+ *
+ * r4/r5/r6 are saved and restored to their entry values (the loop and CopyBackgroundTiles
+ * clobber them, but pops bring them back). They are returned unchanged.
+ *
+ * sub_8027CCC returns a modified r2 (the tile attribute) which feeds the AND mask on
+ * the next iteration — this is the critical data-flow the previous attempt missed.
+ */
+
+struct InitBgTilemapResult { u32 r4, r5, r6; };
+
+static struct InitBgTilemapResult init_bg_tilemap(u32 r4, u32 r5, u32 r6) {
+    /* Copy 0x258 bytes of tile data into the working buffer at unk_2035000 */
+    call_CopyByEightWords_initBackgroundTilemap(A_byte_86E64B4, A_unk_2035000, 0x258);
+
+    /* Process each 6-byte tile-attribute entry until the terminator (0xFF). */
+    u32 attr = 0x9B;            /* initial low-12-bit attribute carried between iterations */
+    u32 entry = A_byte_8027B2C; /* current entry pointer */
+
+    for (;;) {
+        /* Build the 16-bit attribute: low 12 bits from previous call's r2, high 4 from byte[4] */
+        u32 lo = attr & 0xFFF;
+        u32 hi = (u32)LD8(entry + 4) << 12;
+        attr = hi | lo;
+
+        /* Each entry: [b0=b1][b2=b1][attr_hi][b3][attr_lo_high][b5] — 6 bytes */
+        u32 b0 = LD8(entry);
+        u32 b1 = LD8(entry + 1);
+        u32 b2 = LD8(entry + 2);
+        u32 b3 = LD8(entry + 3);
+        u32 b5 = LD8(entry + 5);
+
+        call_sub_8027CCC_result call_result = call_sub_8027CCC(b0, b1, attr, b2, b3, b5);
+        attr = call_result.r2;  /* sub_8027CCC returns a modified r2 used on the next iteration */
+
+        entry += 6;
+        if (LD8(entry) == 0xFF)
+            break;
+    }
+
+    /* Render tile block 3 (32×32 background) with the populated tile-id grid */
+    call_CopyBackgroundTiles_initBackgroundTilemap(0, 0, 3, A_unk_2035000, 0xF, 0x14);
+
+    /* r4/r5/r6 were saved on entry and restored by the stack pops — return them unchanged */
+    struct InitBgTilemapResult out = { r4, r5, r6 };
+    return out;
+}
+
+/* initBackgroundTilemap(r4, r5, r6) -> r4, r5, r6 (all restored to entry values) */
+Next initBackgroundTilemap(void) {
+    struct InitBgTilemapResult out = init_bg_tilemap(R4, R5, R6);
+    R4 = out.r4;
+    R5 = out.r5;
+    R6 = out.r6;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8027A84 ── */
 /* Reset the battle-actor's [r5+0x40] counter to 0 and its [r5+2] halfword field to 4. */
 static void reset_actor_fields(u32 actor) {
@@ -3307,6 +3403,97 @@ Next custMenuPressOK_8028D3A(void) {
     LR = return_address;
     R0 = 0;
     SET_FLAGS_NZ(0);
+    RETURN_TO_CALLER();
+}
+
+/* ── customScreen_confirmChipSelect ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r5, r6; } call_sub_802A034_result_customScreen_confirmChipSelect;
+/* register form: generated wrapper: sub_802A034 has no typed C interface yet */
+static inline call_sub_802A034_result_customScreen_confirmChipSelect call_sub_802A034_customScreen_confirmChipSelect(void) {
+    GUEST_CALL(sub_802A034);
+    return (call_sub_802A034_result_customScreen_confirmChipSelect){ R0, R5, R6 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_sprite_CopyObjTilesToVramSlot_80281D4_result_customScreen_confirmChipSelect;
+/* register form: generated wrapper: sprite_CopyObjTilesToVramSlot_80281D4 has no typed C interface yet */
+static inline call_sprite_CopyObjTilesToVramSlot_80281D4_result_customScreen_confirmChipSelect call_sprite_CopyObjTilesToVramSlot_80281D4_customScreen_confirmChipSelect(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(sprite_CopyObjTilesToVramSlot_80281D4);
+    return (call_sprite_CopyObjTilesToVramSlot_80281D4_result_customScreen_confirmChipSelect){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7; } call_customScreen_redrawChipSlot_8029CD4_result;
+/* register form: generated wrapper: customScreen_redrawChipSlot_8029CD4 has no typed C interface yet */
+static inline call_customScreen_redrawChipSlot_8029CD4_result call_customScreen_redrawChipSlot_8029CD4(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(customScreen_redrawChipSlot_8029CD4);
+    return (call_customScreen_redrawChipSlot_8029CD4_result){ R2, R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_customScreen_confirmChipSelect;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_customScreen_confirmChipSelect call_PlaySoundEffect_customScreen_confirmChipSelect(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_customScreen_confirmChipSelect){ R1, R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* customScreen_confirmChipSelect at 0x08028D6C */
+
+/* Confirm adding the chip under the cursor to the selection list.
+ * Returns 0 on success (chip added), 1 on rejection (pending anim or 5 slots full). */
+static u32 confirm_chip_select(u32 r2_in, u32 r4, u32 r5) {
+    /* A chip-select animation is already in progress – refuse */
+    if (LD8(r4 + 7) != 0) {
+        call_PlaySoundEffect_customScreen_confirmChipSelect(SOUND_CANT_JACK_IN, r2_in);
+        return 1;
+    }
+
+    /* The selection list holds at most 5 chips */
+    u32 count = LD8(r5 + oS20364C0_NumChipsSelected);
+    if ((s32)count >= 5) {
+        call_PlaySoundEffect_customScreen_confirmChipSelect(SOUND_CANT_JACK_IN, r2_in);
+        return 1;
+    }
+
+    /* Append the cursor chip: store cursor pos into slot array at offset (count + 0x48) */
+    ST8(r5 + oS20364C0_NumChipsSelected, count + 1);
+    ST8(r5 + count + 0x48, LD8(r5 + oS20364C0_ChipSelectCursorPos));
+
+    /* Resolve the 16-bit chip ID from the toolkit pointer */
+    u32 chip_id = LD16(LD32(r4 + 8));
+
+    /* Process the selection (updates internal list, returns modified r5/r6) */
+    call_sub_802A034_result_customScreen_confirmChipSelect a034 = call_sub_802A034_customScreen_confirmChipSelect();
+
+    /* Copy the chip's tile pattern into its VRAM object slot */
+    u32 slot1 = LD8(a034.r5 + 8) - 1;
+    call_sprite_CopyObjTilesToVramSlot_80281D4_result_customScreen_confirmChipSelect spr =
+        call_sprite_CopyObjTilesToVramSlot_80281D4_customScreen_confirmChipSelect(a034.r0, slot1);
+
+    /* Redraw the chip slot on screen */
+    u32 slot2 = LD8(spr.r5 + 8) - 1;
+    call_customScreen_redrawChipSlot_8029CD4_result red =
+        call_customScreen_redrawChipSlot_8029CD4(slot2, 1, 0);
+
+    /* Confirmation blip */
+    call_PlaySoundEffect_result_customScreen_confirmChipSelect snd = call_PlaySoundEffect_customScreen_confirmChipSelect(SOUND_MENU_SELECT, red.r2);
+
+    /* Arm the chip-select animation tick (offset 0x48 triggers handler) */
+    ST8(snd.r5 + oS20364C0_JumpOffset01, 0x48);
+    ST16(snd.r5 + oS20364C0_StateHandled, 0);
+
+    return 0;
+}
+
+/* customScreen_confirmChipSelect(r2, r4, r5, r10) -> r0, r5, r6, r10 */
+Next customScreen_confirmChipSelect(void) {
+    R0 = confirm_chip_select(R2, R4, R5);
     RETURN_TO_CALLER();
 }
 

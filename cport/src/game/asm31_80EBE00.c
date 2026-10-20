@@ -2877,6 +2877,124 @@ Next ai_attackDispatchStep_80F7EA6(void)
     RETURN_TO_CALLER();
 }
 
+/* ── object_pickRandomAdjacentPanel ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3, r4, r5; } call_object_checkPanelParameters_result_object_pickRandomAdjacentPanel;
+/* register form: generated wrapper: object_checkPanelParameters has no typed C interface yet */
+static inline call_object_checkPanelParameters_result_object_pickRandomAdjacentPanel call_object_checkPanelParameters_object_pickRandomAdjacentPanel(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(object_checkPanelParameters);
+    return (call_object_checkPanelParameters_result_object_pickRandomAdjacentPanel){ R0, R2, R3, R4, R5 };
+}
+
+typedef struct { u32 r0, r2, r3, r7; } call_GetPositiveSignedRNG_result_object_pickRandomAdjacentPanel;
+/* register form: generated wrapper: GetPositiveSignedRNG has no typed C interface yet */
+static inline call_GetPositiveSignedRNG_result_object_pickRandomAdjacentPanel call_GetPositiveSignedRNG_object_pickRandomAdjacentPanel(void) {
+    GUEST_CALL(GetPositiveSignedRNG);
+    return (call_GetPositiveSignedRNG_result_object_pickRandomAdjacentPanel){ R0, R2, R3, R7 };
+}
+
+/* (delta-x, delta-y) byte pairs: panels adjacent to the object's own panel,
+ * in up / down / left / right order. */
+#define PANEL_ADJ_TABLE     A_byte_80F81B8
+#define PANEL_ADJ_STRIDE    2
+
+/* Layout of the guest stack frame the adapter carves out: saved arguments
+ * plus the two candidate byte lists. */
+#define FRAME_SIZE          0x14
+#define FRAME_TARGET_PTR    0x00
+#define FRAME_CHECK_P2      0x04
+#define FRAME_CHECK_P3      0x08
+#define FRAME_NORMAL_LIST   0x0C  /* valid off-row candidates (up to four) */
+#define FRAME_ROW_LIST      0x10  /* valid same-row candidates (up to four) */
+#define DESCRIPTOR_ROW      0x13  /* the battle object's own panel row */
+
+/* register form: BIOS service — dividend in r0, divisor in r1, result left
+ * in r1, exactly as the original's "svc 6" modulo step. */
+static u32 swi6_pick_index(u32 random_value, u32 count) {
+    R0 = random_value;
+    R1 = count;
+    swi_call(6);
+    return R1;
+}
+
+/* Pick one of the four panels adjacent to the battle object obj.
+ * Each neighbour is checked with object_checkPanelParameters; valid ones are
+ * packed as (row << 4 | column) into one of two lists: same row as the
+ * object's own row (descriptor byte 0x13) or a different row.
+ * A random entry is drawn from the off-row list first, falling back to the
+ * same-row list; with no candidates at all the column is 0 and the row is
+ * the last one tested, mirroring the original's leftover r1.
+ * frame is the guest stack block that holds the lists and saved arguments. */
+static u32 pick_random_adjacent_panel(u32 descriptor, u32 check_p2, u32 check_p3,
+                                      u32 obj, u32 frame, u32 *out_row) {
+    ST32(frame + FRAME_TARGET_PTR, descriptor);
+    ST32(frame + FRAME_CHECK_P2, check_p2);
+    ST32(frame + FRAME_CHECK_P3, check_p3);
+
+    u32 normal_count = 0;   /* entries in the off-row list */
+    u32 row_count = 0;      /* entries in the same-row list */
+    u32 last_row = 0;       /* last adjacent row tested (r1 after the loop) */
+
+    for (u32 dir = 0; dir < 4; dir++) {
+        /* signed (dx, dy) of this neighbour */
+        u32 entry = PANEL_ADJ_TABLE + dir * PANEL_ADJ_STRIDE;
+        u32 column = LD8(obj + oBattleObject_PanelX) + (u32)LDS8(entry);
+        last_row   = LD8(obj + oBattleObject_PanelY) + (u32)LDS8(entry + 1);
+
+        if (call_object_checkPanelParameters_object_pickRandomAdjacentPanel(column, last_row, check_p2, check_p3).r0 == 0)
+            continue;       /* panel is not walkable */
+
+        u32 own_row = LD8(descriptor + DESCRIPTOR_ROW);
+        u32 packed = (column | (last_row << 4));
+
+        if (last_row == own_row) {
+            ST8(frame + FRAME_ROW_LIST + row_count, packed);
+            row_count++;
+        } else {
+            ST8(frame + FRAME_NORMAL_LIST + normal_count, packed);
+            normal_count++;
+        }
+    }
+
+    u32 list;
+    u32 index;
+    if (normal_count != 0) {
+        index = swi6_pick_index(call_GetPositiveSignedRNG_object_pickRandomAdjacentPanel().r0, normal_count);
+        list = frame + FRAME_NORMAL_LIST;
+    } else if (row_count != 0) {
+        index = swi6_pick_index(call_GetPositiveSignedRNG_object_pickRandomAdjacentPanel().r0, row_count);
+        list = frame + FRAME_ROW_LIST;
+    } else {
+        *out_row = last_row;
+        return 0;
+    }
+
+    u32 packed = LD8(list + index);
+    *out_row = packed >> 4;               /* high nibble: panel row */
+    return (packed << 29) >> 29;          /* low bits: panel column */
+}
+
+/* object_pickRandomAdjacentPanel(r0 = battle object descriptor,
+ *                                r2 r3 = panel-check parameters, r5 = battle object)
+ *                            -> r0 = panel column, r1 = panel row */
+Next object_pickRandomAdjacentPanel(void) {
+    /* register form: the candidate lists are guest memory whose addresses
+     * depend on the guest stack (the original stores/loads through SP and the
+     * BIOS index service may read them), so the frame block is created here
+     * and its base passed to the typed routine. */
+    u32 row;
+    SP -= FRAME_SIZE;
+    u32 column = pick_random_adjacent_panel(R0, R2, R3, R5, SP, &row);
+    R0 = column;
+    R1 = row;
+    SP += FRAME_SIZE;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_aiGetAttackIndex ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2; } call_sub_800FE28_result_battle_aiGetAttackIndex;
@@ -6832,6 +6950,91 @@ Next stub_noop_80FFA1A(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_initCollisionSelfDamage ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: object_clearFlag has no typed C interface yet */
+static inline void call_object_clearFlag_object_initCollisionSelfDamage(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_clearFlag);
+}
+
+typedef struct { u32 r4, r6, r7; } call_sub_801DC7C_result;
+/* register form: generated wrapper: sub_801DC7C has no typed C interface yet */
+static inline call_sub_801DC7C_result call_sub_801DC7C(u32 r0, u32 r1, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(sub_801DC7C);
+    return (call_sub_801DC7C_result){ R4, R6, R7 };
+}
+
+typedef struct { u32 r2, r3, r4, r6, r7; bool c, v; } call_object_updateCollisionData_result;
+/* register form: generated wrapper: object_updateCollisionData has no typed C interface yet */
+static inline call_object_updateCollisionData_result call_object_updateCollisionData(u32 r1, u32 r2, u32 r3, u32 r5) {
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(object_updateCollisionData);
+    return (call_object_updateCollisionData_result){ R2, R3, R4, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: object_setCollisionRegion has no typed C interface yet */
+static inline void call_object_setCollisionRegion_object_initCollisionSelfDamage(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setCollisionRegion);
+}
+
+struct init_self_damage_result {
+    u32 r0;
+    u32 r1;
+    u32 r2;
+    bool carry;
+};
+
+/* Initialise collision data for self-damage on a battle object.
+ * Clears a flag, resets sub_801DC7C state, updates collision regions,
+ * then writes the object's own damage/stamina-counter field into its
+ * collision-data block (low halfword → SelfDamage, low byte → Stamina
+ * counter disabler). */
+static struct init_self_damage_result object_initCollisionSelfDamage_impl(u32 battleObj) {
+    call_object_clearFlag_object_initCollisionSelfDamage(0x40, battleObj);
+    call_sub_801DC7C(0, 0, battleObj);
+    call_object_updateCollisionData(1, 2, 3, battleObj);
+    call_object_setCollisionRegion_object_initCollisionSelfDamage(1, battleObj);
+
+    /* Split the 32-bit field: low 16 → halfword store, high 16 → remaining value */
+    u32 field  = LD32(battleObj + oBattleObject_DamageAndStaminaDamageCounterDisabler);
+    u32 low16  = field & 0xFFFF;
+    u32 high16 = field >> 16;
+    u32 colPtr = LD32(battleObj + oBattleObject_CollisionDataPtr);
+
+    ST16(colPtr + oCollisionData_SelfDamage, low16);
+    /* strb stores the low byte of the halfword, i.e. field & 0xFF */
+    ST8(colPtr + oCollisionData_StaminaDamageCounterDisabler, low16);
+
+    struct init_self_damage_result res;
+    res.r0    = low16;
+    res.r1    = high16;
+    res.r2    = colPtr;
+    /* Carry from the final LSR #16: bit 15 of the pre-shift 32-bit value */
+    res.carry = (field >> 15) & 1;
+    return res;
+}
+
+/* object_initCollisionSelfDamage(r5 = battleObject) -> r0 r1 r2 r3 r4 r6 r7 nz c v */
+Next object_initCollisionSelfDamage(void) {
+    struct init_self_damage_result r = object_initCollisionSelfDamage_impl(R5);
+    R0 = r.r0;
+    R1 = r.r1;
+    R2 = r.r2;
+    SET_FLAGS_NZ(r.r1);
+    cpu.c = r.carry;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80FFA54 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2; } call_sub_800FE28_result_sub_80FFA54;
@@ -7833,6 +8036,104 @@ Next battleObject_dispatch_8108F50(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── enemy_applyVersionChange_81095D0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sprite_setPalette has no typed C interface yet */
+static inline void call_sprite_setPalette_enemy_applyVersionChange_81095D0(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPalette);
+}
+
+typedef struct { u32 r0, r3, r5, r6, r7; } call_spawn_t1_0x0_EffectObject_result_enemy_applyVersionChange_81095D0;
+/* register form: generated wrapper: spawn_t1_0x0_EffectObject has no typed C interface yet */
+static inline call_spawn_t1_0x0_EffectObject_result_enemy_applyVersionChange_81095D0 call_spawn_t1_0x0_EffectObject_enemy_applyVersionChange_81095D0(u32 r1, u32 r2, u32 r3, u32 r4) {
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(spawn_t1_0x0_EffectObject);
+    return (call_spawn_t1_0x0_EffectObject_result_enemy_applyVersionChange_81095D0){ R0, R3, R5, R6, R7 };
+}
+
+typedef struct { u32 r0; } call_enemy_getStruct2_result;
+/* register form: generated wrapper: enemy_getStruct2 has no typed C interface yet */
+static inline call_enemy_getStruct2_result call_enemy_getStruct2(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(enemy_getStruct2);
+    return (call_enemy_getStruct2_result){ R0 };
+}
+
+/* Apply a version change to an enemy battle object: update palette,
+ * spawn a transition effect, shift the name ID, and reload stats. */
+static void apply_version_change(u32 battle_obj) {
+    u32 ai_data = LD32(battle_obj + oBattleObject_AIDataPtr);
+    u32 version_16 = LD8(ai_data + oAIData_Version_16);
+    u32 version_17 = LD8(ai_data + oAIData_Version_17);
+
+    /* Nothing to do when the tracked version already matches. */
+    if (version_16 == version_17)
+        return;
+
+    /* Record the new version. */
+    ST8(ai_data + oAIData_Version_17, version_16);
+
+    /* Recolour the sprite: palette index = version * per-AI factor. */
+    u32 palette = version_16 * LD8(ai_data + oAIData_VersionVariant);
+    call_sprite_setPalette_enemy_applyVersionChange_81095D0(palette, battle_obj);
+
+    /* Spawn a transition effect using three parameter words stored
+     * at battle_obj + 0x34/0x38/0x3C, with effect type 0x26. */
+    u32 eff_x = LD32(battle_obj + 0x34);
+    u32 eff_y = LD32(battle_obj + 0x38);
+    u32 eff_z = LD32(battle_obj + 0x3C);
+    call_spawn_t1_0x0_EffectObject_result_enemy_applyVersionChange_81095D0 eff =
+        call_spawn_t1_0x0_EffectObject_enemy_applyVersionChange_81095D0(eff_x, eff_y, eff_z, 0x26);
+
+    /* Set "invisible" flag bit (0x04) on the spawned effect object. */
+    u32 flags = LD8(eff.r0 + oObjectHeader_Flags);
+    ST8(eff.r0 + oObjectHeader_Flags, flags | 4);
+
+    /* Shift the name ID by the version difference to pick the new model. */
+    u32 name_delta = version_16 - version_17;
+    u32 new_name_id = LD16(battle_obj + oBattleObject_NameID) + name_delta;
+    ST16(battle_obj + oBattleObject_NameID, new_name_id);
+
+    /* Fetch the enemy data struct for the new name and copy stats. */
+    call_enemy_getStruct2_result es = call_enemy_getStruct2(new_name_id);
+    u32 struct_ptr = es.r0;
+    u32 collision = LD32(battle_obj + oBattleObject_CollisionDataPtr);
+
+    /* Damage: u16 at struct+4. */
+    u32 damage = LD16(struct_ptr + 4);
+    ST16(battle_obj + oBattleObject_Damage, damage);
+    ST16(collision + oCollisionData_SelfDamage, damage);
+
+    /* HP and element are packed in the u16 at struct+0:
+     *   bits  0–11 = current/max HP
+     *   bits 12–15 = element */
+    u32 hp_elem = LD16(struct_ptr);
+    u32 hp = (hp_elem << 20) >> 20;   /* low 12 bits */
+    u32 element = hp_elem >> 12;       /* high 4 bits */
+
+    ST16(battle_obj + oBattleObject_HP, hp);
+    ST16(battle_obj + oBattleObject_MaxHP, hp);
+    ST8(battle_obj + oBattleObject_Element, element);
+    ST8(collision + oCollisionData_PrimaryElement, element);
+}
+
+/* enemy_applyVersionChange_81095D0(r5 = battle object ptr)
+ * Preserves r4, r5, r6, r7 (original pushes/pops them);
+ * wrappers for spawn clobber r4/r6/r7 so the adapter restores them. */
+Next enemy_applyVersionChange_81095D0(void) {
+    u32 saved_r4 = R4, saved_r6 = R6, saved_r7 = R7;
+    apply_version_change(R5);
+    R4 = saved_r4;
+    R6 = saved_r6;
+    R7 = saved_r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── nullsub_13 ── */
 /* nullsub_13: does nothing; kept as a placeholder for an empty hook point. */
 Next nullsub_13(void) {
@@ -8136,6 +8437,44 @@ divide_speed:
     ST16(ai + oAIAttackVars_ChargeCycles, (u16)(R0 >> 1));
 
 done:
+    RETURN_TO_CALLER();
+}
+
+/* ── genericAI_movementRelated_8109952 ── */
+/* Mega Man Battle Network 6 — generic AI movement/attack dispatcher (08109952).
+ *
+ * Reads the current state byte from the AI attack-vars block, indexes a jump
+ * table of per-state handlers (advance, attack, wander, exit-attack-delay),
+ * and calls the selected handler through a computed address.  The handler's
+ * output registers and flags pass through directly; the only thing this
+ * function guarantees is that control returns to the *original* caller
+ * (replacing the push{lr}/pop{pc} idiom used to temporarily hijack LR for
+ * the inner call).
+ */
+
+/* register form: the handler address is fetched from a jump table at runtime,
+ * so the call must go through a computed code address; the guest LR must hold
+ * 0x0810995E (the pop {pc} site) before `bx r1`, exactly as `mov lr, pc` does. */
+static u32 call_attack_state_handler(u32 handler, u32 state) {
+    R0 = state;
+    R1 = handler;
+    LR = 0x0810995E;
+    GUEST_CALL_ADDR(handler);
+    return R0;
+}
+
+static u32 genericAI_movementRelated(u32 ai_vars_addr) {
+    u32 state   = LD8(ai_vars_addr + oAIAttackVars_HitElement);
+    u32 handler = LD32(A_off_8109964 + state);
+    return call_attack_state_handler(handler, state);
+}
+
+/* genericAI_movementRelated_8109952(r7 = AI attack-vars pointer) -> r0
+ * lr = caller's return address; r5, r6, r10 are ambient context. */
+Next genericAI_movementRelated_8109952(void) {
+    u32 saved_lr = LR;                /* preserve caller's return address (push {lr}) */
+    R0 = genericAI_movementRelated(R7);
+    LR = saved_lr;                    /* restore it (pop {pc}) */
     RETURN_TO_CALLER();
 }
 
@@ -9072,6 +9411,113 @@ static u32 wait_then_script4(u32 ai_data, u32 ai_state) {
 
 Next ai_waitThenScript4(void) {
     R1 = wait_then_script4(R4, R6);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_tryStartChipAttack_810BDC4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r2, r3, r5, r6, r7; } call_battle_getSelectedChipForUse_800ED90_result;
+/* register form: generated wrapper: battle_getSelectedChipForUse_800ED90 has no typed C interface yet */
+static inline call_battle_getSelectedChipForUse_800ED90_result call_battle_getSelectedChipForUse_800ED90(u32 r0, u32 r4, u32 r6) {
+    R0 = r0;
+    R4 = r4;
+    R6 = r6;
+    GUEST_CALL(battle_getSelectedChipForUse_800ED90);
+    return (call_battle_getSelectedChipForUse_800ED90_result){ R0, R1, R2, R3, R5, R6, R7 };
+}
+
+/* register form: generated wrapper: battle_getStateUnk40_800A704 has no typed C interface yet */
+static inline u32 call_battle_getStateUnk40_800A704(void) {
+    GUEST_CALL(battle_getStateUnk40_800A704);
+    return R0;
+}
+
+typedef struct { u32 r0, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_somethingWriteChipParams_80126E4_result;
+/* register form: generated wrapper: somethingWriteChipParams_80126E4 has no typed C interface yet */
+static inline call_somethingWriteChipParams_80126E4_result call_somethingWriteChipParams_80126E4(u32 r0, u32 r5, u32 r7) {
+    R0 = r0;
+    R5 = r5;
+    R7 = r7;
+    GUEST_CALL(somethingWriteChipParams_80126E4);
+    return (call_somethingWriteChipParams_80126E4_result){ R0, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r1, r2; } call_object_setAttack0_result;
+/* register form: generated wrapper: object_setAttack0 has no typed C interface yet */
+static inline call_object_setAttack0_result call_object_setAttack0(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(object_setAttack0);
+    return (call_object_setAttack0_result){ R1, R2 };
+}
+
+/* register form: generated wrapper: battleObject_decrementChipHeldAndClearChip_800F322 has no typed C interface yet */
+static inline void call_battleObject_decrementChipHeldAndClearChip_800F322(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_decrementChipHeldAndClearChip_800F322);
+}
+
+/* Low 9 bits of the selected-chip value form the chip code sent to the attack writer. */
+#define CHIP_CODE_MASK 0x1FF
+
+/* Battle phase counter below which a chip attack is not yet permitted. */
+#define CHIP_ATTACK_STATE_THRESHOLD 0x12C
+
+/* Result of the chip-attack attempt: the "started" flag in r0 and the final r1. */
+typedef struct { u32 r0; u32 r1; } chip_attack_result;
+
+/*
+ * Attempt to begin a chip attack for the currently-selected chip.
+ * Returns 1 in r0 on success; on failure returns the chip-selection helper's
+ * status value (r6) instead.  r1 carries the last value written by callees
+ * or, on the phase-check failure path, the threshold constant.
+ */
+static chip_attack_result battle_tryStartChipAttack(u32 r4, u32 r5, u32 r7) {
+    /* Look up which chip the player selected (battle object ptr in r5, r4 is
+     * a secondary context register, r6=0 means "not yet committed"). */
+    call_battle_getSelectedChipForUse_800ED90_result sel =
+        call_battle_getSelectedChipForUse_800ED90(r5, r4, 0);
+
+    /* r3 is the validity flag: zero means no usable chip was found. */
+    if (sel.r3 == 0)
+        return (chip_attack_result){ sel.r6, sel.r1 };
+
+    /* Mask the full chip value down to the 9-bit chip code. */
+    u32 chip_code = sel.r0 & CHIP_CODE_MASK;
+
+    /* The battle phase counter must have passed the selection window. */
+    u32 phase = call_battle_getStateUnk40_800A704();
+    if ((s32)phase < (s32)CHIP_ATTACK_STATE_THRESHOLD)
+        return (chip_attack_result){ sel.r6, CHIP_ATTACK_STATE_THRESHOLD };
+
+    /* Write the chip's attack parameters (damage, hitbox, etc.) into the
+     * battle object, keyed by the 9-bit code. */
+    call_somethingWriteChipParams_80126E4_result wp =
+        call_somethingWriteChipParams_80126E4(chip_code, sel.r5, sel.r7);
+
+    /* Attach the assembled attack descriptor to the player's object. */
+    call_object_setAttack0_result atk =
+        call_object_setAttack0(wp.r0, wp.r5);
+
+    /* Consume one held copy of the chip and clear the selection slot. */
+    call_battleObject_decrementChipHeldAndClearChip_800F322(wp.r5);
+
+    return (chip_attack_result){ 1, atk.r1 };
+}
+
+/*
+ * battle_tryStartChipAttack_810BDC4(r4, r5, r7, r10) -> r0, r1
+ * r4 and r6 are preserved (the original saves/restores them via push/pop);
+ * r7 is passed through the wrappers unchanged.
+ */
+Next battle_tryStartChipAttack_810BDC4(void) {
+    u32 saved_r4 = R4, saved_r6 = R6;
+    chip_attack_result res = battle_tryStartChipAttack(R4, R5, R7);
+    R0 = res.r0;
+    R1 = res.r1; /* register form: r1 is set by a plain ldr (threshold constant)
+                    on the phase-check failure path; no wrapper produces it. */
+    R4 = saved_r4;
+    R6 = saved_r6;
     RETURN_TO_CALLER();
 }
 

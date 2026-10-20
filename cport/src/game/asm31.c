@@ -5767,6 +5767,127 @@ Next battle_object_dispatchPhaseHandler_80C6A34(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_destroySpawnEffectAndDespawn ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r7; } call_battle_refreshObjectCollisionFromExtraVars_80C6AB8_result;
+/* register form: generated wrapper: battle_refreshObjectCollisionFromExtraVars_80C6AB8 has no typed C interface yet */
+static inline call_battle_refreshObjectCollisionFromExtraVars_80C6AB8_result call_battle_refreshObjectCollisionFromExtraVars_80C6AB8(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_refreshObjectCollisionFromExtraVars_80C6AB8);
+    return (call_battle_refreshObjectCollisionFromExtraVars_80C6AB8_result){ R7 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8; } call_sub_801BD3C_result;
+/* register form: generated wrapper: sub_801BD3C has no typed C interface yet */
+static inline call_sub_801BD3C_result call_sub_801BD3C(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r7) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R7 = r7;
+    GUEST_CALL(sub_801BD3C);
+    return (call_sub_801BD3C_result){ R1, R2, R3, R4, R5, R6, R7, R8 };
+}
+
+typedef struct { u32 r0; } call_object_getFlip_result_object_destroySpawnEffectAndDespawn;
+/* register form: generated wrapper: object_getFlip has no typed C interface yet */
+static inline call_object_getFlip_result_object_destroySpawnEffectAndDespawn call_object_getFlip_object_destroySpawnEffectAndDespawn(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_getFlip);
+    return (call_object_getFlip_result_object_destroySpawnEffectAndDespawn){ R0 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; bool c, v; } call_spawn_t1_0x0_EffectObject_result_object_destroySpawnEffectAndDespawn;
+/* register form: generated wrapper: spawn_t1_0x0_EffectObject has no typed C interface yet */
+static inline call_spawn_t1_0x0_EffectObject_result_object_destroySpawnEffectAndDespawn call_spawn_t1_0x0_EffectObject_object_destroySpawnEffectAndDespawn(u32 r1, u32 r2, u32 r3, u32 r4) {
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    GUEST_CALL(spawn_t1_0x0_EffectObject);
+    return (call_spawn_t1_0x0_EffectObject_result_object_destroySpawnEffectAndDespawn){ R1, R2, R3, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3, r5, r6, r10; bool c, v; } call_PlaySoundEffect_result_object_destroySpawnEffectAndDespawn;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_object_destroySpawnEffectAndDespawn call_PlaySoundEffect_object_destroySpawnEffectAndDespawn(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_object_destroySpawnEffectAndDespawn){ R1, R2, R3, R5, R6, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Refresh collision data, handle panel reaction or special spawn effect,
+ * play any queued sound, and advance the battle object to phase 4. */
+static u32 object_destroySpawnEffectAndDespawn_body(u32 obj) {
+    /* register form: the original saves r4 and r7 with push {r4,r7,lr} and
+     * restores them with pop; wrapper calls whose callees list r4 or r7 as
+     * both input and output leave those guest registers changed. */
+    u32 saved_r4 = R4;
+    u32 saved_r7 = R7;
+
+    /* Refresh the live collision record from ExtraVars; the callee returns
+     * the (possibly relocated) pointer in r7. */
+    u32 collision = call_battle_refreshObjectCollisionFromExtraVars_80C6AB8(obj).r7;
+
+    /* Copy the region byte (ExtraVars[0]) into the collision record. */
+    u32 extra = LD32(obj + oBattleObject_ExtraVars);
+    u32 region = LD8(extra);
+    ST8(collision + oCollisionData_Region, region);
+
+    /* Branch on Param1: five special values spawn a flip-encoded effect
+     * object; everything else resolves a tile-panel reaction. */
+    u32 param = LD8(obj + oBattleObject_Param1);
+    u32 r1, r2;
+
+    if (param == 0x0C || param == 0x0E || param == 0x10 ||
+        param == 0x11 || param == 0x12) {
+        /* Special spawn path: build arg4 = (flip << 8) | extra[2],
+         * load the three effect-object fields at +0x34, spawn T1/0x0. */
+        u32 flip = call_object_getFlip_object_destroySpawnEffectAndDespawn(obj).r0;
+        extra = LD32(obj + oBattleObject_ExtraVars);
+        u32 arg4 = (flip << 8) + LD8(extra + 2);
+        u32 arg1 = LD32(obj + 0x34);
+        u32 arg2 = LD32(obj + 0x38);
+        u32 arg3 = LD32(obj + 0x3C);
+        call_spawn_t1_0x0_EffectObject_result_object_destroySpawnEffectAndDespawn sp =
+            call_spawn_t1_0x0_EffectObject_object_destroySpawnEffectAndDespawn(arg1, arg2, arg3, arg4);
+        r1 = sp.r1;
+        r2 = sp.r2;
+    } else {
+        /* Normal panel-reaction path: look up tile at (panelX, panelY). */
+        u32 px = LD8(collision + oCollisionData_PanelX);
+        u32 py = LD8(collision + oCollisionData_PanelY);
+        u32 extra_byte2 = LD8(extra + 2);
+        u32 ally = LD8(obj + oBattleObject_Alliance);
+        u32 z = LD32(obj + oBattleObject_Z);
+        call_sub_801BD3C_result rx =
+            call_sub_801BD3C(px, py, extra_byte2, region, ally, z);
+        r1 = rx.r1;
+        r2 = rx.r2;
+    }
+
+    /* If ExtraVars holds a non-zero sound ID, play it. */
+    extra = LD32(obj + oBattleObject_ExtraVars);
+    u16 snd = LD16(extra + 4);
+    if (snd)
+        r1 = call_PlaySoundEffect_object_destroySpawnEffectAndDespawn(snd, r2).r1;
+
+    /* Advance the object's script phase to 4 (collision/spawn handled). */
+    ST16(obj + oBattleObject_CurPhaseAndPhaseInitialized, 4);
+
+    R4 = saved_r4;
+    R7 = saved_r7;
+    return r1;
+}
+
+/* object_destroySpawnEffectAndDespawn(r5 = battle object, r10 = toolkit) -> r1 */
+Next object_destroySpawnEffectAndDespawn(void) {
+    R1 = object_destroySpawnEffectAndDespawn_body(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_object_destroy_80C6AAC ── */
 /* battle_object_destroy_80C6AAC(r5 = battle object):
  * Destroy this battle object: clear its collision region, then switch it to

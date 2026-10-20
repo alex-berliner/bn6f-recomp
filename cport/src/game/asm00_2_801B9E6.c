@@ -1284,6 +1284,87 @@ Next chatbox_uploadFrameTileGFX_801C304(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_playCounterHitSound_801C5F4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r4; } call_battle_testFlag0x40_800A8F8_result;
+/* register form: generated wrapper: battle_testFlag0x40_800A8F8 has no typed C interface yet */
+static inline call_battle_testFlag0x40_800A8F8_result call_battle_testFlag0x40_800A8F8(void) {
+    GUEST_CALL(battle_testFlag0x40_800A8F8);
+    return (call_battle_testFlag0x40_800A8F8_result){ R0, R1, R4 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; bool z, n, c, v; } call_PlaySoundEffect_result_battle_playCounterHitSound_801C5F4;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_battle_playCounterHitSound_801C5F4 call_PlaySoundEffect_battle_playCounterHitSound_801C5F4(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_battle_playCounterHitSound_801C5F4){ R1, R2, R3, R4, R5, R6, R7, R10, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Thresholds for the hit counter that determine the sound level. */
+#define HIT_COUNTER_LV1  0x1500
+#define HIT_COUNTER_LV2  0x2A00
+#define HIT_COUNTER_LV3  0x4000
+
+/* Jump-table index indicating we are in the counter-hit sequence. */
+#define JUMP_INDEX_COUNTER 0x50
+
+/* Battle-object field offsets (relative to r5). */
+#define oBattleObj_HitSfxLevel    0x18
+#define oBattleObj_PrevSfxLevel   0x19
+#define oBattleObj_HitCounter     0x20
+
+/*
+ * Play a counter-hit sound when the hit counter has crossed into a higher
+ * threshold than the previous call.  The level (0–3) is stored in the battle
+ * object; a sound ID is selected from a u16 table only when the level
+ * actually increased and the active-counter flag is set.
+ */
+static void playCounterHitSound(u32 battleObj, u32 toolkit) {
+    /* Bail out if the game isn't in the counter-hit phase. */
+    u32 indexPtr = LD32(toolkit + oToolkit_MainJumptableIndexPtr);
+    if (LD8(indexPtr) == JUMP_INDEX_COUNTER)
+        return;
+
+    /* Shift current level → previous level slot. */
+    u32 prevLevel = LD8(battleObj + oBattleObj_HitSfxLevel);
+    ST8(battleObj + oBattleObj_PrevSfxLevel, prevLevel);
+
+    /* Map the 16-bit hit counter to a new level 0–3. */
+    u32 counter = LD16(battleObj + oBattleObj_HitCounter);
+    u32 level = 0;
+    if (counter >= HIT_COUNTER_LV1) {
+        level = 1;
+        if (counter >= HIT_COUNTER_LV2) {
+            level = 2;
+            if (counter == HIT_COUNTER_LV3)
+                level = 3;
+        }
+    }
+    ST8(battleObj + oBattleObj_HitSfxLevel, level);
+
+    /* Proceed only when the "active counter" flag reads back as 1. */
+    if (call_battle_testFlag0x40_800A8F8().r0 != 1)
+        return;
+
+    /* Play a sound only when the level went up compared to the saved previous. */
+    u32 newLevel  = LD8(battleObj + oBattleObj_HitSfxLevel);
+    u32 oldLevel  = LD8(battleObj + oBattleObj_PrevSfxLevel);
+    if (newLevel <= oldLevel)
+        return;
+
+    /* Look up the sound ID: u16 table at byte_801C6E8 indexed by (level-1)*2. */
+    u32 soundId = LD16(A_byte_801C6E8 + ((newLevel - 1) << 1));
+    call_PlaySoundEffect_battle_playCounterHitSound_801C5F4(soundId, level);
+}
+
+/* battle_playCounterHitSound_801C5F4(r5 = battleObj, r10 = toolkit) */
+Next battle_playCounterHitSound_801C5F4(void) {
+    playCounterHitSound(R5, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── chatbox_drawHPNumber_801C906 ── */
 /* Tile id of the first small digit glyph. Each digit is two vertically stacked tiles
  * (top at DIGIT_GLYPH_TILES + digit*2, bottom one below it), so a nibble indexes its

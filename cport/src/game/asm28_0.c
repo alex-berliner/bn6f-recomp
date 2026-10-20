@@ -224,6 +224,128 @@ Next sub_8098E6C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ow_cutsceneLoadEntry ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r3; } call_DecompressTextArchiveForCutscene_result;
+/* register form: generated wrapper: DecompressTextArchiveForCutscene has no typed C interface yet */
+static inline call_DecompressTextArchiveForCutscene_result call_DecompressTextArchiveForCutscene(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(DecompressTextArchiveForCutscene);
+    return (call_DecompressTextArchiveForCutscene_result){ R0, R2, R3 };
+}
+
+/* register form: generated wrapper: SetOWPlayerFacingDirection has no typed C interface yet */
+static inline void call_SetOWPlayerFacingDirection_ow_cutsceneLoadEntry(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetOWPlayerFacingDirection);
+}
+
+typedef struct { bool v; } call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_result_ow_cutsceneLoadEntry;
+/* register form: generated wrapper: owPlayer_setS200ace0_fixedAnimationSelect_809e13c has no typed C interface yet */
+static inline call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_result_ow_cutsceneLoadEntry call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_ow_cutsceneLoadEntry(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(owPlayer_setS200ace0_fixedAnimationSelect_809e13c);
+    return (call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_result_ow_cutsceneLoadEntry){ OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r3; } call_owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4_result_ow_cutsceneLoadEntry;
+/* register form: generated wrapper: owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4 has no typed C interface yet */
+static inline call_owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4_result_ow_cutsceneLoadEntry call_owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4_ow_cutsceneLoadEntry(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4);
+    return (call_owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4_result_ow_cutsceneLoadEntry){ R3 };
+}
+
+/* register form: generated wrapper: camera_writeUnk03_14_80301b2 has no typed C interface yet */
+static inline void call_camera_writeUnk03_14_80301b2_ow_cutsceneLoadEntry(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(camera_writeUnk03_14_80301b2);
+}
+
+/* register form: generated wrapper: SetCameraXYZ has no typed C interface yet */
+static inline void call_SetCameraXYZ_ow_cutsceneLoadEntry(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(SetCameraXYZ);
+}
+
+typedef struct { u32 r1, r3; bool v; } call_ClearEventFlagFromImmediate_result_ow_cutsceneLoadEntry;
+/* register form: generated wrapper: ClearEventFlagFromImmediate has no typed C interface yet */
+static inline call_ClearEventFlagFromImmediate_result_ow_cutsceneLoadEntry call_ClearEventFlagFromImmediate_ow_cutsceneLoadEntry(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+    return (call_ClearEventFlagFromImmediate_result_ow_cutsceneLoadEntry){ R1, R3, OVERFLOW_FLAG() };
+}
+
+#define EVENT_EVENT_CUR_DIR_LOCKED 0x15
+
+/* Load and apply one overworld cutscene entry.
+ * Reads the current entry index from context+6, looks up a 20-byte record in the
+ * cutscene table, optionally decompresses its text archive, advances the index,
+ * and (if the entry's flag bit 0 is set) configures the player and camera.
+ * Always stores bit 7 of the flags byte to context+8 (direction-lock status).
+ * Returns 0, so the caller sees Z set and N clear. */
+static s32 ow_cutsceneLoadEntry_logic(u32 context) {
+    u32 entryIdx = LD8(context + 6);
+    u32 tableEntry = A_byte_8098E9C + (0x14 * entryIdx);
+
+    /* Decompress the text archive referenced by this entry (if any) */
+    u32 archivePtr = LD32(tableEntry);
+    if (archivePtr != 0) {
+        call_DecompressTextArchiveForCutscene_result res =
+            call_DecompressTextArchiveForCutscene(archivePtr);
+        ST32(context + 0x30, res.r0);
+    }
+
+    /* Advance the cutscene state to the next entry index stored in field 4 */
+    ST8(context + 6, LD8(tableEntry + 4));
+
+    /* Bit 0 of the flags field (byte +7) gates the player/camera setup block */
+    u32 flags = LD8(tableEntry + 7);
+    if (flags & 1) {
+        /* Set the player's facing direction from field +5 */
+        call_SetOWPlayerFacingDirection_ow_cutsceneLoadEntry(LD8(tableEntry + 5));
+
+        /* Select a fixed animation based on fields +6 and +5 */
+        call_owPlayer_setS200ace0_fixedAnimationSelect_809e13c_ow_cutsceneLoadEntry(
+            LD8(tableEntry + 6) + LD8(tableEntry + 5));
+
+        /* Player position: signed shorts at +8, +10, +12 converted to 16.16 fixed */
+        u32 px = (u32)((s16)LDS16(tableEntry + 8))  << 16;
+        u32 py = (u32)((s16)LDS16(tableEntry + 10)) << 16;
+        u32 pz = (u32)((s16)LDS16(tableEntry + 12)) << 16;
+        call_owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4_ow_cutsceneLoadEntry(px, py, pz);
+
+        /* Reset a camera auxiliary field */
+        call_camera_writeUnk03_14_80301b2_ow_cutsceneLoadEntry(0, py);
+
+        /* Camera position: signed shorts at +14, +16, +18 in 16.16 fixed */
+        u32 cx = (u32)((s16)LDS16(tableEntry + 14)) << 16;
+        u32 cy = (u32)((s16)LDS16(tableEntry + 16)) << 16;
+        u32 cz = (u32)((s16)LDS16(tableEntry + 18)) << 16;
+        call_SetCameraXYZ_ow_cutsceneLoadEntry(cx, cy, cz);
+
+        /* Unlock the player's facing direction */
+        call_ClearEventFlagFromImmediate_ow_cutsceneLoadEntry(0x17, EVENT_EVENT_CUR_DIR_LOCKED);
+    }
+
+    /* Store bit 7 of the flags field as the direction-lock indicator */
+    ST8(context + 8, (flags >> 7) & 1);
+
+    return 0;
+}
+
+Next ow_cutsceneLoadEntry(void) {
+    R0 = ow_cutsceneLoadEntry_logic(R5);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── RunLMessageTextScript ── */
 /* RunLMessageTextScript: at 0x08099218
  *
@@ -315,6 +437,131 @@ run_default:
     }
 
 done:
+    R0 = 0;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── ow_applySpawnEntry ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: SetOWPlayerFacingDirection has no typed C interface yet */
+static inline void call_SetOWPlayerFacingDirection_ow_applySpawnEntry(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetOWPlayerFacingDirection);
+}
+
+typedef struct { u32 r3; } call_owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4_result_ow_applySpawnEntry;
+/* register form: generated wrapper: owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4 has no typed C interface yet */
+static inline call_owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4_result_ow_applySpawnEntry call_owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4_ow_applySpawnEntry(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4);
+    return (call_owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4_result_ow_applySpawnEntry){ R3 };
+}
+
+/* register form: generated wrapper: camera_writeUnk03_14_80301b2 has no typed C interface yet */
+static inline void call_camera_writeUnk03_14_80301b2_ow_applySpawnEntry(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(camera_writeUnk03_14_80301b2);
+}
+
+/* register form: generated wrapper: SetCameraXYZ has no typed C interface yet */
+static inline void call_SetCameraXYZ_ow_applySpawnEntry(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(SetCameraXYZ);
+}
+
+typedef struct { u32 r1, r3; bool c, v; } call_ClearEventFlagFromImmediate_result_ow_applySpawnEntry;
+/* register form: generated wrapper: ClearEventFlagFromImmediate has no typed C interface yet */
+static inline call_ClearEventFlagFromImmediate_result_ow_applySpawnEntry call_ClearEventFlagFromImmediate_ow_applySpawnEntry(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+    return (call_ClearEventFlagFromImmediate_result_ow_applySpawnEntry){ R1, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* ow_applySpawnEntry: applies a scripted player/camera state from the spawn table to the OW state.
+ * r5 points to the overworld state; the script entry is selected by state[4] (0x14 bytes each). */
+
+/* camera_writeUnk03_14 wrapper that preserves r10/r11 in the caller frame. */
+static void call_camera_writeUnk03_preserve(u32 r0, u32 r1) {
+    /* register form: camera_writeUnk03_14 uses r10 as a base pointer; the caller must not have
+     * r10 shifted into its slot.  A single push of r10 around the call prevents the trampoline
+     * from landing on a stale value. */
+    SP -= 4;
+    ST32(SP, R10);
+    call_camera_writeUnk03_14_80301b2_ow_applySpawnEntry(r0, r1);
+    R10 = LD32(SP);
+    SP += 4;
+}
+
+/* Apply one script entry; returns 0 (always).  If the entry's coord flag is set, also calls
+ * SetOWPlayerFacingDirection / owPlayer coords / camera write / SetCameraXYZ / ClearEventFlag. */
+static u32 apply_spawn_script(u32 state) {
+    u8 index = (u8)LD8(state + 4);
+    u32 entry = A_byte_809929C + 0x14u * index;
+
+    u32 dest = LD32(entry);
+    if (dest != 0)
+        ST32(state + 0x30, dest);
+
+    ST8(state + 5, LD8(entry + 4));
+
+    if (LD8(entry + 7) == 0)
+        return 0;
+
+    call_SetOWPlayerFacingDirection_ow_applySpawnEntry(LD8(entry + 5));
+
+    s32 px = (s32)LDS16(entry + 0x8) << 16;
+    s32 py = (s32)LDS16(entry + 0xA) << 16;
+    s32 pz = (s32)LDS16(entry + 0xC) << 16;
+    call_owPlayer_indirectlySetPlayerCoordsMaybe_809e1a4_ow_applySpawnEntry(px, py, pz);
+
+    call_camera_writeUnk03_preserve(0, py);
+
+    s32 cx = (s32)LDS16(entry + 0xE) << 16;
+    s32 cy = (s32)LDS16(entry + 0x10) << 16;
+    s32 cz = (s32)LDS16(entry + 0x12) << 16;
+    call_SetCameraXYZ_ow_applySpawnEntry(cx, cy, cz);
+
+    call_ClearEventFlagFromImmediate_ow_applySpawnEntry(0x17u, 0x15u);
+    return 0;
+}
+
+/* ow_applySpawnEntry(r5 = OW state ptr, r10 = global, lr) -> nz r2 r3 r4 r5 r7; clobbers c v r0 r1 */
+Next ow_applySpawnEntry(void) {
+    R0 = apply_spawn_script(R5);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── camera_followOverworldPlayer ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2; } call_camera_writeUnk03_14_80301b2_result;
+/* register form: generated wrapper: camera_writeUnk03_14_80301b2 has no typed C interface yet */
+static inline call_camera_writeUnk03_14_80301b2_result call_camera_writeUnk03_14_80301b2_camera_followOverworldPlayer(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(camera_writeUnk03_14_80301b2);
+    return (call_camera_writeUnk03_14_80301b2_result){ R2 };
+}
+
+/* Follow the overworld player for the camera: passes the player object's
+ * field at +0x1C to the camera-write helper alongside mode 1.
+ * r10 (toolkit pointer) is read as an argument; the callee sets r2. */
+static void followOverworldPlayerCamera(u32 toolkit) {
+    u32 gameState = LD32(toolkit + oToolkit_GameStatePtr);
+    u32 playerObj = LD32(gameState + oGameState_OverworldPlayerObjectPtr);
+    call_camera_writeUnk03_14_80301b2_camera_followOverworldPlayer(1, playerObj + 0x1C);
+}
+
+/* camera_followOverworldPlayer(r10 = toolkit) -> r0=0, nz, r2 from callee */
+Next camera_followOverworldPlayer(void) {
+    followOverworldPlayerCamera(R10);
     R0 = 0;
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
@@ -493,6 +740,59 @@ Next ow_periodicObjectSpawner(void) {
     OwPeriodicSpawnRegs regs = periodic_object_spawn(R4, R5, R6, R7, R10);
     R4 = regs.r4, R5 = regs.r5, R6 = regs.r6, R7 = regs.r7;
     R0 = 1;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
+/* ── camera_restartWithScriptHead ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2; } call_SetCutsceneCameraScript_result;
+/* register form: generated wrapper: SetCutsceneCameraScript has no typed C interface yet */
+static inline call_SetCutsceneCameraScript_result call_SetCutsceneCameraScript(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetCutsceneCameraScript);
+    return (call_SetCutsceneCameraScript_result){ R2 };
+}
+
+/* Prepare the cutscene camera script buffer from the coordinate data the camera
+ * struct points to, flag the camera for restart, and load the script.
+ * Returns the r2 value produced by SetCutsceneCameraScript. */
+static u32 camera_restart_with_script_head(u32 camera) {
+    u32 script_data = LD32(camera + 4);
+    ST32(camera + 0x70, script_data);
+
+    u32 buf = A_byte_20065E0;
+    ST8(buf, 0);
+
+    /* Pack each 16-bit coordinate field (upper half) into two bytes, shifted left by 4 */
+    u32 val = (LD32(script_data + 0) >> 16) << 4;
+    ST8(buf + (A_byte_20065E1 - A_byte_20065E0), val);
+    ST8(buf + (A_byte_20065E1 - A_byte_20065E0) + 1, val >> 8);
+
+    val = (LD32(script_data + 4) >> 16) << 4;
+    ST8(buf + (A_byte_20065E3 - A_byte_20065E0), val);
+    ST8(buf + (A_byte_20065E3 - A_byte_20065E0) + 1, val >> 8);
+
+    val = (LD32(script_data + 8) >> 16) << 4;
+    ST8(buf + (A_byte_20065E5 - A_byte_20065E0), val);
+    ST8(buf + (A_byte_20065E5 - A_byte_20065E0) + 1, val >> 8);
+
+    /* Trigger byte: 8 at the last slot */
+    ST8(buf + (A_byte_20065E7 - A_byte_20065E0), 8);
+
+    /* Mark the camera struct: restart flag and script-pointer slot */
+    ST8(camera + 0x13, 1);
+    ST32(camera + 0x3C, buf);
+
+    /* Load the script into the camera system */
+    return call_SetCutsceneCameraScript(buf).r2;
+}
+
+/* camera_restartWithScriptHead(r5 = camera ptr) -> nz r2 r3 */
+Next camera_restartWithScriptHead(void) {
+    R2 = camera_restart_with_script_head(R5);
+    R3 = (A_byte_20065E5 - A_byte_20065E0) + 1;   /* last byte offset after the third pair */
+    R0 = 0;
     SET_FLAGS_NZ(R0);
     RETURN_TO_CALLER();
 }

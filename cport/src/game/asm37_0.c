@@ -87,6 +87,84 @@ Next toolkit_getUnk2004190EntryPtr_813B9FC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── navicust_checkPieceOverlap ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r8, r9, r10, r11, r12; } call_ai_dispatchFromGlobalByte_result_navicust_checkPieceOverlap;
+/* register form: generated wrapper: ai_dispatchFromGlobalByte has no typed C interface yet */
+static inline call_ai_dispatchFromGlobalByte_result_navicust_checkPieceOverlap call_ai_dispatchFromGlobalByte_navicust_checkPieceOverlap(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(ai_dispatchFromGlobalByte);
+    return (call_ai_dispatchFromGlobalByte_result_navicust_checkPieceOverlap){ R0, R8, R9, R10, R11, R12 };
+}
+
+/* Check whether a 7x7 window scan finds a cell where both the ai_dispatch
+ * result grid and the toolkit's Unk200414c grid have non-zero bytes.
+ * Returns 1 + the toolkit byte in r1 on first hit, or 0 with loop residue.
+ * r8-r12 / r10 are left by ai_dispatch (set by the wrapper call). */
+
+typedef struct {
+    u32 r0;  /* 1 = overlap found, 0 = none */
+    u32 r1;  /* hit byte value, or leftover column counter */
+    u32 r2;  /* current row offset in grid-B coordinates */
+} overlap_result;
+
+static overlap_result check_piece_overlap(u32 dispatch_arg, u32 col_in, u32 row_in) {
+    call_ai_dispatchFromGlobalByte_result_navicust_checkPieceOverlap ai = call_ai_dispatchFromGlobalByte_navicust_checkPieceOverlap(dispatch_arg);
+
+    /* grid A = ai_dispatch result; grid B = toolkit table shifted to (col-3, row-3) */
+    u32 ptr_a = ai.r0;
+    u32 base_b = LD32(ai.r10 + oToolkit_Unk200414c_Ptr);
+    s32 col_off = (s32)col_in - 3;
+    s32 row_off = (s32)row_in - 3;
+    u32 ptr_b = base_b + (u32)(7 * row_off + col_off);
+
+    s32 cur_row = row_off;       /* tracks r2: absolute row in grid B */
+    s32 cur_col = col_off;       /* tracks r1: absolute col in grid A */
+    u32 row_iter = 0;            /* tracks r5: outer loop counter */
+
+    for (;;) {
+        /* Assembly reloads r1 = col_off at the top of each outer iteration */
+        cur_col = col_off;
+
+        if ((cur_row >= 0) & (cur_row < 7)) {
+            for (u32 idx = 0; idx < 7; idx++) {
+                if ((cur_col >= 0) & (cur_col < 7)) {
+                    if (LD8(ptr_a + idx) != 0) {
+                        if (LD8(ptr_b + idx) != 0) {
+                            /* overlap hit: r0=1, r1=gridB byte, r2=current row */
+                            overlap_result hit = { 1u, (u32)LD8(ptr_b + idx), (u32)cur_row };
+                            return hit;
+                        }
+                    }
+                }
+                cur_col++;
+            }
+        }
+
+        /* advance to next row in both grids */
+        ptr_a += 7;
+        ptr_b += 7;
+        cur_row++;
+        row_iter++;
+
+        if (row_iter >= 7) {
+            /* no overlap in the entire 7x7 scan */
+            overlap_result none = { 0u, (u32)cur_col, (u32)cur_row };
+            return none;
+        }
+    }
+}
+
+/* navicust_checkPieceOverlap(r0=dispatch_arg, r2=col, r3=row, r10=toolkit) -> r0 r1 r2 nz */
+Next navicust_checkPieceOverlap(void) {
+    overlap_result res = check_piece_overlap(R0, R2, R3);
+    R0 = res.r0;
+    R1 = res.r1;
+    R2 = res.r2;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_initState_813BBD4 ── */
 /* register form: calls ZeroFillByByte outside this file, which has no typed C interface yet */
 static void zero_fill(u32 addr, u32 num_bytes) {
@@ -536,6 +614,56 @@ Next eventFlag1720IsSet_813BF1C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── navicust_checkRowOccupied ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r8, r9, r10, r11, r12; } call_ai_dispatchFromGlobalByte_result_navicust_checkRowOccupied;
+/* register form: generated wrapper: ai_dispatchFromGlobalByte has no typed C interface yet */
+static inline call_ai_dispatchFromGlobalByte_result_navicust_checkRowOccupied call_ai_dispatchFromGlobalByte_navicust_checkRowOccupied(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(ai_dispatchFromGlobalByte);
+    return (call_ai_dispatchFromGlobalByte_result_navicust_checkRowOccupied){ R0, R8, R9, R10, R11, R12 };
+}
+
+/* Check whether any occupied cell lies in the centre row (offset 3) of a
+ * 7×7 window centred on (col, row) within the grid returned by
+ * ai_dispatchFromGlobalByte.  Returns 1 if found, 0 otherwise. */
+static u32 check_row_occupied(u32 grid_byte, u32 col, u32 row) {
+    call_ai_dispatchFromGlobalByte_result_navicust_checkRowOccupied call = call_ai_dispatchFromGlobalByte_navicust_checkRowOccupied(grid_byte);
+    u32 grid = call.r0;                 /* pointer to 7×7 byte grid */
+
+    s32 r1 = (s32)col - 3;             /* logical column cursor (window-relative) */
+    s32 r2 = (s32)row - 3;             /* logical row cursor */
+
+    for (s32 outer = 0; outer < 7; outer++) {
+        s32 r1_saved = r1;             /* original push {r1} */
+
+        if (r2 >= 0 && r2 < 7) {       /* row within the 7×7 grid */
+            u32 r3 = 0;               /* byte offset from start of this row */
+            while (r3 < 7) {
+                if (r1 >= 0 && r1 < 7) {
+                    u8 cell = LD8(grid + r3);
+                    if (cell != 0 && r2 == 3)
+                        return 1;
+                }
+                r1++;
+                r3++;
+            }
+        }
+
+        r1 = r1_saved;                 /* original pop {r1} */
+        grid += 7;                     /* advance to next grid row */
+        r2++;
+    }
+
+    return 0;
+}
+
+Next navicust_checkRowOccupied(void) {
+    R0 = check_row_occupied(R0, R1, R2);
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── eraseMem_ClearBuffer_813C324 ── */
 /* eraseMem_ClearBuffer_813C324: clear the 8-byte record at unk_2000090 (EraseMem buffer).
  * r2 is passed through unchanged. */
@@ -863,6 +991,49 @@ static void ncp_slip_runr_apply(void) {
 /* inputs: r10 lr; outputs: -; clobbers: nz c v r0 r1 r2 r3 lr */
 Next navicust_NCP_SlipRunr(void) {
     ncp_slip_runr_apply();
+    RETURN_TO_CALLER();
+}
+
+/* ── navicust_NCP_BustPack ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r3; } call_GetCurPETNaviStatsByte_result;
+/* register form: generated wrapper: GetCurPETNaviStatsByte has no typed C interface yet */
+static inline call_GetCurPETNaviStatsByte_result call_GetCurPETNaviStatsByte(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(GetCurPETNaviStatsByte);
+    return (call_GetCurPETNaviStatsByte_result){ R0, R3 };
+}
+
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_SetCurPETNaviStatsByte_result_navicust_NCP_BustPack;
+/* register form: generated wrapper: SetCurPETNaviStatsByte has no typed C interface yet */
+static inline call_SetCurPETNaviStatsByte_result_navicust_NCP_BustPack call_SetCurPETNaviStatsByte_navicust_NCP_BustPack(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(SetCurPETNaviStatsByte);
+    return (call_SetCurPETNaviStatsByte_result_navicust_NCP_BustPack){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* BustPack: raise each NaviCust stat cap (ATK / DEF / SPD, slots 1-3) by 3,
+ * clamped to a maximum of 4.  Operates on the current PET (index 0). */
+
+/* register form: the Get/SetCurPETNaviStatsByte wrappers parameterise only r0
+ * (PET index); the stat slot (r1) and new cap value (r2) must already be in
+ * the guest register file before each call. */
+static void bust_pack(void) {
+    for (u32 slot = 1; slot <= 3; slot++) {
+        R1 = slot;                                       /* register form: slot for Get */
+        u32 stat = call_GetCurPETNaviStatsByte(0).r0;
+        s32 value = (s32)(stat + 3);
+        if (value > 4)
+            value = 4;
+        R1 = slot;                                       /* register form: slot for Set */
+        R2 = (u32)value;                                 /* register form: new cap for Set */
+        call_SetCurPETNaviStatsByte_navicust_NCP_BustPack(0);
+    }
+}
+
+/* navicust_NCP_BustPack(r10, lr) -> void; clobbers r0-r3, flags, lr */
+Next navicust_NCP_BustPack(void) {
+    bust_pack();
     RETURN_TO_CALLER();
 }
 

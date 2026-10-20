@@ -1887,6 +1887,88 @@ Next object_startFacingStep(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── camera_sineEasePanStep ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r5, r6; bool z, n; } call_battle_isInputAllowedOrBattleBusy_80A7C58_result_camera_sineEasePanStep;
+/* register form: generated wrapper: battle_isInputAllowedOrBattleBusy_80A7C58 has no typed C interface yet */
+static inline call_battle_isInputAllowedOrBattleBusy_80A7C58_result_camera_sineEasePanStep call_battle_isInputAllowedOrBattleBusy_80A7C58_camera_sineEasePanStep(void) {
+    GUEST_CALL(battle_isInputAllowedOrBattleBusy_80A7C58);
+    return (call_battle_isInputAllowedOrBattleBusy_80A7C58_result_camera_sineEasePanStep){ R5, R6, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* register form: generated wrapper: addToByteAtR6_80A7BA2 has no typed C interface yet */
+static inline void call_sub_80A7BA2_camera_sineEasePanStep(u32 r0, u32 r6) {
+    R0 = r0;
+    R6 = r6;
+    GUEST_CALL(addToByteAtR6_80A7BA2);
+}
+
+/* camera_sineEasePanStep: drives a sinusoidal ease-out pan for a battle object.
+ *
+ * Calls battle_isInputAllowedOrBattleBusy to get temporary entity/target pointers;
+ * uses those for memory reads and writes, but the stack pop restores r5/r6 to
+ * their entry values (so they are "preserved outputs"). Returns 0 when the motion
+ * is active (or blocked) and 1 when it has completed and the object snapped to target.
+ * Flags reflect the return value: mov r0, #N at the end of each path. */
+
+typedef struct {
+    u32 flag;  /* 0 or 1; adapter uses this for NZ (from mov r0, #flag) */
+} camera_pan_t;
+
+static camera_pan_t step_camera_pan(u32 entity_ptr, u32 target_ptr) {
+    camera_pan_t out;
+
+    call_battle_isInputAllowedOrBattleBusy_80A7C58_result_camera_sineEasePanStep busy =
+        call_battle_isInputAllowedOrBattleBusy_80A7C58_camera_sineEasePanStep();
+
+    /* Callee provides up-to-date working pointers (not returned to caller;
+     * the pop {r4-r7} restores original r5/r6 on every exit). */
+    u32 ent = busy.r5;
+    u32 tgt = busy.r6;
+
+    if (!busy.z) {
+        /* Motion not active / input blocked: return 0. */
+        out.flag = 0;
+        return out;
+    }
+
+    /* Remaining = timer (u16) - expired threshold (u32), signed compare. */
+    s32 remaining = (s32)((u32)LD16(tgt + 6) - LD32(tgt + 0x24));
+
+    if (remaining <= 0) {
+        /* Easing finished: snap to final target position and notify. */
+        ST32(ent + 0xC, LD32(tgt + 0x1C));
+        ST32(ent + 0x10, LD32(tgt + 0x20));
+        call_sub_80A7BA2_camera_sineEasePanStep(1, tgt);
+        out.flag = 1;
+        return out;
+    }
+
+    /* Still easing: update timer, compute sinusoidal ease factor. */
+    ST16(tgt + 6, (u16)remaining);
+
+    /* sinTable index: (64 - remaining/256) * 2 (entries are 16-bit) */
+    s32 ease = (s32)LDS16(A_math_sinTable + (0x40u - ((u32)remaining >> 8)) * 2u);
+
+    /* Step = (target - start) >> 8 * ease, then add start back. */
+    u32 step_x = (u32)(((s32)(LD32(tgt + 0x1C) - LD32(tgt + 0x14)) >> 8) * ease);
+    u32 step_y = (u32)(((s32)(LD32(tgt + 0x20) - LD32(tgt + 0x18)) >> 8) * ease);
+
+    ST32(ent + 0xC, step_x + LD32(tgt + 0x14));
+    ST32(ent + 0x10, step_y + LD32(tgt + 0x18));
+
+    out.flag = 0;
+    return out;
+}
+
+/* camera_sineEasePanStep(r5=entity, r6=target, r10=busy-check arg) -> r5 r6 nz */
+Next camera_sineEasePanStep(void) {
+    camera_pan_t res = step_camera_pan(R5, R6);
+    /* r5 and r6 are preserved (restored by pop) but listed as outputs. */
+    SET_FLAGS_NZ(res.flag);
+    RETURN_TO_CALLER();
+}
+
 /* ── storeByteAt_r6_80A7B9E ── */
 /* Store one byte into memory at [r6]: a simple setter for an object field. */
 static void store_byte_at(u32 address, u32 value) {
@@ -2589,6 +2671,196 @@ Next ow_swapMapEventFlags(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── ow_initBeastEventActor ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5; } call_sprite_load_result_ow_initBeastEventActor;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_ow_initBeastEventActor call_sprite_load_ow_initBeastEventActor(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_ow_initBeastEventActor){ R4, R5 };
+}
+
+typedef struct { u32 r5, r6; } call_ow_computePointFromPlayerAngle_result;
+/* register form: generated wrapper: ow_computePointFromPlayerAngle has no typed C interface yet */
+static inline call_ow_computePointFromPlayerAngle_result call_ow_computePointFromPlayerAngle(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(ow_computePointFromPlayerAngle);
+    return (call_ow_computePointFromPlayerAngle_result){ R5, R6 };
+}
+
+typedef struct { u32 r4, r5; } call_sprite_setAnimFromArgs_result;
+/* register form: generated wrapper: sprite_setAnimFromArgs has no typed C interface yet */
+static inline call_sprite_setAnimFromArgs_result call_sprite_setAnimFromArgs(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(sprite_setAnimFromArgs);
+    return (call_sprite_setAnimFromArgs_result){ R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_ow_initBeastEventActor(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_ow_initBeastEventActor;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_ow_initBeastEventActor call_sprite_loadAnimationData_ow_initBeastEventActor(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_ow_initBeastEventActor){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_ow_initBeastEventActor(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+typedef struct { u32 r0, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_applyLayerEffectToOWObject_8035694_result_ow_initBeastEventActor;
+/* register form: generated wrapper: applyLayerEffectToOWObject_8035694 has no typed C interface yet */
+static inline call_applyLayerEffectToOWObject_8035694_result_ow_initBeastEventActor call_applyLayerEffectToOWObject_8035694_ow_initBeastEventActor(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(applyLayerEffectToOWObject_8035694);
+    return (call_applyLayerEffectToOWObject_8035694_result_ow_initBeastEventActor){ R0, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r2; } call_sprite_setPriority_8002E14_result_ow_initBeastEventActor;
+/* register form: generated wrapper: sprite_setPriority_8002E14 has no typed C interface yet */
+static inline call_sprite_setPriority_8002E14_result_ow_initBeastEventActor call_sprite_setPriority_8002E14_ow_initBeastEventActor(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPriority_8002E14);
+    return (call_sprite_setPriority_8002E14_result_ow_initBeastEventActor){ R2 };
+}
+
+/* register form: generated wrapper: ClearEventFlagFromImmediate has no typed C interface yet */
+static inline void call_ClearEventFlagFromImmediate_ow_initBeastEventActor(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+}
+
+typedef struct { bool z, n; } call_TestEventFlagFromImmediate_result_ow_initBeastEventActor;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_ow_initBeastEventActor call_TestEventFlagFromImmediate_ow_initBeastEventActor(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_ow_initBeastEventActor){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r3; } call_npc_updateGuarded_result;
+/* register form: generated wrapper: npc_updateGuarded has no typed C interface yet */
+static inline call_npc_updateGuarded_result call_npc_updateGuarded(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(npc_updateGuarded);
+    return (call_npc_updateGuarded_result){ R2, R3 };
+}
+
+/* Actor state: BEAST_EVENT = 3, ACTOR_ACTIVE = 4 */
+#define STATE_BEAST_EVENT  3
+#define STATE_ACTOR_ACTIVE 4
+
+/* Event flag page/offset for the beast-actor gate and the spawn-once guard */
+#define FLAG_BEAST_GATE_PAGE    9
+#define FLAG_BEAST_GATE_OFFSET  0xFF
+#define FLAG_BEAST_SPAWN_PAGE   9
+#define FLAG_BEAST_SPAWN_OFFSET 0xD7
+
+/* Layout offsets within the overworld NPC/actor struct */
+#define oActor_State         0
+#define oActor_AnimId        4
+#define oActor_Active        8
+#define oActor_Spawned       9
+#define oActor_PositionX    0xc
+#define oActor_PositionY    0x10
+#define oActor_VelAccum     0x14
+
+/* Field offsets in the tilemap / spawn descriptor pointed to by r6 */
+#define oSpawn_TilemapX     0x16
+#define oSpawn_TilemapY     0x18
+
+/*
+ * Initialize a beast event actor: load its sprite, compute a spawn position
+ * relative to the player, configure the layer effect, and mark it active.
+ * If the one-time-spawn guard flag is clear, write the computed position into
+ * the actor and set the spawned byte; then always transition to active state.
+ */
+static void ow_initBeastEventActor_impl(u32 actor_ptr, u32 spawn_desc, u32 r10) {
+    ST8(actor_ptr + oActor_State, STATE_BEAST_EVENT);
+
+    /* Load sprite graphics for this actor (sheet 0x80, frame 0x1c, anim 0x52) */
+    call_sprite_load_ow_initBeastEventActor(0x80, 0x1C, 0x52, actor_ptr);
+    /* sprite_load returns a possibly-adjusted actor pointer in r5 */
+    actor_ptr = call_sprite_load_ow_initBeastEventActor(0x80, 0x1C, 0x52, actor_ptr).r5;
+
+    /* Compute world position offset from the player's facing angle */
+    call_ow_computePointFromPlayerAngle_result pos =
+        call_ow_computePointFromPlayerAngle(actor_ptr);
+    actor_ptr = pos.r5;
+    spawn_desc = pos.r6;
+
+    /* Configure animation from the loaded sprite args */
+    actor_ptr = call_sprite_setAnimFromArgs(actor_ptr, spawn_desc).r5;
+
+    /* Apply the default animation ID stored at offset 4 */
+    call_sprite_setAnimation_ow_initBeastEventActor(LD8(actor_ptr + oActor_AnimId), actor_ptr);
+
+    /* Load per-animation frame data */
+    actor_ptr = call_sprite_loadAnimationData_ow_initBeastEventActor(actor_ptr).r5;
+
+    /* Disable the shadow sprite for this actor */
+    call_sprite_noShadow_ow_initBeastEventActor(actor_ptr);
+
+    /* Apply the overworld layer-effect descriptor (pointer to the position
+     * sub-struct at offset 0xc) */
+    call_applyLayerEffectToOWObject_8035694_result_ow_initBeastEventActor fx =
+        call_applyLayerEffectToOWObject_8035694_ow_initBeastEventActor(actor_ptr + oActor_PositionX);
+    actor_ptr = fx.r5;
+    spawn_desc = fx.r6;
+
+    /* Set the sprite's draw priority from the layer result */
+    call_sprite_setPriority_8002E14_ow_initBeastEventActor(fx.r0, actor_ptr);
+
+    /* Clear the beast-gate event flag so this actor type won't re-gate */
+    call_ClearEventFlagFromImmediate_ow_initBeastEventActor(FLAG_BEAST_GATE_PAGE, FLAG_BEAST_GATE_OFFSET);
+
+    /*
+     * If the one-time spawn guard (EVENT_9D7) is NOT set, write the final
+     * tilemap position into the actor and mark it spawned; then clear the
+     * guard so this path executes only once per game session.
+     */
+    call_TestEventFlagFromImmediate_result_ow_initBeastEventActor guard =
+        call_TestEventFlagFromImmediate_ow_initBeastEventActor(FLAG_BEAST_SPAWN_PAGE, FLAG_BEAST_SPAWN_OFFSET);
+
+    if (!guard.z) {
+        u32 tx = (u32)LD16(spawn_desc + oSpawn_TilemapX) << 16;
+        u32 ty = (u32)LD16(spawn_desc + oSpawn_TilemapY) << 16;
+        ST32(actor_ptr + oActor_PositionX, tx);
+        ST32(actor_ptr + oActor_PositionY, ty);
+        ST32(actor_ptr + oActor_VelAccum, 0);
+        ST8(actor_ptr + oActor_Spawned, 1);
+        call_ClearEventFlagFromImmediate_ow_initBeastEventActor(FLAG_BEAST_SPAWN_PAGE, FLAG_BEAST_SPAWN_OFFSET);
+    }
+
+    /* Mark the actor active and run its guarded-update routine */
+    ST8(actor_ptr + oActor_Active, STATE_ACTOR_ACTIVE);
+    call_npc_updateGuarded(actor_ptr, spawn_desc);
+}
+
+/* ow_initBeastEventActor(r5 = actor ptr, r6 = spawn descriptor, r10, lr) -> r2 r3 r4 r5 r8-r12 */
+Next ow_initBeastEventActor(void) {
+    ow_initBeastEventActor_impl(R5, R6, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── ow_cleanupNpcAfterCutscene ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2; bool z, n; } call_cutscene_checkOriginalCutsceneScriptPos_8036F70_result;
@@ -2894,6 +3166,436 @@ Next owMapObject_weatherTornado_80A8E74(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── owMapObject_weatherTornado_init_80A8E9C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5; } call_sprite_load_result_owMapObject_weatherTornado_init_80A8E9C;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_owMapObject_weatherTornado_init_80A8E9C call_sprite_load_owMapObject_weatherTornado_init_80A8E9C(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_owMapObject_weatherTornado_init_80A8E9C){ R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_owMapObject_weatherTornado_init_80A8E9C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_owMapObject_weatherTornado_init_80A8E9C;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_owMapObject_weatherTornado_init_80A8E9C call_sprite_loadAnimationData_owMapObject_weatherTornado_init_80A8E9C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_owMapObject_weatherTornado_init_80A8E9C){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_owMapObject_weatherTornado_init_80A8E9C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+typedef struct { u32 r0, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_applyLayerEffectToOWObject_8035694_result_owMapObject_weatherTornado_init_80A8E9C;
+/* register form: generated wrapper: applyLayerEffectToOWObject_8035694 has no typed C interface yet */
+static inline call_applyLayerEffectToOWObject_8035694_result_owMapObject_weatherTornado_init_80A8E9C call_applyLayerEffectToOWObject_8035694_owMapObject_weatherTornado_init_80A8E9C(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(applyLayerEffectToOWObject_8035694);
+    return (call_applyLayerEffectToOWObject_8035694_result_owMapObject_weatherTornado_init_80A8E9C){ R0, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+/* register form: generated wrapper: sprite_setPriority_8002E14 has no typed C interface yet */
+static inline void call_sprite_setPriority_8002E14_owMapObject_weatherTornado_init_80A8E9C(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPriority_8002E14);
+}
+
+/* register form: generated wrapper: owMapObject_weatherTornado_loadHome_80A90B0 has no typed C interface yet */
+static inline void call_owMapObject_weatherTornado_loadHome_80A90B0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(owMapObject_weatherTornado_loadHome_80A90B0);
+}
+
+typedef struct { bool z, n; } call_TestEventFlagFromImmediate_result_owMapObject_weatherTornado_init_80A8E9C;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_owMapObject_weatherTornado_init_80A8E9C call_TestEventFlagFromImmediate_owMapObject_weatherTornado_init_80A8E9C(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_owMapObject_weatherTornado_init_80A8E9C){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { bool z, n; } call_owMapObject_weatherTornado_isCaught_80A91D4_result;
+/* register form: generated wrapper: owMapObject_weatherTornado_isCaught_80A91D4 has no typed C interface yet */
+static inline call_owMapObject_weatherTornado_isCaught_80A91D4_result call_owMapObject_weatherTornado_isCaught_80A91D4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(owMapObject_weatherTornado_isCaught_80A91D4);
+    return (call_owMapObject_weatherTornado_isCaught_80A91D4_result){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r3; } call_sub_80A8FFC_result;
+/* register form: generated wrapper: sub_80A8FFC has no typed C interface yet */
+static inline call_sub_80A8FFC_result call_sub_80A8FFC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_80A8FFC);
+    return (call_sub_80A8FFC_result){ R2, R3 };
+}
+
+/* register form: generated wrapper: owMapObject_weatherTornado_restoreState_80A9268 has no typed C interface yet */
+static inline void call_owMapObject_weatherTornado_restoreState_80A9268(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(owMapObject_weatherTornado_restoreState_80A9268);
+}
+
+/* register form: generated wrapper: owMapObject_weatherTornado_loadParams_80A908C has no typed C interface yet */
+static inline void call_owMapObject_weatherTornado_loadParams_80A908C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(owMapObject_weatherTornado_loadParams_80A908C);
+}
+
+typedef struct { u32 r2, r3, r8, r9, r10, r11, r12; } call_owMapObject_weatherTornado_active_80A8F08_result;
+/* register form: generated wrapper: owMapObject_weatherTornado_active_80A8F08 has no typed C interface yet */
+static inline call_owMapObject_weatherTornado_active_80A8F08_result call_owMapObject_weatherTornado_active_80A8F08(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(owMapObject_weatherTornado_active_80A8F08);
+    return (call_owMapObject_weatherTornado_active_80A8F08_result){ R2, R3, R8, R9, R10, R11, R12 };
+}
+
+/* Initialize the weather-tornado overworld map object: load its sprite and
+ * animation data, apply the map-layer palette tint, set its home position,
+ * then configure its wandering state based on event-flag BFB and whether
+ * the player already caught it. */
+
+#define EVENT_BFB_PAGE   0xB
+#define EVENT_BFB_OFFSET 0xFB
+
+static void owMapObject_weatherTornado_init_impl(u32 obj, u32 sibling) {
+    /* State 3 = initializing */
+    ST8(obj, 3);
+
+    /* Load tornado sprite: sheet 0x80, frame 0x1C, cell 0x6C */
+    call_sprite_load_owMapObject_weatherTornado_init_80A8E9C(0x80, 0x1C, 0x6C, obj);
+
+    /* Set animation index 0x18 (r0 = animation id, r5 = sprite) */
+    call_sprite_setAnimation_owMapObject_weatherTornado_init_80A8E9C(0x18, obj);
+
+    /* Load the animation sequence data and clear the shadow flag */
+    call_sprite_loadAnimationData_owMapObject_weatherTornado_init_80A8E9C(obj);
+    call_sprite_noShadow_owMapObject_weatherTornado_init_80A8E9C(obj);
+
+    /* Tint the sprite palette for the current overworld map layer */
+    call_applyLayerEffectToOWObject_8035694_result_owMapObject_weatherTornado_init_80A8E9C eff =
+        call_applyLayerEffectToOWObject_8035694_owMapObject_weatherTornado_init_80A8E9C(obj + 0xC);
+    /* Apply the priority the layer-effect routine selected */
+    call_sprite_setPriority_8002E14_owMapObject_weatherTornado_init_80A8E9C(eff.r0, obj);
+
+    /* Place the tornado at its saved home map coordinates */
+    call_owMapObject_weatherTornado_loadHome_80A90B0(obj);
+
+    /* Test event flag BFB – Z set means the flag has NOT been set yet */
+    call_TestEventFlagFromImmediate_result_owMapObject_weatherTornado_init_80A8E9C flagRes =
+        call_TestEventFlagFromImmediate_owMapObject_weatherTornado_init_80A8E9C(EVENT_BFB_PAGE, EVENT_BFB_OFFSET);
+
+    if (flagRes.z) {
+        /* Flag not set: tornado starts dormant */
+        ST8(obj + 0x28, 0);   /* timer reset */
+        ST8(obj + 9, 0);      /* sub-state = none */
+        ST8(obj + 0x24, 1);   /* dormant flag */
+    } else {
+        /* Flag was set: has the player already captured this tornado? */
+        call_owMapObject_weatherTornado_isCaught_80A91D4_result caughtRes =
+            call_owMapObject_weatherTornado_isCaught_80A91D4(obj);
+        if (caughtRes.z) {
+            /* Not caught: restore its previously saved wandering state */
+            call_owMapObject_weatherTornado_restoreState_80A9268(obj, sibling);
+        } else {
+            /* Already caught: enter the caught sub-state (0xC) and finish */
+            ST8(obj + 8, 0xC);
+            call_sub_80A8FFC(obj);
+            return;
+        }
+    }
+
+    /* Common tail for dormant / not-caught paths:
+     * load wandering parameters, mark active (state 4), begin movement */
+    call_owMapObject_weatherTornado_loadParams_80A908C(obj);
+    ST8(obj + 8, 4);
+    call_owMapObject_weatherTornado_active_80A8F08(obj, sibling);
+}
+
+/* owMapObject_weatherTornado_init_80A8E9C(r5 = obj, r6 = sibling) */
+Next owMapObject_weatherTornado_init_80A8E9C(void) {
+    owMapObject_weatherTornado_init_impl(R5, R6);
+    RETURN_TO_CALLER();
+}
+
+/* ── owMapObject_weatherTornado_active_80A8F08 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; bool z, n; } call_TestEventFlagFromImmediate_result_owMapObject_weatherTornado_active_80A8F08;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_owMapObject_weatherTornado_active_80A8F08 call_TestEventFlagFromImmediate_owMapObject_weatherTornado_active_80A8F08(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_owMapObject_weatherTornado_active_80A8F08){ R3, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_owMapObject_weatherTornado_caught_80A8FA0_result;
+/* register form: generated wrapper: owMapObject_weatherTornado_caught_80A8FA0 has no typed C interface yet */
+static inline call_owMapObject_weatherTornado_caught_80A8FA0_result call_owMapObject_weatherTornado_caught_80A8FA0(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(owMapObject_weatherTornado_caught_80A8FA0);
+    return (call_owMapObject_weatherTornado_caught_80A8FA0_result){ R2, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r2; bool z, n; } call_cutscene_checkOriginalCutsceneScriptPos_8036F40_result;
+/* register form: generated wrapper: cutscene_checkOriginalCutsceneScriptPos_8036F40 has no typed C interface yet */
+static inline call_cutscene_checkOriginalCutsceneScriptPos_8036F40_result call_cutscene_checkOriginalCutsceneScriptPos_8036F40(void) {
+    GUEST_CALL(cutscene_checkOriginalCutsceneScriptPos_8036F40);
+    return (call_cutscene_checkOriginalCutsceneScriptPos_8036F40_result){ R2, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2; bool z, n; } call_cutscene_checkOriginalCutsceneScriptPos_8036F58_result;
+/* register form: generated wrapper: cutscene_checkOriginalCutsceneScriptPos_8036F58 has no typed C interface yet */
+static inline call_cutscene_checkOriginalCutsceneScriptPos_8036F58_result call_cutscene_checkOriginalCutsceneScriptPos_8036F58(void) {
+    GUEST_CALL(cutscene_checkOriginalCutsceneScriptPos_8036F58);
+    return (call_cutscene_checkOriginalCutsceneScriptPos_8036F58_result){ R2, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { bool z, n; } call_chatbox_mask_eFlags2009F38_result_owMapObject_weatherTornado_active_80A8F08;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result_owMapObject_weatherTornado_active_80A8F08 call_chatbox_mask_eFlags2009F38_owMapObject_weatherTornado_active_80A8F08(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result_owMapObject_weatherTornado_active_80A8F08){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r5, r6, r8, r9, r10, r11, r12; } call_owMapObject_weatherTornado_moveOrPause_80A8F48_result;
+/* register form: generated wrapper: owMapObject_weatherTornado_moveOrPause_80A8F48 has no typed C interface yet */
+static inline call_owMapObject_weatherTornado_moveOrPause_80A8F48_result call_owMapObject_weatherTornado_moveOrPause_80A8F48(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(owMapObject_weatherTornado_moveOrPause_80A8F48);
+    return (call_owMapObject_weatherTornado_moveOrPause_80A8F48_result){ R5, R6, R8, R9, R10, R11, R12 };
+}
+
+/* register form: generated wrapper: owMapObject_weatherTornado_checkHitPlayer_80A91A4 has no typed C interface yet */
+static inline void call_owMapObject_weatherTornado_checkHitPlayer_80A91A4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(owMapObject_weatherTornado_checkHitPlayer_80A91A4);
+}
+
+typedef struct { u32 r5, r6, r8, r9, r10, r11, r12; } call_owMapObject_weatherTornado_setPriority_80A91F4_result;
+/* register form: generated wrapper: owMapObject_weatherTornado_setPriority_80A91F4 has no typed C interface yet */
+static inline call_owMapObject_weatherTornado_setPriority_80A91F4_result call_owMapObject_weatherTornado_setPriority_80A91F4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(owMapObject_weatherTornado_setPriority_80A91F4);
+    return (call_owMapObject_weatherTornado_setPriority_80A91F4_result){ R5, R6, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r3, r4, r5; } call_sprite_update_result_owMapObject_weatherTornado_active_80A8F08;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_owMapObject_weatherTornado_active_80A8F08 call_sprite_update_owMapObject_weatherTornado_active_80A8F08(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_owMapObject_weatherTornado_active_80A8F08){ R3, R4, R5 };
+}
+
+typedef struct { u32 r2; } call_owMapObject_weatherTornado_saveState_80A9218_result;
+/* register form: generated wrapper: owMapObject_weatherTornado_saveState_80A9218 has no typed C interface yet */
+static inline call_owMapObject_weatherTornado_saveState_80A9218_result call_owMapObject_weatherTornado_saveState_80A9218(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(owMapObject_weatherTornado_saveState_80A9218);
+    return (call_owMapObject_weatherTornado_saveState_80A9218_result){ R2 };
+}
+
+/* Event flag constants for TestEventFlagFromImmediate (group 0xB, index 0xEF). */
+#define EVENT_BEF  0xBu
+#define EVENT_BEF_INDEX 0xEFu
+
+/* Chatbox/dialog mask flag that suppresses tornado movement while talking. */
+#define CHATBOX_FLAG 0x80u
+
+/* Tornado state byte written when the "tornado caught" event has fired. */
+#define TORNADO_CAUGHT_STATE 8u
+
+/* Advance the weather-tornado overworld object by one frame.
+ * Dispatches between "caught" animation, cutscene/chatbox suppression,
+ * and normal move-or-pause behavior, then refreshes sprite and state.
+ *
+ * obj  = pointer to the tornado's overworld map object (r5)
+ * data = companion object / data pointer (r6)
+ *
+ * All guest output registers (r2, r3, r11, …) are left in place by the
+ * last wrapper call in the sequence; this helper computes the values needed
+ * for internal routing only. */
+static void tornado_active_logic(u32 obj, u32 data) {
+    u32 cur_r5 = obj;
+    u32 cur_r6 = data;
+
+    /* If the "tornado caught before" event has fired, switch to caught state. */
+    call_TestEventFlagFromImmediate_result_owMapObject_weatherTornado_active_80A8F08 flag = call_TestEventFlagFromImmediate_owMapObject_weatherTornado_active_80A8F08(EVENT_BEF, EVENT_BEF_INDEX);
+    if (!flag.z) {
+        ST8(obj + 8, TORNADO_CAUGHT_STATE);
+        call_owMapObject_weatherTornado_caught_80A8FA0_result caught =
+            call_owMapObject_weatherTornado_caught_80A8FA0(cur_r5, cur_r6);
+        cur_r5 = caught.r5;
+        cur_r6 = caught.r6;
+    } else {
+        /* Not yet caught: suppress movement during a cutscene or chatbox. */
+        call_cutscene_checkOriginalCutsceneScriptPos_8036F40_result c1 =
+            call_cutscene_checkOriginalCutsceneScriptPos_8036F40();
+        if (c1.z) {
+            call_cutscene_checkOriginalCutsceneScriptPos_8036F58_result c2 =
+                call_cutscene_checkOriginalCutsceneScriptPos_8036F58();
+            if (c2.z) {
+                call_chatbox_mask_eFlags2009F38_result_owMapObject_weatherTornado_active_80A8F08 chat =
+                    call_chatbox_mask_eFlags2009F38_owMapObject_weatherTornado_active_80A8F08(CHATBOX_FLAG);
+                if (chat.z) {
+                    /* Free to animate: move or pause the tornado normally. */
+                    call_owMapObject_weatherTornado_moveOrPause_80A8F48_result mp =
+                        call_owMapObject_weatherTornado_moveOrPause_80A8F48(cur_r5, cur_r6);
+                    cur_r5 = mp.r5;
+                    cur_r6 = mp.r6;
+                    call_owMapObject_weatherTornado_checkHitPlayer_80A91A4(cur_r5);
+                }
+            }
+        }
+    }
+
+    /* Common frame-end: set draw priority, refresh sprite, persist state. */
+    call_owMapObject_weatherTornado_setPriority_80A91F4_result sp =
+        call_owMapObject_weatherTornado_setPriority_80A91F4(cur_r5);
+    call_sprite_update_result_owMapObject_weatherTornado_active_80A8F08 su = call_sprite_update_owMapObject_weatherTornado_active_80A8F08(sp.r5);
+    call_owMapObject_weatherTornado_saveState_80A9218(su.r5, sp.r6);
+}
+
+/* owMapObject_weatherTornado_active_80A8F08(r5 = obj, r6 = data, r10 = ambient) -> r2 r3 r11 */
+Next owMapObject_weatherTornado_active_80A8F08(void) {
+    tornado_active_logic(R5, R6);
+    RETURN_TO_CALLER();
+}
+
+/* ── owMapObject_weatherTornado_moveOrPause_80A8F48 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: owMapObject_weatherTornado_step_80A9038 has no typed C interface yet */
+static inline void call_owMapObject_weatherTornado_step_80A9038_owMapObject_weatherTornado_moveOrPause_80A8F48(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(owMapObject_weatherTornado_step_80A9038);
+}
+
+typedef struct { u32 r5, r6, r8, r9, r10, r11, r12; bool z, n; } call_owMapObject_weatherTornado_isBlocked_80A90CC_result_owMapObject_weatherTornado_moveOrPause_80A8F48;
+/* register form: generated wrapper: owMapObject_weatherTornado_isBlocked_80A90CC has no typed C interface yet */
+static inline call_owMapObject_weatherTornado_isBlocked_80A90CC_result_owMapObject_weatherTornado_moveOrPause_80A8F48 call_owMapObject_weatherTornado_isBlocked_80A90CC_owMapObject_weatherTornado_moveOrPause_80A8F48(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(owMapObject_weatherTornado_isBlocked_80A90CC);
+    return (call_owMapObject_weatherTornado_isBlocked_80A90CC_result_owMapObject_weatherTornado_moveOrPause_80A8F48){ R5, R6, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r8, r9, r10, r11, r12; } call_owMapObject_weatherTornado_repickDirection_80A90E4_result;
+/* register form: generated wrapper: owMapObject_weatherTornado_repickDirection_80A90E4 has no typed C interface yet */
+static inline call_owMapObject_weatherTornado_repickDirection_80A90E4_result call_owMapObject_weatherTornado_repickDirection_80A90E4(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(owMapObject_weatherTornado_repickDirection_80A90E4);
+    return (call_owMapObject_weatherTornado_repickDirection_80A90E4_result){ R8, R9, R10, R11, R12 };
+}
+
+/* register form: generated wrapper: owMapObject_weatherTornado_pickDirection_80A9004 has no typed C interface yet */
+static inline void call_owMapObject_weatherTornado_pickDirection_80A9004(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(owMapObject_weatherTornado_pickDirection_80A9004);
+}
+
+typedef struct { bool z, n; } call_owMapObject_weatherTornado_isPauseDue_80A9150_result;
+/* register form: generated wrapper: owMapObject_weatherTornado_isPauseDue_80A9150 has no typed C interface yet */
+static inline call_owMapObject_weatherTornado_isPauseDue_80A9150_result call_owMapObject_weatherTornado_isPauseDue_80A9150(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(owMapObject_weatherTornado_isPauseDue_80A9150);
+    return (call_owMapObject_weatherTornado_isPauseDue_80A9150_result){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* Field offsets within the weather-tornado map object */
+#define TORNADO_PHASE        9
+#define TORNADO_MOVE_TIMER   0x24
+#define TORNADO_PAUSE_TIMER  0x25
+#define TORNADO_MOVE_INIT    0x26
+#define TORNADO_PAUSE_INIT   0x27
+
+/* Decrement the pause countdown; reset the phase when it reaches zero. */
+static void tornado_pause_countdown(u32 obj) {
+    u32 remaining = LD8(obj + TORNADO_PAUSE_TIMER) - 1;
+    ST8(obj + TORNADO_PAUSE_TIMER, remaining);
+    if (remaining == 0)
+        ST8(obj + TORNADO_PHASE, 0);
+}
+
+/* Advance one frame of the weather-tornado: step along, check for obstacles,
+ * re-pick a direction when blocked, and manage the short pause between moves.
+ *
+ * r10 is received but consumed implicitly by the isBlocked / repickDirection
+ * wrappers (they read R10 from the register file). */
+static void tornado_move_or_pause(u32 r5, u32 r6, u32 r10) {
+    (void)r10;
+    u32 phase = LD8(r5 + TORNADO_PHASE);
+
+    /* Phase 1+: we are in the pause-between-moves countdown. */
+    if (phase != 0) {
+        tornado_pause_countdown(r5);
+        return;
+    }
+
+    /* Phase 0: decrement the move-along timer. */
+    u32 timer = LD8(r5 + TORNADO_MOVE_TIMER) - 1;
+    ST8(r5 + TORNADO_MOVE_TIMER, timer);
+
+    if (timer != 0) {
+        /* Still walking – take a step, then test for collision. */
+        call_owMapObject_weatherTornado_step_80A9038_owMapObject_weatherTornado_moveOrPause_80A8F48(r5);
+        call_owMapObject_weatherTornado_isBlocked_80A90CC_result_owMapObject_weatherTornado_moveOrPause_80A8F48 blocked =
+            call_owMapObject_weatherTornado_isBlocked_80A90CC_owMapObject_weatherTornado_moveOrPause_80A8F48(r5);
+        if (blocked.z)
+            return;                       /* path clear – continue next frame */
+
+        /* Blocked: restore timer, choose a new direction. */
+        r5 = blocked.r5;
+        ST8(r5 + TORNADO_MOVE_TIMER, LD8(r5 + TORNADO_MOVE_INIT));
+        call_owMapObject_weatherTornado_repickDirection_80A90E4(r5, blocked.r6);
+        return;
+    }
+
+    /* Timer expired – pick a fresh direction and decide whether to pause. */
+    ST8(r5 + TORNADO_MOVE_TIMER, LD8(r5 + TORNADO_MOVE_INIT));
+    call_owMapObject_weatherTornado_pickDirection_80A9004(r5, r6);
+    call_owMapObject_weatherTornado_isPauseDue_80A9150_result pause =
+        call_owMapObject_weatherTornado_isPauseDue_80A9150(r5);
+    if (pause.z)
+        return;                           /* keep moving immediately */
+
+    /* Start the inter-move pause: enter phase 1, load countdown, tick once. */
+    phase = phase + 1;
+    ST8(r5 + TORNADO_PHASE, phase);
+    ST8(r5 + TORNADO_PAUSE_TIMER, LD8(r5 + TORNADO_PAUSE_INIT));
+    tornado_pause_countdown(r5);
+}
+
+/* owMapObject_weatherTornado_moveOrPause_80A8F48(r5, r6, r10)
+ * Outputs r5 r6 r8 r9 r10 r11 r12 are left in place by the callees. */
+Next owMapObject_weatherTornado_moveOrPause_80A8F48(void) {
+    tornado_move_or_pause(R5, R6, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── owMapObject_weatherTornado_pickDirection_80A9004 ── */
 /* Tornado weather map object: pick a new blowing direction.
  * r5 = the tornado map object, r6 = eWeatherCompState.
@@ -2938,6 +3640,56 @@ static void weather_tornado_pick_direction(u32 obj, u32 weather) {
 
 Next owMapObject_weatherTornado_pickDirection_80A9004(void) {
     weather_tornado_pick_direction(R5, R6);
+    RETURN_TO_CALLER();
+}
+
+/* ── owMapObject_weatherTornado_step_80A9038 ── */
+/* Weather tornado map object offsets */
+#define oTornado_Mode        0x05
+#define oTornado_PosX        0x0C
+#define oTornado_PosY        0x10
+#define oTornado_Step        0x2C
+#define oTornado_AltStep     0x30
+
+/* Advance the tornado's position by one step.
+ * The mode byte at +5 selects a movement direction:
+ *   0=down-left  1=left  2=down-right(diag)  3=up
+ *   4=up-left(diag)  5=right  6=up-right(diag,else)  7=down
+ * Modes 0–1,3–5,7 use the primary step size; 2 and default
+ * use the alternate diagonal step size at +0x30. */
+static void step_tornado_position(u32 obj) {
+    u32 step     = LD32(obj + oTornado_Step);
+    u8  mode     = (u8)LD8(obj + oTornado_Mode);
+    u32 x        = LD32(obj + oTornado_PosX);
+    u32 y        = LD32(obj + oTornado_PosY);
+
+    switch (mode) {
+    case 0: x += step; y -= step; break;
+    case 1: x += step;             break;
+    case 3: y += step;             break;
+    case 4: x -= step; y += step;  break;
+    case 5: x -= step;             break;
+    case 7: y -= step;             break;
+    default: {
+        u32 diag = LD32(obj + oTornado_AltStep);
+        if (mode == 2) {
+            x += diag;
+            y += diag;
+        } else {
+            x -= diag;
+            y -= diag;
+        }
+        break;
+    }
+    }
+
+    ST32(obj + oTornado_PosX, x);
+    ST32(obj + oTornado_PosY, y);
+}
+
+/* owMapObject_weatherTornado_step_80A9038(r5 = object ptr) */
+Next owMapObject_weatherTornado_step_80A9038(void) {
+    step_tornado_position(R5);
     RETURN_TO_CALLER();
 }
 
@@ -3030,6 +3782,89 @@ Next owMapObject_weatherTornado_isBlocked_80A90CC(void) {
     u32 blocked = weather_tornado_is_blocked(R5);
     R0 = blocked;
     SET_FLAGS_NZ(blocked);
+    RETURN_TO_CALLER();
+}
+
+/* ── owMapObject_weatherTornado_repickDirection_80A90E4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r6, r7; } call_reqBBS_81409D0_result_owMapObject_weatherTornado_repickDirection_80A90E4;
+/* register form: generated wrapper: reqBBS_81409D0 has no typed C interface yet */
+static inline call_reqBBS_81409D0_result_owMapObject_weatherTornado_repickDirection_80A90E4 call_reqBBS_81409D0(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(reqBBS_81409D0);
+    return (call_reqBBS_81409D0_result_owMapObject_weatherTornado_repickDirection_80A90E4){ R0, R6, R7 };
+}
+
+/* register form: generated wrapper: owMapObject_weatherTornado_step_80A9038 has no typed C interface yet */
+static inline void call_owMapObject_weatherTornado_step_80A9038_owMapObject_weatherTornado_repickDirection_80A90E4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(owMapObject_weatherTornado_step_80A9038);
+}
+
+typedef struct { u32 r5, r6, r8, r9, r10, r11, r12; bool z, n; } call_owMapObject_weatherTornado_isBlocked_80A90CC_result_owMapObject_weatherTornado_repickDirection_80A90E4;
+/* register form: generated wrapper: owMapObject_weatherTornado_isBlocked_80A90CC has no typed C interface yet */
+static inline call_owMapObject_weatherTornado_isBlocked_80A90CC_result_owMapObject_weatherTornado_repickDirection_80A90E4 call_owMapObject_weatherTornado_isBlocked_80A90CC_owMapObject_weatherTornado_repickDirection_80A90E4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(owMapObject_weatherTornado_isBlocked_80A90CC);
+    return (call_owMapObject_weatherTornado_isBlocked_80A90CC_result_owMapObject_weatherTornado_repickDirection_80A90E4){ R5, R6, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* Pick a new movement direction for a weather tornado: roll randomly, step,
+ * retry until the target tile is walkable, then update the per-weather
+ * direction history and bump the spawn counter. */
+static void repick_direction(u32 tornado, u32 weather_table) {
+    u32 r5 = tornado;
+    u32 r6 = weather_table;
+
+    for (;;) {
+        /* Roll a direction in [0, 8); reqBBS also clobbers r6/r7 */
+        call_reqBBS_81409D0_result_owMapObject_weatherTornado_repickDirection_80A90E4 roll = call_reqBBS_81409D0(8);
+        u32 new_dir = roll.r0;
+        r6 = roll.r6;
+
+        /* Stash current direction as "previous" */
+        u32 cur_dir = LD8(r5 + 5);
+        ST8(r5 + 6, cur_dir);
+        if (new_dir == cur_dir)
+            continue;
+
+        /* Commit new direction and back up position */
+        ST8(r5 + 5, new_dir);
+        ST32(r5 + 0x18, LD32(r5 + 0xC));
+        ST32(r5 + 0x1C, LD32(r5 + 0x10));
+
+        /* Advance one tile */
+        call_owMapObject_weatherTornado_step_80A9038_owMapObject_weatherTornado_repickDirection_80A90E4(r5);
+
+        /* Check walkability – z=1 means free (exit loop) */
+        call_owMapObject_weatherTornado_isBlocked_80A90CC_result_owMapObject_weatherTornado_repickDirection_80A90E4 blk =
+            call_owMapObject_weatherTornado_isBlocked_80A90CC_owMapObject_weatherTornado_repickDirection_80A90E4(r5);
+        r5 = blk.r5;
+        r6 = blk.r6;
+
+        if (blk.z)
+            break;
+
+        /* Blocked: restore position and previous direction, re-roll */
+        ST32(r5 + 0xC, LD32(r5 + 0x18));
+        ST32(r5 + 0x10, LD32(r5 + 0x1C));
+        ST8(r5 + 5, LD8(r5 + 6));
+    }
+
+    /* Shift direction history for this weather slot:
+     * table[0x31+w] → table[0x19+w], then table[0x31+w] = previous dir. */
+    u32 weather = LD8(r5 + 4);
+    ST8(r6 + 0x19 + weather, LD8(r6 + 0x31 + weather));
+    ST8(r6 + 0x31 + weather, LD8(r5 + 6));
+
+    /* Increment spawn counter */
+    ST8(r5 + 0x28, LD8(r5 + 0x28) + 1);
+}
+
+/* owMapObject_weatherTornado_repickDirection(r5=tornado, r6=weather_table,
+ * r10=context) -> r8 r9 r10 r11 r12 left from isBlocked wrapper */
+Next owMapObject_weatherTornado_repickDirection_80A90E4(void) {
+    repick_direction(R5, R6);
     RETURN_TO_CALLER();
 }
 
@@ -3218,6 +4053,32 @@ static void tornado_set_priority(u32 obj) {
  * -> r5 r6 r8 r9 r10 r11 r12 */
 Next owMapObject_weatherTornado_setPriority_80A91F4(void) {
     tornado_set_priority(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── owMapObject_weatherTornado_saveState_80A9218 ── */
+/* Copy weather tornado map object state fields into the save buffer,
+ * indexed by the object's slot number. Returns the halfword stride (slot * 2). */
+static u32 tornado_save_state(u32 map_obj, u32 save_buf) {
+    u32 slot = LD8(map_obj + 4);  /* slot index within the save buffer */
+
+    /* Five byte-sized state fields */
+    ST8(save_buf + 0x28 + slot, LD8(map_obj + 9));
+    ST8(save_buf + 0x31 + slot, LD8(map_obj + 5));
+    ST8(save_buf + 0x37 + slot, LD8(map_obj + 0x24));
+    ST8(save_buf + 0x3A + slot, LD8(map_obj + 0x25));
+    ST8(save_buf + 0x3D + slot, LD8(map_obj + 0x28));
+
+    /* Two 32-bit fields stored as their upper halfword (16-bit sign-extended shift) */
+    ST16(save_buf + 0x40 + slot * 2, (u32)((s32)LD32(map_obj + 0xC) >> 16));
+    ST16(save_buf + 0x46 + slot * 2, (u32)((s32)LD32(map_obj + 0x10) >> 16));
+
+    return slot * 2;
+}
+
+/* owMapObject_weatherTornado_saveState(r5 = map obj, r6 = save buf) -> r2 */
+Next owMapObject_weatherTornado_saveState_80A9218(void) {
+    R2 = tornado_save_state(R5, R6);
     RETURN_TO_CALLER();
 }
 
@@ -3579,6 +4440,181 @@ static void weather_state_dispatch(u32 objectPtr, u32 r10In) {
 /* weatherMapObjectStateDispatch_80A9430(r5 = weather object, r10 = pass-through) */
 Next weatherMapObjectStateDispatch_80A9430(void) {
     weather_state_dispatch(R5, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── object_mrWeatherStep_80A94DC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { bool z, n, c, v; } call_TestEventFlagFromImmediate_result_object_mrWeatherStep_80A94DC;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_object_mrWeatherStep_80A94DC call_TestEventFlagFromImmediate_object_mrWeatherStep_80A94DC(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_object_mrWeatherStep_80A94DC){ ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r5, r10; } call_object_mrWeatherProximityTrigger_80A95A8_result;
+/* register form: generated wrapper: object_mrWeatherProximityTrigger_80A95A8 has no typed C interface yet */
+static inline call_object_mrWeatherProximityTrigger_80A95A8_result call_object_mrWeatherProximityTrigger_80A95A8(u32 r5, u32 r6) {
+    R5 = r5;
+    R6 = r6;
+    GUEST_CALL(object_mrWeatherProximityTrigger_80A95A8);
+    return (call_object_mrWeatherProximityTrigger_80A95A8_result){ R5, R10 };
+}
+
+typedef struct { u32 r5, r6, r8, r9, r10, r11, r12; } call_owMapObject_updateLayerPriorityForPlayerZ_80A95EC_result;
+/* register form: generated wrapper: owMapObject_updateLayerPriorityForPlayerZ_80A95EC has no typed C interface yet */
+static inline call_owMapObject_updateLayerPriorityForPlayerZ_80A95EC_result call_owMapObject_updateLayerPriorityForPlayerZ_80A95EC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(owMapObject_updateLayerPriorityForPlayerZ_80A95EC);
+    return (call_owMapObject_updateLayerPriorityForPlayerZ_80A95EC_result){ R5, R6, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_sprite_update_result_object_mrWeatherStep_80A94DC;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_object_mrWeatherStep_80A94DC call_sprite_update_object_mrWeatherStep_80A94DC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_object_mrWeatherStep_80A94DC){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Weather event gate flag: page 11, offset 0xFC (EVENT_BFC) */
+#define WEATHER_EVENT_PAGE   0xB
+#define WEATHER_EVENT_OFFSET 0xFC
+
+struct weather_step_result {
+    u32 r2;
+    u32 r3;
+    u32 r10;
+    u32 r11;
+};
+
+/* Advance the weather proximity object:
+ * – if the event gate flag is active, test the player's proximity zone;
+ * – recompute draw-layer priority from the player's world-Z;
+ * – update the object's sprite frame.
+ * Returns the registers the caller observes as changed (r2, r3, r10, r11);
+ * r4–r9 and r12 are preserved by the caller-saved push/pop in the original. */
+static struct weather_step_result weather_step(u32 r5, u32 r6, u32 r10) {
+    struct weather_step_result result = {0};
+
+    /* Z set ⇒ event flag is active ⇒ run proximity trigger */
+    call_TestEventFlagFromImmediate_result_object_mrWeatherStep_80A94DC test =
+        call_TestEventFlagFromImmediate_object_mrWeatherStep_80A94DC(WEATHER_EVENT_PAGE, WEATHER_EVENT_OFFSET);
+
+    if (test.z) {
+        call_object_mrWeatherProximityTrigger_80A95A8_result prox =
+            call_object_mrWeatherProximityTrigger_80A95A8(r5, r6);
+        r5  = prox.r5;
+        r10 = prox.r10;
+    }
+
+    call_owMapObject_updateLayerPriorityForPlayerZ_80A95EC_result layer =
+        call_owMapObject_updateLayerPriorityForPlayerZ_80A95EC(r5);
+    r10 = layer.r10;
+
+    call_sprite_update_result_object_mrWeatherStep_80A94DC spr = call_sprite_update_object_mrWeatherStep_80A94DC(layer.r5);
+
+    result.r2  = spr.r2;
+    result.r3  = spr.r3;
+    result.r10 = r10;
+    result.r11 = layer.r11;
+    return result;
+}
+
+/* object_mrWeatherStep_80A94DC(r5, r6, r10) -> r2, r3, r10, r11 */
+Next object_mrWeatherStep_80A94DC(void) {
+    struct weather_step_result res = weather_step(R5, R6, R10);
+    R2  = res.r2;
+    R3  = res.r3;
+    R10 = res.r10;
+    R11 = res.r11;
+    RETURN_TO_CALLER();
+}
+
+/* ── object_fadeSpriteToWhiteStep ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sprite_setColorShader has no typed C interface yet */
+static inline void call_sprite_setColorShader(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setColorShader);
+}
+
+/* register form: generated wrapper: ClearEventFlagFromImmediate has no typed C interface yet */
+static inline void call_ClearEventFlagFromImmediate_object_fadeSpriteToWhiteStep(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ClearEventFlagFromImmediate);
+}
+
+typedef struct { u32 r5; } call_owMapObject_freeThunk_result;
+/* register form: generated wrapper: owMapObject_freeThunk has no typed C interface yet */
+static inline call_owMapObject_freeThunk_result call_owMapObject_freeThunk(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(owMapObject_freeThunk);
+    return (call_owMapObject_freeThunk_result){ R5 };
+}
+
+typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_sprite_update_result_object_fadeSpriteToWhiteStep;
+/* register form: generated wrapper: sprite_update has no typed C interface yet */
+static inline call_sprite_update_result_object_fadeSpriteToWhiteStep call_sprite_update_object_fadeSpriteToWhiteStep(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_update);
+    return (call_sprite_update_result_object_fadeSpriteToWhiteStep){ R0, R1, R2, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Per-frame data for the "fade to white" sprite effect. */
+#define FADE_TO_WHITE_TABLE       A_byte_80A9544   /* 16 bytes: Y-shift delta per frame; 0xFF = done */
+#define FADE_TO_WHITE_COLOR_TABLE A_byte_80A9558   /* 16 bytes: intensity (RGB5 replicated) per frame */
+
+#define FADE_COMPLETE_MARKER 0xFF
+
+/* Object step counter at +0x24 (frames 0..N, divided by 2 for table index) */
+#define oSprite_fadeStep   0x24
+/* Object Y position (fixed-point) at +0x14; delta is added in the upper halfword */
+#define oSprite_Y          0x14
+
+/* EVENT_BFC = 0x0B, sub-flag = 0xFC (the fade trigger flag for this sprite) */
+#define FADE_EVENT_BANK    0x0B
+#define FADE_EVENT_FLAG    0xFC
+
+/* Advance one frame of the "fade to white" animation.
+ * Each frame shifts the sprite's Y upward and rewrites its color shader toward white.
+ * When the fade table returns 0xFF the effect is complete: the triggering event flag is
+ * cleared, the map-object thunk is freed, and sprite_update still runs once to reflect
+ * the change. sprite_update's r2/r3 become this function's outputs. */
+static call_sprite_update_result_object_fadeSpriteToWhiteStep fade_to_white_step(u32 obj) {
+    u32 step = LD32(obj + oSprite_fadeStep);
+    u32 frame = step >> 1;
+    u32 delta = LD8(FADE_TO_WHITE_TABLE + frame);
+
+    if (delta == FADE_COMPLETE_MARKER) {
+        /* Fade finished – clear the triggering event flag and free the thunk */
+        call_ClearEventFlagFromImmediate_object_fadeSpriteToWhiteStep(FADE_EVENT_BANK, FADE_EVENT_FLAG);
+        call_owMapObject_freeThunk(obj);
+    } else {
+        /* Shift Y upward: delta lands in bits [31:16] of the fixed-point Y field */
+        ST32(obj + oSprite_Y, LD32(obj + oSprite_Y) + (delta << 16));
+
+        /* Build a white/gray RGB5 color (each channel gets the same intensity) */
+        u32 intensity = LD8(FADE_TO_WHITE_COLOR_TABLE + frame);
+        u32 color = intensity | (intensity << 5) | (intensity << 10);
+        call_sprite_setColorShader(color, obj);
+    }
+
+    /* Advance the step counter and update the sprite (produces r2/r3 outputs) */
+    ST32(obj + oSprite_fadeStep, LD32(obj + oSprite_fadeStep) + 1);
+    return call_sprite_update_object_fadeSpriteToWhiteStep(obj);
+}
+
+/* object_fadeSpriteToWhiteStep(r5 = sprite obj, r10 = event bank) -> r2 r3 r4 r5 */
+Next object_fadeSpriteToWhiteStep(void) {
+    call_sprite_update_result_object_fadeSpriteToWhiteStep res = fade_to_white_step(R5);
+    R2 = res.r2;
+    R3 = res.r3;
+    /* R4, R5 are preserved (unchanged) – handled automatically */
     RETURN_TO_CALLER();
 }
 
@@ -4021,6 +5057,46 @@ Next eventFlagNpcUpdate_80A9C26(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── npc_isPlayerNearPos ── */
+/* Returns 1 if the NPC at npc_ptr belongs to the player and its grid position
+   is within the threshold of the player's position. Returns 0 otherwise. */
+static s32 npc_is_player_near(u32 npc_ptr)
+{
+    /* Ownership check: player[0x24] must equal npc[0x14] + table entry at +8 */
+    s32 player_owner = (s32)LD32(A_eOWPlayerObject + 0x24);
+    s32 npc_owner_adj = (s32)(LD32(npc_ptr + 0x14) + (s32)LD32(A_dword_80A9D00 + 8));
+    if (player_owner != npc_owner_adj)
+        return 0;
+
+    /* Player subpixel position */
+    s32 player_x = (s32)LD32(A_eOWPlayerObject + 0x1C);
+    s32 player_y = (s32)LD32(A_eOWPlayerObject + 0x20);
+
+    /* NPC coords adjusted by the subpixel grid offsets stored in the data table */
+    s32 npc_x = (s32)LD32(npc_ptr + 0xC) + (s32)LD32(A_dword_80A9D00);
+    s32 npc_y = (s32)LD32(npc_ptr + 0x10) + (s32)LD32(A_dword_80A9D00 + 4);
+
+    /* Absolute difference in each axis */
+    s32 dx = player_x - npc_x;
+    if (dx < 0) dx = -dx;
+
+    s32 dy = player_y - npc_y;
+    if (dy < 0) dy = -dy;
+
+    /* Both must be within the threshold (table entry at +0xC = 0x100000) */
+    s32 limit = (s32)LD32(A_dword_80A9D00 + 0xC);
+    if (dx > limit || dy > limit)
+        return 0;
+
+    return 1;
+}
+
+/* npc_isPlayerNearPos(r5 = NPC pointer) -> r0 = 1 if near, 0 otherwise */
+Next npc_isPlayerNearPos(void) {
+    R0 = (u32)npc_is_player_near(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── ow_dispatchSpriteObjectState_80A9D10 ── */
 /* Overworld sprite-object dispatcher. r5 points at an overworld object whose
  * state byte (offset 8) selects one of three routines from the jump table:
@@ -4064,6 +5140,132 @@ static void run_object_routine(u32 arg2, u32 arg5, u32 arg10) {
  * nothing to write. */
 Next ow_dispatchSpriteObjectState_80A9D10(void) {
     run_object_routine(R2, R5, R10);
+    RETURN_TO_CALLER();
+}
+
+/* ── ow_initSpriteObject ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r5; } call_ow_applyCutsceneDirOffset_result_ow_initSpriteObject;
+/* register form: generated wrapper: ow_applyCutsceneDirOffset has no typed C interface yet */
+static inline call_ow_applyCutsceneDirOffset_result_ow_initSpriteObject call_ow_applyCutsceneDirOffset_ow_initSpriteObject(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(ow_applyCutsceneDirOffset);
+    return (call_ow_applyCutsceneDirOffset_result_ow_initSpriteObject){ R1, R2, R3, R5 };
+}
+
+typedef struct { u32 r4, r5; } call_sprite_load_result_ow_initSpriteObject;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_ow_initSpriteObject call_sprite_load_ow_initSpriteObject(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_ow_initSpriteObject){ R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_ow_initSpriteObject(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_ow_initSpriteObject;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_ow_initSpriteObject call_sprite_loadAnimationData_ow_initSpriteObject(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_ow_initSpriteObject){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_ow_initSpriteObject(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+typedef struct { u32 r0, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_applyLayerEffectToOWObject_8035694_result_ow_initSpriteObject;
+/* register form: generated wrapper: applyLayerEffectToOWObject_8035694 has no typed C interface yet */
+static inline call_applyLayerEffectToOWObject_8035694_result_ow_initSpriteObject call_applyLayerEffectToOWObject_8035694_ow_initSpriteObject(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(applyLayerEffectToOWObject_8035694);
+    return (call_applyLayerEffectToOWObject_8035694_result_ow_initSpriteObject){ R0, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r2, r3; } call_sprite_setPriority_8002E14_result_ow_initSpriteObject;
+/* register form: generated wrapper: sprite_setPriority_8002E14 has no typed C interface yet */
+static inline call_sprite_setPriority_8002E14_result_ow_initSpriteObject call_sprite_setPriority_8002E14_ow_initSpriteObject(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPriority_8002E14);
+    return (call_sprite_setPriority_8002E14_result_ow_initSpriteObject){ R2, R3 };
+}
+
+typedef struct { u32 r2, r3, r8, r9, r10, r11, r12; } call_ow_spriteObjectUpdate_result;
+/* register form: generated wrapper: ow_spriteObjectUpdate has no typed C interface yet */
+static inline call_ow_spriteObjectUpdate_result call_ow_spriteObjectUpdate(u32 r2, u32 r5) {
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(ow_spriteObjectUpdate);
+    return (call_ow_spriteObjectUpdate_result){ R2, R3, R8, R9, R10, R11, R12 };
+}
+
+/* Initialize an overworld sprite object: mark active, set position, load
+ * graphics/animation, apply layer effects, set behavior parameters,
+ * then run the first update tick. */
+static void ow_init_sprite(u32 r5) {
+    ST8(r5, 1);  /* mark sprite as active */
+
+    /* Retrieve cutscene-adjusted position and facing */
+    call_ow_applyCutsceneDirOffset_result_ow_initSpriteObject pos = call_ow_applyCutsceneDirOffset_ow_initSpriteObject(r5);
+    r5 = pos.r5;
+
+    /* Store position: current at +0xC, previous at +0x30 */
+    ST32(r5 + 0xC, pos.r1);
+    ST32(r5 + 0x10, pos.r2);
+    ST32(r5 + 0x14, pos.r3);
+    ST32(r5 + 0x30, pos.r1);
+    ST32(r5 + 0x34, pos.r2);
+    ST32(r5 + 0x38, pos.r3);
+
+    /* Load sprite tileset: tile 0x80, dimensions 0x1C x 0x9E */
+    call_sprite_load_result_ow_initSpriteObject loaded = call_sprite_load_ow_initSpriteObject(0x80, 0x1C, 0x9E, r5);
+    r5 = loaded.r5;
+
+    /* Set initial animation and load its frame data */
+    call_sprite_setAnimation_ow_initSpriteObject(0, r5);
+    call_sprite_loadAnimationData_result_ow_initSpriteObject anim = call_sprite_loadAnimationData_ow_initSpriteObject(r5);
+    r5 = anim.r5;
+
+    /* Disable shadow rendering for this object */
+    call_sprite_noShadow_ow_initSpriteObject(r5);
+
+    /* Apply the overworld map layer effect to the position fields */
+    call_applyLayerEffectToOWObject_8035694_result_ow_initSpriteObject layer =
+        call_applyLayerEffectToOWObject_8035694_ow_initSpriteObject(r5 + 0xC);
+    r5 = layer.r5;
+
+    /* Set the object's draw priority based on map layer */
+    call_sprite_setPriority_8002E14_result_ow_initSpriteObject prio =
+        call_sprite_setPriority_8002E14_ow_initSpriteObject(layer.r0, r5);
+
+    /* Initialize frame animation counters */
+    ST16(r5 + 0x24, 0);
+    ST16(r5 + 0x26, 0);
+    ST32(r5 + 0x28, 0x2AAAA);
+    ST32(r5 + 0x2C, 0x16C1);
+
+    /* Set movement mode (4) and clear sub-flag */
+    ST8(r5 + 8, 4);
+    ST8(r5 + 9, 0);
+
+    /* Perform the first per-frame update */
+    call_ow_spriteObjectUpdate(prio.r2, r5);
+}
+
+Next ow_initSpriteObject(void) {
+    ow_init_sprite(R5);
     RETURN_TO_CALLER();
 }
 
@@ -4205,6 +5407,206 @@ Next object_timerStateTick(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── beastsp_updateMotion ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_beastsp_updateMotion;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_beastsp_updateMotion call_PlaySoundEffect_beastsp_updateMotion(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_beastsp_updateMotion){ R2, R4, R5, R6, R7, R10 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_beastsp_updateMotion(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_beastsp_updateMotion;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_beastsp_updateMotion call_sprite_loadAnimationData_beastsp_updateMotion(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_beastsp_updateMotion){ R2, R4, R5 };
+}
+
+typedef struct { u32 r0, r1, r3; bool z, n, c, v; } call_sprite_noShadow_result_beastsp_updateMotion;
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline call_sprite_noShadow_result_beastsp_updateMotion call_sprite_noShadow_beastsp_updateMotion(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+    return (call_sprite_noShadow_result_beastsp_updateMotion){ R0, R1, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Beast sprite motion update: advances the animation timer, switches animation at tick 12,
+ * resets the timer at tick 30. Returns updated sprite pointer and r10. */
+
+#define BEASTSP_ANIM_SWITCH_TICK   12
+#define BEASTSP_TIMER_RESET_TICK   30
+#define BEASTSP_NEW_ANIM_INDEX     2
+#define BEASTSP_NEW_STATE_BYTE     8
+#define BEASTSP_SOUND_EFFECT_ID    0x135  /* 0x36 + 0xff */
+
+typedef struct {
+    u32 sprite;
+    u32 r10;
+} beastsp_updateMotion_result;
+
+static beastsp_updateMotion_result beastsp_updateMotion_body(u32 r2, u32 sprite, u32 r10) {
+    /* Accumulate time delta into position, subtract duration from time offset */
+    ST32(sprite + 0x14, LD32(sprite + 0x14) + LD32(sprite + 0x28));
+    ST32(sprite + 0x28, LD32(sprite + 0x28) - LD32(sprite + 0x2C));
+
+    /* Advance the 16-bit tick counter */
+    u32 tick = LD16(sprite + 0x24) + 1;
+    ST16(sprite + 0x24, tick);
+
+    if (tick == BEASTSP_ANIM_SWITCH_TICK) {
+        /* Transition animation: optionally play sound, then reload sprite animation */
+        if (LD8(sprite + 4) == 0) {
+            call_PlaySoundEffect_result_beastsp_updateMotion snd = call_PlaySoundEffect_beastsp_updateMotion(BEASTSP_SOUND_EFFECT_ID, r2);
+            sprite = snd.r5;
+            r10 = snd.r10;
+        }
+        call_sprite_setAnimation_beastsp_updateMotion(BEASTSP_NEW_ANIM_INDEX, sprite);
+        call_sprite_loadAnimationData_result_beastsp_updateMotion anim = call_sprite_loadAnimationData_beastsp_updateMotion(sprite);
+        sprite = anim.r5;
+        call_sprite_noShadow_beastsp_updateMotion(sprite);
+    } else if (tick >= BEASTSP_TIMER_RESET_TICK) {
+        /* Reset timer and set transition state */
+        ST16(sprite + 0x24, 0);
+        ST8(sprite + 9, BEASTSP_NEW_STATE_BYTE);
+    }
+
+    beastsp_updateMotion_result res = { sprite, r10 };
+    return res;
+}
+
+/* beastsp_updateMotion(r5 = sprite, r2 = sound param) -> r5, r10 */
+Next beastsp_updateMotion(void) {
+    beastsp_updateMotion_result res = beastsp_updateMotion_body(R2, R5, R10);
+    R5 = res.sprite;
+    R10 = res.r10;
+    RETURN_TO_CALLER();
+}
+
+/* ── e_decelRiseUpdate ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2; } call_sprite_setFlip_result_e_decelRiseUpdate;
+/* register form: generated wrapper: sprite_setFlip has no typed C interface yet */
+static inline call_sprite_setFlip_result_e_decelRiseUpdate call_sprite_setFlip_e_decelRiseUpdate(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setFlip);
+    return (call_sprite_setFlip_result_e_decelRiseUpdate){ R2 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_e_decelRiseUpdate(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_e_decelRiseUpdate;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_e_decelRiseUpdate call_sprite_loadAnimationData_e_decelRiseUpdate(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_e_decelRiseUpdate){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_e_decelRiseUpdate(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+typedef struct { u32 r5; } call_sub_809C940_result;
+/* register form: generated wrapper: cutscene_clearEntryEventFlags_809C940 has no typed C interface yet */
+static inline call_sub_809C940_result call_sub_809C940(void) {
+    GUEST_CALL(cutscene_clearEntryEventFlags_809C940);
+    return (call_sub_809C940_result){ R5 };
+}
+
+typedef struct { u32 r1, r2, r3, r5, r10; bool c, v; } call_PlaySoundEffect_result_e_decelRiseUpdate;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_e_decelRiseUpdate call_PlaySoundEffect_e_decelRiseUpdate(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_e_decelRiseUpdate){ R1, R2, R3, R5, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Offsets into the decelerating-rise object (r5) */
+#define oRise_PosX    0x0c
+#define oRise_PosY    0x10
+#define oRise_PosZ    0x14
+#define oRise_SndFlag 0x04   /* 0 = play landing sound */
+#define oRise_FlipDir 0x05   /* sprite flip byte */
+#define oRise_State   0x09   /* behaviour state */
+#define oRise_Timer   0x24   /* u16 frame counter */
+#define oRise_VelZ    0x28   /* current vertical velocity */
+#define oRise_Decel   0x2c   /* per-frame velocity reduction */
+#define oRise_BackupX 0x30
+#define oRise_BackupY 0x34
+#define oRise_BackupZ 0x38
+
+#define RISE_TIMER_MAX  0x1e
+#define RISE_LAND_ANIM  5
+#define RISE_STATE_LAND 0x10
+#define RISE_SND_ID     (0xAE + 0xFF)
+
+/* Advance position and decelerate every frame. When the 30-frame timer expires,
+ * switch to the landing animation (flip + anim 5 + reload), remove the shadow,
+ * recompute the sprite base via cutscene_clearEntryEventFlags_809C940, teleport to backup coordinates,
+ * optionally play the landing sound, and mark state as landed. */
+static void decel_rise_update(u32 obj) {
+    /* pos_z += vel_z */
+    ST32(obj + oRise_PosZ, LD32(obj + oRise_PosZ) + LD32(obj + oRise_VelZ));
+    /* vel_z -= decel */
+    ST32(obj + oRise_VelZ, LD32(obj + oRise_VelZ) - LD32(obj + oRise_Decel));
+
+    /* Increment timer (u16 storage, u32 comparison) */
+    u32 timer = (u32)(LD16(obj + oRise_Timer) + 1);
+    ST16(obj + oRise_Timer, (u16)timer);
+    if ((s32)timer <= RISE_TIMER_MAX)
+        return;
+
+    /* Timer expired – begin landing sequence */
+    ST16(obj + oRise_Timer, 0);
+
+    u32 flip = LD8(obj + oRise_FlipDir);
+    call_sprite_setFlip_e_decelRiseUpdate(flip, obj);
+    call_sprite_setAnimation_e_decelRiseUpdate(RISE_LAND_ANIM, obj);
+    obj = call_sprite_loadAnimationData_e_decelRiseUpdate(obj).r5;
+
+    call_sprite_noShadow_e_decelRiseUpdate(obj);
+    obj = call_sub_809C940().r5;
+
+    /* Teleport to backup coordinates */
+    ST32(obj + oRise_PosX, LD32(obj + oRise_BackupX));
+    ST32(obj + oRise_PosY, LD32(obj + oRise_BackupY));
+    ST32(obj + oRise_PosZ, LD32(obj + oRise_BackupZ));
+
+    /* Play landing sound when trigger flag is clear */
+    if (LD8(obj + oRise_SndFlag) == 0) {
+        obj = call_PlaySoundEffect_e_decelRiseUpdate(RISE_SND_ID, LD32(obj + oRise_BackupY)).r5;
+    }
+
+    /* Mark state as landed */
+    ST8(obj + oRise_State, RISE_STATE_LAND);
+}
+
+/* e_decelRiseUpdate(r5 = object pointer, r10 = state) -> r5, r10 */
+Next e_decelRiseUpdate(void) {
+    decel_rise_update(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── cutscene_setStateActive_80A9EB6 ── */
 /* Marks the cutscene state as active: writes 1 to the byte at
  * eCutsceneState+8 (byte_2011C58). Touches nothing else. */
@@ -4216,6 +5618,151 @@ static void mark_cutscene_state_active(void) {
  * r4-r7 and r5 (listed as an output) are preserved untouched. */
 Next cutscene_setStateActive_80A9EB6(void) {
     mark_cutscene_state_active();
+    RETURN_TO_CALLER();
+}
+
+/* ── ow_logoutDispatchState ── */
+/* Dispatch a logout sub-state by the byte at [object+8] into a 3-entry
+ * jump table at off_80A9EE0:
+ *   0 → ow_startLogoutEffect
+ *   4 → sprite_frameTickMarkState8_80A9F30
+ *   8 → ow_releaseMapObject
+ * The original guards r4–r7 with push/pop around the indirect call. */
+
+#define LOGOUT_STATE_OFFSET  8   /* byte offset of state index inside the object (r5) */
+#define LOGOUT_TABLE         A_off_80A9EE0
+
+static void logout_dispatch(u32 object_ptr) {
+    u32 state_index = LD8(object_ptr + LOGOUT_STATE_OFFSET);
+    u32 target_addr = LD32(LOGOUT_TABLE + state_index);
+
+    /* register form: preserve r4-r7 across the indirect jump-table call,
+       matching the original's push/pop {r4-r7,lr} guard */
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+    GUEST_CALL_ADDR(target_addr);
+    R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
+}
+
+Next ow_logoutDispatchState(void) {
+    logout_dispatch(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── ow_startLogoutEffect ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r5; } call_ow_applyCutsceneDirOffset_result_ow_startLogoutEffect;
+/* register form: generated wrapper: ow_applyCutsceneDirOffset has no typed C interface yet */
+static inline call_ow_applyCutsceneDirOffset_result_ow_startLogoutEffect call_ow_applyCutsceneDirOffset_ow_startLogoutEffect(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(ow_applyCutsceneDirOffset);
+    return (call_ow_applyCutsceneDirOffset_result_ow_startLogoutEffect){ R1, R2, R3, R5 };
+}
+
+typedef struct { u32 r4, r5; } call_sprite_load_result_ow_startLogoutEffect;
+/* register form: generated wrapper: sprite_load has no typed C interface yet */
+static inline call_sprite_load_result_ow_startLogoutEffect call_sprite_load_ow_startLogoutEffect(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sprite_load);
+    return (call_sprite_load_result_ow_startLogoutEffect){ R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
+static inline void call_sprite_setAnimation_ow_startLogoutEffect(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setAnimation);
+}
+
+typedef struct { u32 r2, r4, r5; } call_sprite_loadAnimationData_result_ow_startLogoutEffect;
+/* register form: generated wrapper: sprite_loadAnimationData has no typed C interface yet */
+static inline call_sprite_loadAnimationData_result_ow_startLogoutEffect call_sprite_loadAnimationData_ow_startLogoutEffect(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_loadAnimationData);
+    return (call_sprite_loadAnimationData_result_ow_startLogoutEffect){ R2, R4, R5 };
+}
+
+/* register form: generated wrapper: sprite_noShadow has no typed C interface yet */
+static inline void call_sprite_noShadow_ow_startLogoutEffect(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_noShadow);
+}
+
+typedef struct { u32 r0, r4, r5, r6, r7, r8, r9, r10, r11, r12; } call_applyLayerEffectToOWObject_8035694_result_ow_startLogoutEffect;
+/* register form: generated wrapper: applyLayerEffectToOWObject_8035694 has no typed C interface yet */
+static inline call_applyLayerEffectToOWObject_8035694_result_ow_startLogoutEffect call_applyLayerEffectToOWObject_8035694_ow_startLogoutEffect(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(applyLayerEffectToOWObject_8035694);
+    return (call_applyLayerEffectToOWObject_8035694_result_ow_startLogoutEffect){ R0, R4, R5, R6, R7, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r1, r2, r3; } call_sprite_setPriority_8002E14_result_ow_startLogoutEffect;
+/* register form: generated wrapper: sprite_setPriority_8002E14 has no typed C interface yet */
+static inline call_sprite_setPriority_8002E14_result_ow_startLogoutEffect call_sprite_setPriority_8002E14_ow_startLogoutEffect(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setPriority_8002E14);
+    return (call_sprite_setPriority_8002E14_result_ow_startLogoutEffect){ R1, R2, R3 };
+}
+
+typedef struct { u32 r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_ow_startLogoutEffect;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_ow_startLogoutEffect call_PlaySoundEffect_ow_startLogoutEffect(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_ow_startLogoutEffect){ R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r2, r3, r8; } call_sub_80A9F30_result;
+/* register form: generated wrapper: sprite_frameTickMarkState8_80A9F30 has no typed C interface yet */
+static inline call_sub_80A9F30_result call_sub_80A9F30(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sprite_frameTickMarkState8_80A9F30);
+    return (call_sub_80A9F30_result){ R2, R3, R8 };
+}
+
+/* Start the internet "log out" overworld effect: positions the logout
+ * sprite, loads its visuals, plays the sound, advances the state machine. */
+static void ow_startLogoutEffect_impl(u32 r5, u32 r10) {
+    /* state = LOGOUT_START (3) */
+    ST8(r5, 3);
+
+    /* Compute the screen-anchored position via the cutscene direction offset */
+    call_ow_applyCutsceneDirOffset_result_ow_startLogoutEffect dir = call_ow_applyCutsceneDirOffset_ow_startLogoutEffect(r5);
+    ST32(r5 + 0xC, dir.r1);
+    ST32(r5 + 0x10, dir.r2);
+    ST32(r5 + 0x14, dir.r3);
+
+    /* Instantiate the logout sprite (0x80 / 0x1C on layer 0) */
+    call_sprite_load_ow_startLogoutEffect(0x80, 0x1C, 0, r5);
+    call_sprite_setAnimation_ow_startLogoutEffect(0, r5);
+    call_sprite_loadAnimationData_ow_startLogoutEffect(r5);
+    call_sprite_noShadow_ow_startLogoutEffect(r5);
+
+    /* Map the sprite onto the overworld depth layer */
+    call_applyLayerEffectToOWObject_8035694_result_ow_startLogoutEffect layer =
+        call_applyLayerEffectToOWObject_8035694_ow_startLogoutEffect(r5 + 0xC);
+
+    /* Set rendering priority based on the mapped position */
+    call_sprite_setPriority_8002E14_result_ow_startLogoutEffect prio =
+        call_sprite_setPriority_8002E14_ow_startLogoutEffect(layer.r0, r5);
+
+    /* Play the "log out" sound (SFX 0x76) */
+    call_PlaySoundEffect_ow_startLogoutEffect(SOUND_LOG_OUT_76, prio.r2);
+
+    /* state = LOGOUT_DONE (4) */
+    ST8(r5 + 8, 4);
+
+    /* Advance the state machine */
+    call_sub_80A9F30(r5);
+}
+
+/* ow_startLogoutEffect(r5 = OW object, r10 = battle-state ptr) */
+Next ow_startLogoutEffect(void) {
+    ow_startLogoutEffect_impl(R5, R10);
     RETURN_TO_CALLER();
 }
 

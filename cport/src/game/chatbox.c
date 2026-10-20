@@ -3406,6 +3406,74 @@ Next chatbox_placeCenteredTextRun_804293C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── chatbox_centerTextX ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; bool z, n; } call_chatbox_maskFlags_3e_result_chatbox_centerTextX;
+/* register form: generated wrapper: chatbox_maskFlags_3e has no typed C interface yet */
+static inline call_chatbox_maskFlags_3e_result_chatbox_centerTextX call_chatbox_maskFlags_3e_chatbox_centerTextX(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(chatbox_maskFlags_3e);
+    return (call_chatbox_maskFlags_3e_result_chatbox_centerTextX){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+struct chatbox_center_text_result {
+    u32 r0, r2, r3, r4;
+};
+
+/* Center the next text-script character's horizontal offset within the chatbox.
+ * Selects body-width (0xF0) or reduced-width (0xB0) based on mask flag, subtracts
+ * the cell offset for the active line, halves, optionally shifts by char index,
+ * then writes the x-position byte and advances the script record pointer. */
+static struct chatbox_center_text_result chatbox_center_text_x(u32 text_script_ptr,
+                                                               u32 chatbox_ptr) {
+    const u32 body_width = 0xF0;
+    const u32 reduced_width = 0xB0;
+
+    /* Each text-script entry occupies an 11-byte slot; offset 8 is the first char cell */
+    u32 line_index = LD8(text_script_ptr + 2);
+    u32 cell_offset = 11 * line_index + 8;
+
+    /* First mask check: Z set → full body width; Z clear → reduced width */
+    call_chatbox_maskFlags_3e_result_chatbox_centerTextX mask1 = call_chatbox_maskFlags_3e_chatbox_centerTextX(2, chatbox_ptr);
+    u32 base = mask1.z ? body_width : reduced_width;
+
+    /* Half the remaining horizontal space after the cell offset */
+    u32 offset = (base - cell_offset) >> 1;
+
+    /* Second mask check: Z set → shift left by the active character index */
+    call_chatbox_maskFlags_3e_result_chatbox_centerTextX mask2 = call_chatbox_maskFlags_3e_chatbox_centerTextX(2, chatbox_ptr);
+    u32 text_char_idx = LD8(chatbox_ptr + oChatbox_TextScriptCharIdx);
+    if (mask2.z)
+        offset = offset - text_char_idx;
+
+    /* Store centered x-position (offset + char index) as a byte at chatbox+0x94 */
+    u32 r3 = offset + text_char_idx;
+    ST8(chatbox_ptr + 0x94, (u8)r3);
+
+    /* Advance the per-line record pointer at chatbox+0x7C by 4 × offset */
+    u32 r2 = offset << 2;
+    u32 record_ptr = LD32(chatbox_ptr + oChatbox_Unk_7C);
+    ST32(chatbox_ptr + oChatbox_Unk_7C, record_ptr + r2);
+
+    struct chatbox_center_text_result res;
+    res.r0 = 1;
+    res.r2 = r2;
+    res.r3 = r3;
+    res.r4 = text_script_ptr + 3;
+    return res;
+}
+
+/* chatbox_centerTextX: r4=r5=inputs → r0=1, r2=byte-step, r3=x-offset byte, r4=next entry */
+Next chatbox_centerTextX(void) {
+    struct chatbox_center_text_result res = chatbox_center_text_x(R4, R5);
+    R0 = res.r0;
+    R2 = res.r2;
+    R3 = res.r3;
+    R4 = res.r4;
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_80429D8 ── */
 /* sub_80429D8(r4 = ?, r5 = chatbox struct):
  *   Internal chatbox helper. Computes a half-width offset (r2/r8), writes

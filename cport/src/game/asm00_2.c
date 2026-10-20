@@ -1494,6 +1494,118 @@ Next battle_aiAddTotalDamageTaken_8010548(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_lowHPTileTrigger_8010660 ── */
+#define EFFECT_BIT  8u
+#define LOW_HP_BIT  4u
+#define NAVI_ALLIANCE 0xDu
+#define PANEL_ACTION_CODE 0x17Bu
+
+/* register form: calls GetBattleEffects outside this file, which has no typed C interface yet */
+static u32 call_get_battle_effects(u32 *flags_out) {
+    GUEST_CALL(GetBattleEffects);
+    *flags_out = CARRY_FLAG() | (OVERFLOW_FLAG() << 1);
+    return R0;
+}
+
+/* register form: calls GetBattleNaviStatsByte_AllianceFromBattleObject outside this file */
+static u32 call_get_navi_stats_byte(u32 alliance) {
+    R1 = alliance;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return R0;
+}
+
+/* register form: calls SetBattleNaviStatsByte_AllianceFromBattleObject outside this file */
+static void call_set_navi_stats_byte(u32 alliance, u32 value) {
+    R1 = alliance; R2 = value;
+    GUEST_CALL(SetBattleNaviStatsByte_AllianceFromBattleObject);
+}
+
+/* register form: calls sub_80E90FE outside this file (panel code 0x17B activation) */
+static u32 call_panel_action(u32 px, u32 py) {
+    R0 = px; R1 = py; R2 = 0; R3 = 0; R4 = 2; R6 = 0; R7 = PANEL_ACTION_CODE;
+    GUEST_CALL(sub_80E90FE);
+    return R0;
+}
+
+/* register form: calls battle_queueEffectRequest outside this file (alliance notification) */
+static void call_alliance_notify(u32 alliance, u32 r1v, u32 r2v, u32 *flags_out) {
+    R0 = alliance; R1 = r1v; R2 = r2v;
+    GUEST_CALL(battle_queueEffectRequest);
+    *flags_out = CARRY_FLAG() | (OVERFLOW_FLAG() << 1);
+}
+
+/* Build (a, b) so that CMP(a, b) reproduces the given carry/overflow pair. */
+static void encode_flags(u32 flags, u32 *a, u32 *b) {
+    if (flags & 1) { *a = 0;          *b = 0;          }
+    else           { *a = 0x80000000; *b = 1;          }
+    if (flags & 2) { *a = 0x80000000; *b = 0;          }
+}
+
+typedef struct {
+    u32 r0, r1, r2, cmp_a, cmp_b;
+} LowHPRet;
+
+/* Check battle-effect / navi-stats gates, clear the low-HP bit if conditions
+ * are met, trigger a panel action, and notify the alliance.
+ * r5 = battle-object pointer.  Returns the values the original leaves in r0-r3. */
+static LowHPRet check_and_act_low_hp(u32 obj) {
+    LowHPRet ret;
+    u32 flags;
+
+    /* Gate 1: effect bit 3 (8) must be set in the battle-effects word. */
+    u32 effects = call_get_battle_effects(&flags);
+    if (!(effects & EFFECT_BIT)) {
+        ret.r0 = 0; ret.r1 = EFFECT_BIT; ret.r2 = 0;
+        encode_flags(flags, &ret.cmp_a, &ret.cmp_b);
+        return ret;
+    }
+
+    /* Gate 2: navi-stats byte must exist (not 0xFF) and carry the low-HP bit. */
+    u32 stats = call_get_navi_stats_byte(NAVI_ALLIANCE);
+    if (stats == 0xFF) {
+        ret.r0 = 0; ret.r1 = 0; ret.r2 = 0;
+        encode_flags(flags, &ret.cmp_a, &ret.cmp_b);   /* C=1, V=0 */
+        return ret;
+    }
+    ret.r2 = LOW_HP_BIT;
+    if (!(stats & LOW_HP_BIT)) {
+        ret.r0 = 0; ret.r1 = 0;
+        encode_flags(flags, &ret.cmp_a, &ret.cmp_b);
+        return ret;
+    }
+
+    /* Gate 3: current HP must be <= 25 % of max HP. */
+    u32 threshold = (u32)LD16(obj + oBattleObject_MaxHP) >> 2;
+    u32 hp        = LD16(obj + oBattleObject_HP);
+    if (threshold < hp) {
+        ret.r0 = 0; ret.r1 = hp;
+        ret.cmp_a = threshold; ret.cmp_b = hp;
+        return ret;
+    }
+
+    /* Clear the low-HP bit in the navi-stats byte. */
+    call_set_navi_stats_byte(NAVI_ALLIANCE, stats & ~LOW_HP_BIT);
+
+    /* Activate the panel action at this object's tile. */
+    u32 action = call_panel_action(LD8(obj + oBattleObject_PanelX),
+                                   LD8(obj + oBattleObject_PanelY));
+
+    /* Notify the object's alliance that the action fired. */
+    call_alliance_notify(LD8(obj + oBattleObject_Alliance), 1, action, &flags);
+
+    ret.r0 = 1; ret.r1 = 0;
+    encode_flags(flags, &ret.cmp_a, &ret.cmp_b);
+    return ret;
+}
+
+/* battle_lowHPTileTrigger_8010660(r5 = battle-object ptr) -> r0 (1 = acted / 0 = not), r1, r2, flags c,v */
+Next battle_lowHPTileTrigger_8010660(void) {
+    LowHPRet ret = check_and_act_low_hp(R5);
+    R0 = ret.r0; R1 = ret.r1; R2 = ret.r2;
+    SET_FLAGS_CMP(ret.cmp_a, ret.cmp_b);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_IsNoCustomPlusActive_80107C0 ── */
 /* battle_IsNoCustomPlusActive_80107C0: check the battle effects for the "no Custom+" style flag
  * (GetBattleEffects bit 3). Returns 3 if that effect is active, 0 otherwise. */

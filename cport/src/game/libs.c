@@ -2744,6 +2744,120 @@ Next object_setSmashFactor(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_smashApplyState ── */
+/* Sentinel stamp at state+0x34 guarding the smash/apply critical section. */
+#define SMASH_SENTINEL       0x68736d53u
+#define ENTRY_STRIDE         0x50
+#define ACTIVE_FLAG_MASK     0x80u
+#define FORCE_TAG_BITS       0x03u
+
+/* Output values for the typed function (registers r1, r2, r12). */
+typedef struct {
+    u32 r1;
+    u32 r2;
+    u32 r12;
+} SmashApplyResult;
+
+/*
+ * Apply the smash-SFX tag to battle-object entries.
+ *
+ * Layout of the state struct (r0):
+ *   +0x34  sentinel guard  (skip entirely if not SMASH_SENTINEL)
+ *   +0x08  entry count     (u8, zero-extended)
+ *   +0x2C  base pointer    (array of 0x50-byte entries)
+ *
+ * For each entry i in [0, count):
+ *   if bit i of (mask & 0xFFFF) is set AND bit 7 of entry[i].flags(+0) is set:
+ *     entry[i].smashTag(+0x13) = (tag << 16) >> 18   (i.e. tag >> 2, low byte)
+ *     entry[i].flags = flags | 0x03
+ *
+ * Register outcomes at the original's single epilogue (pop {r3,r4} … pop {r4-r7} …):
+ *   r1 = advanced entry pointer (base+count*0x50)  |  mask<<16 (guard fail)
+ *   r2 = 0 (decremented by loop)                   |  tag (guard fail)
+ *   r3 = caller's saved r8  (loaded by pop {r3,r4} restoring the frame)
+ *   r5-r7 = caller values (restored by pop {r4-r7})
+ *   r8, r9 = caller values (restored by mov r8,r3 / mov r9,r4)
+ *   r12 = 3 if loop ran, else unchanged
+ *   r0  = caller lr  (from final pop {r0}; bx r0)
+ */
+static SmashApplyResult smash_apply(u32 state_ptr, u32 mask, u32 tag, u32 r12_in) {
+    u32 guard = LD32(state_ptr + 0x34);
+
+    /* Guard mismatch → nothing to do, only the pre-guard shifts are visible. */
+    if (guard != SMASH_SENTINEL) {
+        SmashApplyResult res;
+        res.r1  = mask << 16;
+        res.r2  = tag;
+        res.r12 = r12_in;
+        return res;
+    }
+
+    /* Mark the critical section as in-use. */
+    ST32(state_ptr + 0x34, guard + 1);
+
+    u32 entry_base = LD32(state_ptr + 0x2C);
+    u32 count      = LD8(state_ptr + 0x08);
+
+    /* Zero count: reset sentinel, skip loop. */
+    if (count == 0) {
+        ST32(state_ptr + 0x34, SMASH_SENTINEL);
+        SmashApplyResult res;
+        res.r1  = entry_base;
+        res.r2  = 0;
+        res.r12 = r12_in;
+        return res;
+    }
+
+    /* Loop invariants mirroring the original's shift sequence. */
+    u32 mask16  = mask & 0xFFFF;        /* lsl r1,#16 → lsr r7,#16 */
+    u32 tag_val = (tag << 16) >> 18;    /* lsl r6,#16 → lsr r6,#18 */
+
+    u32 bit   = 1;
+    u32 entry = entry_base;
+
+    for (u32 remaining = count; remaining > 0; remaining--) {
+        if (mask16 & bit) {
+            u8 flags = LD8(entry);
+            if (flags & ACTIVE_FLAG_MASK) {
+                ST8(entry + 0x13, tag_val);
+                ST8(entry, (flags | FORCE_TAG_BITS) & 0xFF);
+            }
+        }
+        entry += ENTRY_STRIDE;
+        bit   <<= 1;
+    }
+
+    /* Reset sentinel after the stamping pass. */
+    ST32(state_ptr + 0x34, SMASH_SENTINEL);
+
+    SmashApplyResult res;
+    res.r1  = entry;
+    res.r2  = 0;
+    res.r12 = 3;
+    return res;
+}
+
+/*
+ * battle_smashApplyState  (0x0814F9AC)
+ *
+ * inputs:  r0 = state_ptr, r1 = mask, r2 = tag
+ * outputs: r1, r2, r3, r5-r9, r12
+ * clobbers: r0, flags
+ *
+ * r3 at return equals the caller's r8 because the original's epilogue
+ * (pop {r3,r4}; mov r8,r3) loads the saved-r8 stack slot into r3
+ * before moving it to r8.  r5-r9 are caller values restored by the
+ * two pop instructions and need no adapter assignment.
+ */
+Next battle_smashApplyState(void) {
+    SmashApplyResult res = smash_apply(R0, R1, R2, R12);
+    R1  = res.r1;
+    R2  = res.r2;
+    R3  = R8;
+    R12 = res.r12;
+    RETURN_TO_CALLER();
+}
+
 /* ── text_ReadNextChar_814FE34 ── */
 /* text_ReadNextChar_814FE34(r1 = text state):
  * Read the next character of a text script: load the byte at the current

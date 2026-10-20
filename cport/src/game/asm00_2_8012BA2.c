@@ -1766,6 +1766,209 @@ Next sub_801486C(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_runBeastOutIntro_801498E ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: GetBattleMode has no typed C interface yet */
+static inline u32 call_GetBattleMode(void) {
+    GUEST_CALL(GetBattleMode);
+    return R0;
+}
+
+typedef struct { u32 r2, r5; } call_SetScreenFade_result_battle_runBeastOutIntro_801498E;
+/* register form: generated wrapper: SetScreenFade has no typed C interface yet */
+static inline call_SetScreenFade_result_battle_runBeastOutIntro_801498E call_SetScreenFade_battle_runBeastOutIntro_801498E(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetScreenFade);
+    return (call_SetScreenFade_result_battle_runBeastOutIntro_801498E){ R2, R5 };
+}
+
+typedef struct { u32 r0, r1, r3; bool c, v; } call_IsScreenFadeActive_result_battle_runBeastOutIntro_801498E;
+/* register form: generated wrapper: IsScreenFadeActive has no typed C interface yet */
+static inline call_IsScreenFadeActive_result_battle_runBeastOutIntro_801498E call_IsScreenFadeActive_battle_runBeastOutIntro_801498E(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return (call_IsScreenFadeActive_result_battle_runBeastOutIntro_801498E){ R0, R1, R3, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r3; } call_battle_IsBattleEnding_800A97A_result;
+/* register form: generated wrapper: battle_IsBattleEnding_800A97A has no typed C interface yet */
+static inline call_battle_IsBattleEnding_800A97A_result call_battle_IsBattleEnding_800A97A(void) {
+    GUEST_CALL(battle_IsBattleEnding_800A97A);
+    return (call_battle_IsBattleEnding_800A97A_result){ R0, R1, R3 };
+}
+
+typedef struct { bool z, n; } call_TestBattleFlag_0x40_result;
+/* register form: generated wrapper: TestBattleFlag_0x40 has no typed C interface yet */
+static inline call_TestBattleFlag_0x40_result call_TestBattleFlag_0x40(void) {
+    GUEST_CALL(TestBattleFlag_0x40);
+    return (call_TestBattleFlag_0x40_result){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool c, v; } call_dispatch_801DA48_result;
+/* register form: generated wrapper: dispatch_801DA48 has no typed C interface yet */
+static inline call_dispatch_801DA48_result call_dispatch_801DA48(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(dispatch_801DA48);
+    return (call_dispatch_801DA48_result){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Beast-Out battle intro: kicks off a screen fade, then once the fade finishes,
+ * dispatches to the appropriate intro step and advances the battle-object state. */
+
+/* Screen-fade kind selected by battle mode. */
+#define FADE_KIND_MODE1   0x6C
+#define FADE_KIND_DEFAULT 0x40
+
+/* dispatch_801DA48 parameters for each intro variant. */
+#define DISPATCH_MODE1      0x40A0
+#define DISPATCH_NO_FLAG    0x4090
+#define DISPATCH_FLAG_SET   0x24080
+#define DISPATCH_ENDING     0x4080
+
+/* Field offsets in the battle-object (r5 pointer). */
+#define oBattleObject_state 0   /* u32, advanced to 8 when intro dispatches */
+#define oBattleObject_step  3   /* u8,  → 0 idle, 4 fade-in-progress */
+
+/* Run one tick of the beast-out battle-intro state machine. */
+static void run_battle_intro(u32 obj) {
+    /* First call (step == 0): start the screen fade and mark progress. */
+    if (LD8(obj + oBattleObject_step) == 0) {
+        u32 fade_kind = (call_GetBattleMode() == 1) ? FADE_KIND_MODE1 : FADE_KIND_DEFAULT;
+        call_SetScreenFade_battle_runBeastOutIntro_801498E(fade_kind, 0x10);
+        ST8(obj + oBattleObject_step, 4);
+    }
+
+    /* If the fade is still running, wait for next tick. */
+    if (call_IsScreenFadeActive_battle_runBeastOutIntro_801498E().r0 != 0)
+        return;
+
+    /* Fade finished – choose the dispatch parameter based on mode, flag, and ending. */
+    u32 ending_flag = call_battle_IsBattleEnding_800A97A().r0;
+    u32 param;
+
+    if (call_GetBattleMode() == 1) {
+        param = DISPATCH_MODE1;
+    } else if (call_TestBattleFlag_0x40().z) {
+        param = DISPATCH_NO_FLAG;
+    } else {
+        param = DISPATCH_FLAG_SET;
+    }
+
+    /* Battle ending overrides all other choices. */
+    if (ending_flag != 0)
+        param = DISPATCH_ENDING;
+
+    call_dispatch_801DA48(param);
+
+    /* Advance the battle-object state machine to phase 8. */
+    ST32(obj + oBattleObject_state, 8);
+}
+
+/* battle_runBeastOutIntro_801498E(r5 = battle object, r10 preserved)
+ * outputs: r2 r3 r4 r5 r8 r9 r10 r11 r12 (set by callees) */
+Next battle_runBeastOutIntro_801498E(void) {
+    run_battle_intro(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_runBeastTransformationAction_8014A38 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r3; } call_battle_ai_getActorInfo_801595E_result_battle_runBeastTransformationAction_8014A38;
+/* register form: generated wrapper: battle_ai_getActorInfo_801595E has no typed C interface yet */
+static inline call_battle_ai_getActorInfo_801595E_result_battle_runBeastTransformationAction_8014A38 call_battle_ai_getActorInfo_801595E_battle_runBeastTransformationAction_8014A38(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_ai_getActorInfo_801595E);
+    return (call_battle_ai_getActorInfo_801595E_result_battle_runBeastTransformationAction_8014A38){ R0, R3 };
+}
+
+typedef struct { u32 r0, r6; } call_GetBattleNaviStatsByte_AllianceFromBattleObject_result;
+/* register form: generated wrapper: GetBattleNaviStatsByte_AllianceFromBattleObject has no typed C interface yet */
+static inline call_GetBattleNaviStatsByte_AllianceFromBattleObject_result call_GetBattleNaviStatsByte_AllianceFromBattleObject(u32 r1, u32 r5) {
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(GetBattleNaviStatsByte_AllianceFromBattleObject);
+    return (call_GetBattleNaviStatsByte_AllianceFromBattleObject_result){ R0, R6 };
+}
+
+typedef struct { u32 r0, r3; } call_GetAIDataUnk0x48Flag_result;
+/* register form: generated wrapper: GetAIDataUnk0x48Flag has no typed C interface yet */
+static inline call_GetAIDataUnk0x48Flag_result call_GetAIDataUnk0x48Flag(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(GetAIDataUnk0x48Flag);
+    return (call_GetAIDataUnk0x48Flag_result){ R0, R3 };
+}
+
+typedef struct { u32 r1, r2, r3, r5; bool z, n, c, v; } call_battleObject_updateSpriteAnimIfChanged_801BCD0_result;
+/* register form: generated wrapper: battleObject_updateSpriteAnimIfChanged_801BCD0 has no typed C interface yet */
+static inline call_battleObject_updateSpriteAnimIfChanged_801BCD0_result call_battleObject_updateSpriteAnimIfChanged_801BCD0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battleObject_updateSpriteAnimIfChanged_801BCD0);
+    return (call_battleObject_updateSpriteAnimIfChanged_801BCD0_result){ R1, R2, R3, R5, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r3; bool z, n; } call_ClearAIDataUnk0x48Flag_result_battle_runBeastTransformationAction_8014A38;
+/* register form: generated wrapper: ClearAIDataUnk0x48Flag has no typed C interface yet */
+static inline call_ClearAIDataUnk0x48Flag_result_battle_runBeastTransformationAction_8014A38 call_ClearAIDataUnk0x48Flag_battle_runBeastTransformationAction_8014A38(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(ClearAIDataUnk0x48Flag);
+    return (call_ClearAIDataUnk0x48Flag_result_battle_runBeastTransformationAction_8014A38){ R1, R3, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* battle_runBeastTransformationAction_8014A38 */
+
+/* AI step handlers reached via a jump table have no generated wrappers;
+ * call them through their code address with GUEST_CALL_ADDR.
+ * register form: jump-table dispatch to per-alliance AI step routines */
+static void call_ai_table_handler(u32 target, u32 hit_elem, u32 battle_obj, u32 attack_vars) {
+    R0 = hit_elem;
+    R5 = battle_obj;
+    R7 = attack_vars;
+    GUEST_CALL_ADDR(target);
+}
+
+/* Dispatch the per-type AI step for a beast-transformation attack, then update the
+ * sprite animation unless the AI-data flag bit 0x80000 says to skip it.
+ * Out-of-range actor types clear flag 0x80 and return. */
+static void beast_transformation_ai_step(u32 battle_obj, u32 attack_vars) {
+    u32 alliance = LD8(battle_obj + oBattleObject_Alliance);
+    u32 actor_type = call_battle_ai_getActorInfo_801595E_battle_runBeastTransformationAction_8014A38(alliance).r0;
+
+    if ((s32)actor_type < 1 || (s32)actor_type > 0x18) {
+        call_ClearAIDataUnk0x48Flag_battle_runBeastTransformationAction_8014A38(0x80, battle_obj);
+        return;
+    }
+
+    /* Select the handler table based on actor type */
+    u32 table_base;
+    if (actor_type >= 0x17) {
+        table_base = A_off_8014AF0;
+    } else if (actor_type >= 0x0D) {
+        u32 stat_val = call_GetBattleNaviStatsByte_AllianceFromBattleObject(0x2C, alliance).r0;
+        table_base = ((s32)stat_val > 0x0A) ? A_off_8014B04 : A_off_8014ADC;
+    } else if (actor_type >= 0x0B) {
+        table_base = A_off_8014AC8;
+    } else {
+        table_base = A_off_8014AB4;
+    }
+
+    /* Index the table by hit element and call the selected handler */
+    u32 hit_elem = LD8(attack_vars + oAIAttackVars_HitElement);
+    u32 target = LD32(table_base + hit_elem);
+    call_ai_table_handler(target, hit_elem, battle_obj, attack_vars);
+
+    /* After the step returns, refresh sprite animation if not suppressed */
+    u32 ai_flag = call_GetAIDataUnk0x48Flag(battle_obj).r0;
+    if (!(ai_flag & 0x80000))
+        call_battleObject_updateSpriteAnimIfChanged_801BCD0(battle_obj);
+}
+
+/* r5 = battle object, r7 = AI attack vars -> r5 r8 r9 r10 r11 r12 (via callees) */
+Next battle_runBeastTransformationAction_8014A38(void) {
+    beast_transformation_ai_step(R5, R7);
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_aiAttackFireStep_8014D70 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r3; } call_SetAIDataUnk0x48Flag_result;

@@ -407,6 +407,125 @@ Next ExitReqBBSMenu813F590(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── reqBBS_813F754 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; bool z, n, v; } call_IsScreenFadeActive_result_reqBBS_813F754;
+/* register form: generated wrapper: IsScreenFadeActive has no typed C interface yet */
+static inline call_IsScreenFadeActive_result_reqBBS_813F754 call_IsScreenFadeActive_reqBBS_813F754(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return (call_IsScreenFadeActive_result_reqBBS_813F754){ R3, ZERO_FLAG(), NEGATIVE_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool c, v; } call_reqBBS_813F8F0_result_reqBBS_813F754;
+/* register form: generated wrapper: reqBBS_813F8F0 has no typed C interface yet */
+static inline call_reqBBS_813F8F0_result_reqBBS_813F754 call_reqBBS_813F8F0_reqBBS_813F754(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(reqBBS_813F8F0);
+    return (call_reqBBS_813F8F0_result_reqBBS_813F754){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Configure the BBS fade/transition parameters stored in the toolkit block
+ * pointed to by offset oToolkit_Unk200f3a0_Ptr. */
+static void init_fade_block(u32 toolkit) {
+    u32 fade_block = LD32(toolkit + oToolkit_Unk200f3a0_Ptr);
+    ST8(fade_block + 9,  0x1A);
+    ST8(fade_block + 10, 0x36);
+    ST8(fade_block + 3,  0);
+    ST8(fade_block + 2,  0xFF);
+    ST8(fade_block + 7,  0x50);
+    ST8(fade_block + 6,  0x50);
+}
+
+struct bbs_req_out { u32 r10, r11; };
+
+/* Drive the BBS screen transition: set up fade parameters, force an extra
+ * fast-forward command through the 0x9740 control block when no screen fade
+ * is already running, then dispatch the actual request. */
+static struct bbs_req_out reqBBS_813F754_impl(u32 r5, u32 r10) {
+    init_fade_block(r10);
+
+    if (!call_IsScreenFadeActive_reqBBS_813F754().z) {
+        /* No fade active – send the fast-forward byte, clear timers,
+         * stamp the caller's request buffer, and re-init the fade block. */
+        u32 ctrl = LD32(r10 + oToolkit_Unk2009740_Ptr);
+        ST8(ctrl,     0xF7);
+        ST8(ctrl + 4, 0);
+        ST8(ctrl + 6, 0);
+        ST8(r5,       0x0C);
+        init_fade_block(r10);
+    }
+
+    call_reqBBS_813F8F0_result_reqBBS_813F754 res = call_reqBBS_813F8F0_reqBBS_813F754(r5);
+    return (struct bbs_req_out){ r10, res.r11 };
+}
+
+/* reqBBS_813F754(r5 = caller buffer, r10 = toolkit) -> r10 r11 */
+Next reqBBS_813F754(void) {
+    struct bbs_req_out out = reqBBS_813F754_impl(R5, R10);
+    R10 = out.r10;
+    R11 = out.r11;
+    RETURN_TO_CALLER();
+}
+
+/* ── reqBBS_813F7B0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r3; bool z, n, v; } call_IsScreenFadeActive_result_reqBBS_813F7B0;
+/* register form: generated wrapper: IsScreenFadeActive has no typed C interface yet */
+static inline call_IsScreenFadeActive_result_reqBBS_813F7B0 call_IsScreenFadeActive_reqBBS_813F7B0(void) {
+    GUEST_CALL(IsScreenFadeActive);
+    return (call_IsScreenFadeActive_result_reqBBS_813F7B0){ R3, ZERO_FLAG(), NEGATIVE_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12; bool c, v; } call_reqBBS_813F8F0_result_reqBBS_813F7B0;
+/* register form: generated wrapper: reqBBS_813F8F0 has no typed C interface yet */
+static inline call_reqBBS_813F8F0_result_reqBBS_813F7B0 call_reqBBS_813F8F0_reqBBS_813F7B0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(reqBBS_813F8F0);
+    return (call_reqBBS_813F8F0_result_reqBBS_813F7B0){ R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Write the fixed byte sequence into the f3a0 toolkit buffer. */
+static void set_f3a0_bytes(u32 buf) {
+    ST8(buf + 9,   0x1A);
+    ST8(buf + 0xA, 0x36);
+    ST8(buf + 3,   0);
+    ST8(buf + 2,   0xFF);
+    ST8(buf + 7,   0x50);
+    ST8(buf + 6,   0x50);
+}
+
+/* Prepare the BBS request: configure the f3a0 buffer, check whether a screen fade
+ * is active, optionally write the pending-request marker (0xF7, 0x1C), then
+ * dispatch through reqBBS_813F8F0. */
+static void bbs_request_setup(u32 toolkit, u32 slot) {
+    u32 f3a0 = LD32(toolkit + oToolkit_Unk200f3a0_Ptr);
+    set_f3a0_bytes(f3a0);
+
+    /* IsScreenFadeActive: Z set → fade active, skip the pending mark. */
+    call_IsScreenFadeActive_result_reqBBS_813F7B0 fade = call_IsScreenFadeActive_reqBBS_813F7B0();
+    if (!fade.z) {
+        u32 bbs = LD32(toolkit + oToolkit_Unk2009740_Ptr);
+        ST8(bbs,     0xF7);
+        ST8(bbs + 4, 0);
+        ST8(bbs + 6, 0);
+        ST8(slot,    0x1C);
+
+        /* Re-initialise the f3a0 buffer after marking the request. */
+        f3a0 = LD32(toolkit + oToolkit_Unk200f3a0_Ptr);
+        set_f3a0_bytes(f3a0);
+    }
+
+    call_reqBBS_813F8F0_reqBBS_813F7B0(slot);
+}
+
+/* reqBBS_813F7B0(r5 = slot pointer, r10 = toolkit) -> r0=0, nz; r10/r11 from callee */
+Next reqBBS_813F7B0(void) {
+    bbs_request_setup(R10, R5);
+    R0 = 0;
+    SET_FLAGS_NZ(R0);
+    RETURN_TO_CALLER();
+}
+
 /* ── reqBBS_initMemory_813F9DA ── */
 /* reqBBS_initMemory_813F9DA:
  * Reset the BBS (bulletin board) request state:
@@ -504,6 +623,172 @@ Next reqBBS_813FDA8(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── reqBBS_anim_814004C ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { bool z, n; } call_TestEventFlag_result_reqBBS_anim_814004C;
+/* register form: generated wrapper: TestEventFlag has no typed C interface yet */
+static inline call_TestEventFlag_result_reqBBS_anim_814004C call_TestEventFlag_reqBBS_anim_814004C(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(TestEventFlag);
+    return (call_TestEventFlag_result_reqBBS_anim_814004C){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* register form: generated wrapper: CopyBackgroundTiles has no typed C interface yet */
+static inline void call_CopyBackgroundTiles_reqBBS_anim_814004C(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles);
+}
+
+/* register form: generated wrapper: call_sub_3005EBA has no typed C interface yet */
+static inline void call_call_sub_3005EBA_reqBBS_anim_814004C(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(call_sub_3005EBA);
+}
+
+/* For each of 8 BBS request entries on the current sub-screen, check its
+ * event flag: if set, draw the entry's 2x2 tile block; if clear, blank it.
+ * Then redraw the bottom border row. The BBS state object (r5) is returned
+ * unchanged; all other registers are restored by the adapter. */
+static u32 draw_bbs_request_tiles(u32 bbs_state, u32 toolkit) {
+    u32 entry_base = LD16(bbs_state + 0x24);
+    u32 frame = LD16(LD32(toolkit + oToolkit_CurFramePtr));
+    u32 palette_off = (frame & 0x1F) << 2;
+    u32 tile_ids = LD32(A_pt_81400C8 + palette_off);
+
+    for (u32 i = 0; i < 8; i++) {
+        u32 flag_base = LD32(LD32(bbs_state + 0x28) + 0xC);
+        u32 event_flag = LD8(A_reqBBS_eRequestEntriesIDs + entry_base + i) + flag_base;
+
+        if (!call_TestEventFlag_reqBBS_anim_814004C(event_flag).z)
+            call_CopyBackgroundTiles_reqBBS_anim_814004C(2, 2 * i + 3, 2, tile_ids, 2, 2);
+        else
+            call_call_sub_3005EBA_reqBBS_anim_814004C(2, 2 * i + 3, 2, 0, 2, 2);
+    }
+
+    /* Bottom border row */
+    call_CopyBackgroundTiles_reqBBS_anim_814004C(0x15, 0, 2, tile_ids, 2, 2);
+
+    return bbs_state;
+}
+
+Next reqBBS_anim_814004C(void) {
+    u32 s0 = R0, s1 = R1, s2 = R2, s3 = R3, s4 = R4, s6 = R6, s7 = R7;
+    R5 = draw_bbs_request_tiles(R5, R10);
+    R0 = s0, R1 = s1, R2 = s2, R3 = s3, R4 = s4, R6 = s6, R7 = s7;
+    RETURN_TO_CALLER();
+}
+
+/* ── reqBBS_8140358 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r10; } call_reqBBS_81403A8_result;
+/* register form: generated wrapper: reqBBS_81403A8 has no typed C interface yet */
+static inline call_reqBBS_81403A8_result call_reqBBS_81403A8(u32 r2, u32 r5) {
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(reqBBS_81403A8);
+    return (call_reqBBS_81403A8_result){ R10 };
+}
+
+typedef struct { u32 r8, r9, r10, r11; } call_reqBBS_8140414_result;
+/* register form: generated wrapper: reqBBS_8140414 has no typed C interface yet */
+static inline call_reqBBS_8140414_result call_reqBBS_8140414(u32 r2, u32 r5) {
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(reqBBS_8140414);
+    return (call_reqBBS_8140414_result){ R8, R9, R10, R11 };
+}
+
+typedef struct { u32 r8, r9, r10, r11; } call_reqBBS_81403C0_result;
+/* register form: generated wrapper: reqBBS_81403C0 has no typed C interface yet */
+static inline call_reqBBS_81403C0_result call_reqBBS_81403C0(u32 r2, u32 r5) {
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(reqBBS_81403C0);
+    return (call_reqBBS_81403C0_result){ R8, R9, R10, R11 };
+}
+
+typedef struct { u32 r2, r3, r5, r7, r8, r9, r10, r12; bool v; } call_sub_811F7F8_result;
+/* register form: generated wrapper: menu_adjustCursorOrValue_811F7F8 has no typed C interface yet */
+static inline call_sub_811F7F8_result call_sub_811F7F8(u32 r0, u32 r1, u32 r2, u32 r3, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(menu_adjustCursorOrValue_811F7F8);
+    return (call_sub_811F7F8_result){ R2, R3, R5, R7, R8, R9, R10, R12, OVERFLOW_FLAG() };
+}
+
+/* Dispatch a BBS joypad request through the toolkit's joypad input.
+ *
+ * Reads the pressed button bits from the joypad pointed to by the toolkit
+ * (R10) and forwards the request to one of four sub-handlers depending on
+ * which button (or button combination) is pressed.  On the menu path it also
+ * checks the held-button mask against 0x3C0 and, if any bit is set, calls
+ * menu_adjustCursorOrValue_811F7F8 and stores the joypad pointer into the state block.
+ *
+ * R0  – ignored (set to r8 in the original, never read back)
+ * R2  – parameter forwarded to every sub-handler
+ * R5  – BBS state block (16-bit gate at +0x1E, byte at +0x0B written on menu path)
+ * R10 – toolkit pointer (used to reach the joypad input structure)
+ *
+ * Preserved (original uses push {r4-r7,lr} / pop {r4-r7,pc}): R4, R5, R6, R7.
+ * Output registers R10, R11 are left behind by the sub-handler wrappers. */
+static void reqBBS_8140358_impl(u32 input_r2, u32 input_r5, u32 input_r10) {
+    u32 joypad = LD32(input_r10 + oToolkit_JoypadPtr);
+    u32 pressed = LD16(joypad + oJoypad_Pressed);
+
+    /* R button: open / refresh the BBS screen. */
+    if (pressed & 2) {
+        call_reqBBS_81403A8(input_r2, input_r5);
+        return;
+    }
+
+    /* If the per-slot action counter is zero there is nothing to dispatch. */
+    if (LD16(input_r5 + 0x1E) == 0)
+        return;
+
+    /* A button: request the action handler. */
+    if (pressed & 4) {
+        call_reqBBS_8140414(input_r2, input_r5);
+        return;
+    }
+
+    /* B button: request the cancel / back handler. */
+    if (pressed & 1) {
+        call_reqBBS_81403C0(input_r2, input_r5);
+        return;
+    }
+
+    /* Start + Select + … mask 0x3C0 opens the menu through menu_adjustCursorOrValue_811F7F8. */
+    u32 held = LD16(joypad + 4);
+    if (held & 0x3C0) {
+        call_sub_811F7F8(held, 8, 0, 0, input_r5);
+        /* The original uses r7 (the joypad pointer) for the byte value. */
+        ST8(input_r5 + 0x0B, joypad);
+    }
+}
+
+/* register form: original push {r4-r7,lr}/pop {r4-r7,pc} protects R4-R7
+ * across callee wrappers that may clobber them (reqBBS_8140414, reqBBS_81403C0
+ * do not SYNC_SNAP R4/R7); reproduce the protection without stack writes. */
+Next reqBBS_8140358(void) {
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+    reqBBS_8140358_impl(R2, R5, R10);
+    R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── reqBBS_81403A8 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3, r5; } call_SetScreenFade_result_reqBBS_81403A8;
@@ -549,6 +834,86 @@ static u32 reqBBS_run(u32 statePtr) {
 /* reqBBS_81403A8(r2 = caller arg, r5 = menu state byte pointer) -> r10 */
 Next reqBBS_81403A8(void) {
     R10 = reqBBS_run(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── reqBBS_81403C0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r5, r6, r7, r10; } call_PlaySoundEffect_result_reqBBS_81403C0;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_reqBBS_81403C0 call_PlaySoundEffect_reqBBS_81403C0(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_reqBBS_81403C0){ R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r4, r6, r7; } call_call_sub_3005EBA_result;
+/* register form: generated wrapper: call_sub_3005EBA has no typed C interface yet */
+static inline call_call_sub_3005EBA_result call_call_sub_3005EBA_reqBBS_81403C0(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(call_sub_3005EBA);
+    return (call_call_sub_3005EBA_result){ R4, R6, R7 };
+}
+
+typedef struct { u32 r10, r11; } call_reqBBS_renderSelectedEntry_HeaderText_result_reqBBS_81403C0;
+/* register form: generated wrapper: reqBBS_renderSelectedEntry_HeaderText has no typed C interface yet */
+static inline call_reqBBS_renderSelectedEntry_HeaderText_result_reqBBS_81403C0 call_reqBBS_renderSelectedEntry_HeaderText_reqBBS_81403C0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(reqBBS_renderSelectedEntry_HeaderText);
+    return (call_reqBBS_renderSelectedEntry_HeaderText_result_reqBBS_81403C0){ R10, R11 };
+}
+
+/* BBS entry-open handler (0x81403C0): stamp the state byte, configure the
+ * window-animation slot, play SELECT, launch the easing pass, redraw the
+ * header text, then reset the message-box pointer. */
+
+typedef struct { u32 r10; u32 r11; } ReqBBSSelResult;
+
+static ReqBBSSelResult reqBBS_open_selection(u32 r5, u32 r10, u32 r2) {
+    /* State byte 0x18 = "opening" */
+    ST8(r5, 0x18);
+
+    /* Window animation struct lives at the toolkit pointer + field offset */
+    u32 win = LD32(r10 + oToolkit_Unk200f3a0_Ptr);
+    ST8(win + 9,   0x1B);
+    ST8(win + 0xA, 0x36);
+    ST8(win + 3,   0x00);
+    ST8(win + 2,   0xFF);
+    ST8(win + 7,   0x50);
+    ST8(win + 6,   0x50);
+
+    /* SELECT sound – PlaySoundEffect touches r5/r10 but the wrapper restores them */
+    (void)call_PlaySoundEffect_reqBBS_81403C0(SOUND_SELECT_67, r2);
+
+    /* Sub-state field 8 = 6 (animation phase) */
+    ST8(r5 + 8, 6);
+
+    /* Easing / layout pass: 0×0 offset, size 3, 0×0 base, 0x1E×0x14 grid */
+    (void)call_call_sub_3005EBA_reqBBS_81403C0(0, 0, 3, 0, 0x1E, 0x14);
+
+    /* Render the header text; yields the updated toolkit pointer (r10) and r11 */
+    call_reqBBS_renderSelectedEntry_HeaderText_result_reqBBS_81403C0 hdr =
+        call_reqBBS_renderSelectedEntry_HeaderText_reqBBS_81403C0(r5);
+
+    /* Message box (toolkit_new + 0x20): mark "ready", clear active-slot bytes */
+    u32 box = LD32(hdr.r10 + 0x20);
+    ST8(box,     0xF7);
+    ST8(box + 4, 0x00);
+    ST8(box + 6, 0x00);
+
+    return (ReqBBSSelResult){ hdr.r10, hdr.r11 };
+}
+
+Next reqBBS_81403C0(void) {
+    ReqBBSSelResult res = reqBBS_open_selection(R5, R10, R2);
+    R10 = res.r10;
+    R11 = res.r11;
     RETURN_TO_CALLER();
 }
 
@@ -634,6 +999,144 @@ Next reqBBS_8140600(void) {
     R4 = result.r4;
     R5 = result.r5;
     R6 = result.r6;
+    RETURN_TO_CALLER();
+}
+
+/* ── reqBBS_animateCursor ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r4, r5, r6, r7; } call_QueueEightWordAlignedGFXTransfer_result;
+/* register form: generated wrapper: QueueEightWordAlignedGFXTransfer has no typed C interface yet */
+static inline call_QueueEightWordAlignedGFXTransfer_result call_QueueEightWordAlignedGFXTransfer(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(QueueEightWordAlignedGFXTransfer);
+    return (call_QueueEightWordAlignedGFXTransfer_result){ R4, R5, R6, R7 };
+}
+
+typedef struct { bool c, v; } call_sprite_queueOamEntryThunk_802FE28_result;
+/* register form: generated wrapper: sprite_queueOamEntryThunk_802FE28 has no typed C interface yet */
+static inline call_sprite_queueOamEntryThunk_802FE28_result call_sprite_queueOamEntryThunk_802FE28(u32 r0, u32 r1, u32 r2, u32 r3) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    GUEST_CALL(sprite_queueOamEntryThunk_802FE28);
+    return (call_sprite_queueOamEntryThunk_802FE28_result){ CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Animate one frame of the BBS request cursor:
+ *  - queue the cursor tileset slice for the current animation timer,
+ *  - advance the pose index (wrapping past the 0xFF sentinel),
+ *  - queue the resulting OAM sprite entry.
+ * The original saves r0-r7 via push/pop; we replicate the preservation explicitly. */
+static void reqBBS_animateCursor_impl(u32 gui_ptr) {
+    /* register form: the original's push {r0-r7,lr} preserves these across
+       the two callee calls which overwrite r0-r7; C locals cannot shadow
+       guest-register side effects. */
+    u32 saved_r0 = R0, saved_r1 = R1, saved_r2 = R2, saved_r3 = R3;
+    u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+
+    /* Look up the tileset frame index from the per-timer table. */
+    u32 timer = LD8(gui_ptr + oReqBBSGui_AnimationTimer1);
+    u32 frame_table = A_dword_81406E4 + 2;
+    u32 frame = LD8(frame_table + timer);
+
+    /* Queue 0x80 bytes of tile data: src = frame*128 + tileset base, dest = OBJ tile 0. */
+    call_QueueEightWordAlignedGFXTransfer((frame << 7) + A_unk_201AA04, 0x6017F80, 0x80);
+
+    /* Sprite Y coordinate from the GUI object's row field: row * 16 + 24. */
+    u32 row = LD16(gui_ptr + 0x20);
+    u32 y_coord = row * 0x10 + 0x18;
+
+    /* Advance pose index; the 0xFF sentinel in the table means restart at pose 1. */
+    u32 pose = LD8(gui_ptr + 9) + 1;
+    if (LD8(frame_table + pose) == 0xFF)
+        pose = 1;
+    ST8(gui_ptr + 9, pose);
+
+    /* Pack OAM attribute word: enable(0x40000000) | tile-bank(3<<16) | y. */
+    u32 attr = (3u << 16) | y_coord | 0x40000000;
+
+    /* Queue the cursor sprite's OAM entry (tile 0xC3FC, no flip, layer 3). */
+    call_sprite_queueOamEntryThunk_802FE28(attr, 0xC3FC, 0, 3);
+
+    /* Restore the preserved registers. */
+    R0 = saved_r0; R1 = saved_r1; R2 = saved_r2; R3 = saved_r3;
+    R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
+}
+
+/* 0x08140688: animate BBS request cursor (r5 = request-GUI object). */
+Next reqBBS_animateCursor(void) {
+    reqBBS_animateCursor_impl(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── reqBBS_81406FC ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+/* register form: generated wrapper: sprite_setUnk0x2c has no typed C interface yet */
+static inline void call_sprite_setUnk0x2c(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sprite_setUnk0x2c);
+}
+
+/* reqBBS_81406FC: Build a per-sprite animation mask by banding the HP half-word
+ * (r5+0x1E) and stock byte (r5+0x5) each into a band bit and a progress bit,
+ * XOR-ing all four bits into 0x3FFFFFFF, then applying the result via
+ * sprite_setUnk0x2c on the eStructArr2008450 sprite array. */
+
+/* ARM THUMB register-form LSL of the value 1: shift amount taken from low byte;
+ * if the effective shift >= 32 the result is 0 (all bits shifted out). */
+static u32 one_lsl(u32 shift) {
+    u32 s = shift & 0xFFu;
+    if (s >= 32u)
+        return 0;
+    return 1u << s;
+}
+
+static u32 build_sprite_mask(u32 r5) {
+    u32 mask = 0x3FFFFFFFu;
+
+    /* --- HP half-word (offset 0x1E): band bit 0x0A..0x0E --- */
+    u32 hp = LD16(r5 + 0x1E);
+    u32 hp_base, hp_band;
+    if (hp >= 0x28u)      { hp_base = 0x28u; hp_band = 0x0Au; }
+    else if (hp >= 0x1Eu) { hp_base = 0x1Eu; hp_band = 0x0Bu; }
+    else if (hp >= 0x14u) { hp_base = 0x14u; hp_band = 0x0Cu; }
+    else if (hp >= 0x0Au) { hp_base = 0x0Au; hp_band = 0x0Du; }
+    else                  { hp_base = 0x00u; hp_band = 0x0Eu; }
+    mask ^= one_lsl(hp_band);
+
+    /* Progress bit within the band: 9 - (current_hp - band_floor), re-reads HP. */
+    u32 hp_delta = LD16(r5 + 0x1E) - hp_base;
+    mask ^= one_lsl(9u - hp_delta);
+
+    /* --- Stock byte (offset 0x5): band bit 0x19..0x1D --- */
+    u32 stock = LD8(r5 + 5);
+    u32 stock_base, stock_band;
+    if (stock >= 0x28u)      { stock_base = 0x28u; stock_band = 0x19u; }
+    else if (stock >= 0x1Eu) { stock_base = 0x1Eu; stock_band = 0x1Au; }
+    else if (stock >= 0x14u) { stock_base = 0x14u; stock_band = 0x1Bu; }
+    else if (stock >= 0x0Au) { stock_base = 0x0Au; stock_band = 0x1Cu; }
+    else                     { stock_base = 0x00u; stock_band = 0x1Du; }
+    mask ^= one_lsl(stock_band);
+
+    /* Progress bit for stock: 9 - delta + 0xF, re-reads stock. */
+    u32 stock_delta = LD8(r5 + 5) - stock_base;
+    mask ^= one_lsl((9u - stock_delta) + 0xFu);
+
+    return mask;
+}
+
+/* reqBBS_81406FC(r5 = sprite data pointer) -> (void); preserves r5 */
+Next reqBBS_81406FC(void) {
+    /* register form: r5 is preserved across the call because the original pushes/pops it,
+       and call_sprite_setUnk0x2c overwrites r5 with the sprite-array address */
+    u32 saved_r5 = R5;
+    u32 mask = build_sprite_mask(R5);
+    call_sprite_setUnk0x2c(mask, A_eStructArr2008450);
+    R5 = saved_r5;
     RETURN_TO_CALLER();
 }
 
@@ -764,6 +1267,156 @@ static void store_req_bbs_gui_byte(u32 arg_r5) {
 /* reqBBS_81408DC(r5 = argument for reqBBS_81408C8) */
 Next reqBBS_81408DC(void) {
     store_req_bbs_gui_byte(R5);
+    RETURN_TO_CALLER();
+}
+
+/* ── reqBBS_81408F0 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_reqBBS_81408F0;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result_reqBBS_81408F0 call_chatbox_mask_eFlags2009F38_reqBBS_81408F0(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result_reqBBS_81408F0){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r5; } call_reqBBS_81408C8_result_reqBBS_81408F0;
+/* register form: generated wrapper: reqBBS_81408C8 has no typed C interface yet */
+static inline call_reqBBS_81408C8_result_reqBBS_81408F0 call_reqBBS_81408C8_reqBBS_81408F0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(reqBBS_81408C8);
+    return (call_reqBBS_81408C8_result_reqBBS_81408F0){ R0, R5 };
+}
+
+typedef struct { u32 r0, r5; } call_reqBBS_8140868_result;
+/* register form: generated wrapper: reqBBS_8140868 has no typed C interface yet */
+static inline call_reqBBS_8140868_result call_reqBBS_8140868(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(reqBBS_8140868);
+    return (call_reqBBS_8140868_result){ R0, R5 };
+}
+
+typedef struct { u32 r1, r3; bool z, n, c, v; } call_TestEventFlagFromImmediate_result_reqBBS_81408F0;
+/* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
+static inline call_TestEventFlagFromImmediate_result_reqBBS_81408F0 call_TestEventFlagFromImmediate_reqBBS_81408F0(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(TestEventFlagFromImmediate);
+    return (call_TestEventFlagFromImmediate_result_reqBBS_81408F0){ R1, R3, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r5; } call_reqBBS_8140884_result;
+/* register form: generated wrapper: reqBBS_8140884 has no typed C interface yet */
+static inline call_reqBBS_8140884_result call_reqBBS_8140884(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(reqBBS_8140884);
+    return (call_reqBBS_8140884_result){ R0, R5 };
+}
+
+typedef struct { u32 r0, r3; } call_GetCurPETNavi_result_reqBBS_81408F0;
+/* register form: generated wrapper: GetCurPETNavi has no typed C interface yet */
+static inline call_GetCurPETNavi_result_reqBBS_81408F0 call_GetCurPETNavi_reqBBS_81408F0(void) {
+    GUEST_CALL(GetCurPETNavi);
+    return (call_GetCurPETNavi_result_reqBBS_81408F0){ R0, R3 };
+}
+
+typedef struct { u32 r3; } call_SetEventFlagFromImmediate_result;
+/* register form: generated wrapper: SetEventFlagFromImmediate has no typed C interface yet */
+static inline call_SetEventFlagFromImmediate_result call_SetEventFlagFromImmediate_reqBBS_81408F0(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetEventFlagFromImmediate);
+    return (call_SetEventFlagFromImmediate_result){ R3 };
+}
+
+typedef struct { u32 r5; } call_reqBBS_81408A0_result;
+/* register form: generated wrapper: reqBBS_81408A0 has no typed C interface yet */
+static inline call_reqBBS_81408A0_result call_reqBBS_81408A0(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(reqBBS_81408A0);
+    return (call_reqBBS_81408A0_result){ R5 };
+}
+
+/* register form: generated wrapper: reqBBS_81408DC has no typed C interface yet */
+static inline void call_reqBBS_81408DC(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(reqBBS_81408DC);
+}
+
+/* BBS request handler: gates on chatbox/EFLAGS mask bits, tests event flags
+ * and PET/Navi state, then on success sets flags 0x173A/0x173C and runs the
+ * BBS sub-request helper chain.  Returns a result code in r0.
+ * r5 is tracked locally for intermediate helper calls but is preserved
+ * (pop restores it) so it is not a computed output. */
+static u32 bbs_request(u32 r5) {
+    /* Gate: chatbox mask bit 0x80 – if Z (bit absent), bail with 0xE. */
+    if (call_chatbox_mask_eFlags2009F38_reqBBS_81408F0(0x80).z)
+        return 0xE;
+
+    /* Gate: chatbox mask bit 0x20 – if Z (bit absent), bail with 0. */
+    if (call_chatbox_mask_eFlags2009F38_reqBBS_81408F0(0x20).z)
+        return 0;
+
+    /* Gate: chatbox mask bit 0x110 – if NOT Z (bit present), bail with 0. */
+    if (!call_chatbox_mask_eFlags2009F38_reqBBS_81408F0(0x110).z)
+        return 0;
+
+    /* Helper pair 1: 81408C8(r5)→r0,r5; 8140868(r0)→r0,r5. */
+    call_reqBBS_81408C8_result_reqBBS_81408F0 c1 = call_reqBBS_81408C8_reqBBS_81408F0(r5);
+    r5 = c1.r5;
+    u32 r0_val = c1.r0;
+
+    call_reqBBS_8140868_result c2 = call_reqBBS_8140868(r0_val);
+    r5 = c2.r5;
+    r0_val = c2.r0;
+
+    if (r0_val != 0)
+        return 0xE;
+
+    /* Event flag 0x173A must be clear (Z set) to continue. */
+    if (!call_TestEventFlagFromImmediate_reqBBS_81408F0(0x17, 0x3A).z)
+        return 0xF;
+
+    /* Helper pair 2: 81408C8(r5)→r0,r5; 8140884(r0)→r0,r5. */
+    call_reqBBS_81408C8_result_reqBBS_81408F0 c3 = call_reqBBS_81408C8_reqBBS_81408F0(r5);
+    r5 = c3.r5;
+    r0_val = c3.r0;
+
+    call_reqBBS_8140884_result c4 = call_reqBBS_8140884(r0_val);
+    r5 = c4.r5;
+    r0_val = c4.r0;
+
+    if (r0_val != 0)
+        return 0x10;
+
+    /* EVENT_PET_NAVI_ACTIVE must be set (Z clear) to continue. */
+    if (call_TestEventFlagFromImmediate_reqBBS_81408F0(0x17, 0x1D).z)
+        return 0xD;
+
+    /* No current PET/Navi required. */
+    if (call_GetCurPETNavi_reqBBS_81408F0().r0 != 0)
+        return 0xD;
+
+    /* Success path: set event flags 0x173A and 0x173C. */
+    call_SetEventFlagFromImmediate_reqBBS_81408F0(0x17, 0x3A);
+    call_SetEventFlagFromImmediate_reqBBS_81408F0(0x17, 0x3C);
+
+    /* Helper chain 3: 81408C8(r5)→r0,r5; 81408A0(r0)→r5; 81408DC(r5). */
+    call_reqBBS_81408C8_result_reqBBS_81408F0 c5 = call_reqBBS_81408C8_reqBBS_81408F0(r5);
+    r5 = c5.r5;
+    r0_val = c5.r0;
+
+    call_reqBBS_81408A0_result c6 = call_reqBBS_81408A0(r0_val);
+    r5 = c6.r5;
+
+    call_reqBBS_81408DC(r5);
+
+    return 0xD;
+}
+
+/* reqBBS_81408F0(r5 = BBS toolkit ptr) -> r0 (result code) */
+Next reqBBS_81408F0(void) {
+    R0 = bbs_request(R5);
     RETURN_TO_CALLER();
 }
 

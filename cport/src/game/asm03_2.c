@@ -2265,6 +2265,174 @@ Next shop_copyItemTableToShopData_8048C98(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── packShopChipLists_8048DF8 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3; } call_ZeroFillByWord_result_packShopChipLists_8048DF8;
+/* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
+static inline call_ZeroFillByWord_result_packShopChipLists_8048DF8 call_ZeroFillByWord_packShopChipLists_8048DF8(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByWord);
+    return (call_ZeroFillByWord_result_packShopChipLists_8048DF8){ R2, R3 };
+}
+
+typedef struct { bool z, n; } call_TestEventFlag_result_packShopChipLists_8048DF8;
+/* register form: generated wrapper: TestEventFlag has no typed C interface yet */
+static inline call_TestEventFlag_result_packShopChipLists_8048DF8 call_TestEventFlag_packShopChipLists_8048DF8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(TestEventFlag);
+    return (call_TestEventFlag_result_packShopChipLists_8048DF8){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r0, r2; } call_getChip8021DA8_result;
+/* register form: generated wrapper: getChip8021DA8 has no typed C interface yet */
+static inline call_getChip8021DA8_result call_getChip8021DA8(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(getChip8021DA8);
+    return (call_getChip8021DA8_result){ R0, R2 };
+}
+
+/*
+ * packShopChipLists_8048DF8 – Pack a type-2 (event-gated) shop's chip list
+ * into two destination buffers, then compact each buffer to remove gaps.
+ *
+ * r0 = shop index, r1 = normal-list dest, r2 = special-list dest,
+ * r10 = toolkit pointer (gives ShopDataPtr).
+ */
+
+#define SHOP_TABLE_BASE          A_dword_8046B98
+#define SHOP_ENTRY_SIZE_packShopChipLists_8048DF8          0x10
+#define CHIP_SLOT_SIZE           8
+#define CHIP_ID_OFFSET           2
+#define CHIP_DATA_SLOT_FIELD     0x1C
+
+/* Event-flag bases: added to the chip id to form the flag number. */
+#define FLAG_BASE_SPECIAL        0x1E20
+#define FLAG_BASE_ALT1           0x2020
+#define FLAG_BASE_ALT2           0x2220
+
+/* Slot-index offset applied when the special flag is set. */
+#define SLOT_OFFSET_SPECIAL      0x140
+
+/*
+ * Compact one chip list in place: for each empty slot (byte 0 == 0) find the
+ * next occupied slot ahead and slide it down, clearing the source.  The
+ * original reads the source byte *before* checking the end bound (do-while),
+ * and exits all compaction when no occupied slot remains ahead.
+ */
+static void compact_chip_list(u32 list, u32 list_end) {
+    u32 dst = list;
+    for (;;) {
+        /* Occupied slot – advance to next. */
+        if (LD8(dst) != 0) {
+            dst += CHIP_SLOT_SIZE;
+            if ((s32)dst >= (s32)list_end)
+                return;
+            continue;
+        }
+
+        /* Empty slot – search forward (read before bounds check). */
+        u32 src = dst + CHIP_SLOT_SIZE;
+        for (;;) {
+            if (LD8(src) != 0) {
+                /* Slide occupied slot into dst. */
+                ST8(dst, LD8(src));
+                ST8(dst + 1, LD8(src + 1));
+                ST16(dst + 2, LD16(src + 2));
+                ST8(dst + 4, LD8(src + 4));
+                ST8(dst + 5, LD8(src + 5));
+                ST16(dst + 6, LD16(src + 6));
+                /* Clear the source slot. */
+                ST8(src, 0);
+                ST8(src + 1, 0);
+                ST16(src + 2, 0);
+                ST8(src + 4, 0);
+                ST8(src + 5, 0);
+                ST16(src + 6, 0);
+                dst += CHIP_SLOT_SIZE;
+                if ((s32)dst >= (s32)list_end)
+                    return;
+                break;  /* back to outer loop */
+            }
+            src += CHIP_SLOT_SIZE;
+            if ((s32)src >= (s32)list_end)
+                return;  /* no more data ahead – stop */
+        }
+    }
+}
+
+static void pack_shop_chip_lists(u32 shop_index, u32 dest1, u32 dest2, u32 toolkit) {
+    u32 entry_ptr = SHOP_TABLE_BASE + shop_index * SHOP_ENTRY_SIZE_packShopChipLists_8048DF8;
+
+    u32 shop_type      = LD32(entry_ptr);
+    u32 chip_count     = LD32(entry_ptr + 0xC);
+    u32 chip_data_off  = LD32(entry_ptr + 8);
+    u32 shop_data_base = LD32(toolkit + oToolkit_ShopDataPtr);
+
+    /* Only type-2 (event-gated) shops are packed. */
+    if (shop_type != 2)
+        return;
+
+    u32 chip_data = chip_data_off + shop_data_base;
+
+    /* Each destination buffer is chip_count * 16 bytes (two slots of 8). */
+    u32 total_bytes = chip_count * CHIP_SLOT_SIZE * 2;
+
+    u32 dest1_end = dest1 + total_bytes;
+    call_ZeroFillByWord_packShopChipLists_8048DF8(dest1, total_bytes);
+
+    u32 dest2_end = dest2 + total_bytes;
+    call_ZeroFillByWord_packShopChipLists_8048DF8(dest2, total_bytes);
+
+    /* Walk chip entries until an empty (byte-0 == 0) slot is found. */
+    for (u32 p = chip_data; LD8(p) != 0; p += CHIP_SLOT_SIZE) {
+        u16 chip_id = (u16)LD16(p + CHIP_ID_OFFSET);
+
+        /* Decide destination and slot-index offset via three event flags. */
+        u32 dest = dest2;
+        u32 slot_offset = SLOT_OFFSET_SPECIAL;
+
+        if (call_TestEventFlag_packShopChipLists_8048DF8(chip_id + FLAG_BASE_SPECIAL).z) {
+            /* Special flag NOT set. */
+            slot_offset = 0;
+            if (call_TestEventFlag_packShopChipLists_8048DF8(chip_id + FLAG_BASE_ALT1).z) {
+                /* Alt1 flag NOT set. */
+                if (call_TestEventFlag_packShopChipLists_8048DF8(chip_id + FLAG_BASE_ALT2).z) {
+                    /* Alt2 flag NOT set → normal list. */
+                    dest = dest1;
+                }
+                /* Alt2 set → dest2, offset 0 */
+            }
+            /* Alt1 set → dest2, offset 0 */
+        }
+        /* Special set → dest2, offset 0x140 */
+
+        /* Resolve slot index from static chip data. */
+        call_getChip8021DA8_result chip_info = call_getChip8021DA8(chip_id);
+        u32 slot_idx = (u32)LD16(chip_info.r0 + CHIP_DATA_SLOT_FIELD) + slot_offset;
+        u32 target = dest + slot_idx * CHIP_SLOT_SIZE;
+
+        /* Write 8-byte chip record. */
+        ST8(target, LD8(p));
+        ST8(target + 1, LD8(p + 1));
+        ST16(target + 2, LD16(p + 2));
+        ST8(target + 4, LD8(p + 4));
+        /* Offset 5: 1 for normal/event-list chips, 0 for the special flag. */
+        ST8(target + 5, (slot_offset != 0) ? 0 : 1);
+        ST16(target + 6, LD16(p + 6));
+    }
+
+    /* Compact both destination lists (always runs, even with 0 entries). */
+    compact_chip_list(dest1, dest1_end);
+    compact_chip_list(dest2, dest2_end);
+}
+
+/* packShopChipLists_8048DF8(r0 = shop_index, r1 = dest1, r2 = dest2, r10 = toolkit) */
+Next packShopChipLists_8048DF8(void) {
+    pack_shop_chip_lists(R0, R1, R2, R10);
+    RETURN_TO_CALLER();
+}
+
 /* ── shop_addStockEntry_kind4_8048F88 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r8, r9, r12; bool z, n, c, v; } call_shop_addItemStockEntry_result;

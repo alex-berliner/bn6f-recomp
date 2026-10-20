@@ -1515,6 +1515,53 @@ Next battle_setObjectToArmAnchorPos_8110D18(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── object_hasNextXPanelProperty ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r1, r5, r6; } call_convertXYToPanelXY_800E258_result_object_hasNextXPanelProperty;
+/* register form: generated wrapper: convertXYToPanelXY_800E258 has no typed C interface yet */
+static inline call_convertXYToPanelXY_800E258_result_object_hasNextXPanelProperty call_convertXYToPanelXY_800E258_object_hasNextXPanelProperty(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(convertXYToPanelXY_800E258);
+    return (call_convertXYToPanelXY_800E258_result_object_hasNextXPanelProperty){ R0, R1, R5, R6 };
+}
+
+typedef struct { u32 r0, r3; } call_object_getPanelParameters_result_object_hasNextXPanelProperty;
+/* register form: generated wrapper: object_getPanelParameters has no typed C interface yet */
+static inline call_object_getPanelParameters_result_object_hasNextXPanelProperty call_object_getPanelParameters_object_hasNextXPanelProperty(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(object_getPanelParameters);
+    return (call_object_getPanelParameters_result_object_hasNextXPanelProperty){ R0, R3 };
+}
+
+/* Check whether the panel one X-velocity-step ahead of the battle object
+ * has any property flagged by the ROM-resident mask 0x3800000.
+ * Returns 1 if any masked bits are set, 0 otherwise. */
+static u32 object_hasNextXPanelProperty_impl(u32 object) {
+    /* World-space X = position + velocity (the "next" panel along X) */
+    u32 target_x = LD32(object + oBattleObject_X)
+                 + LD32(object + oBattleObject_XVelocity);
+    u32 target_y = LD32(object + oBattleObject_Y);
+
+    /* Convert world coordinates to a panel (col, row) */
+    call_convertXYToPanelXY_800E258_result_object_hasNextXPanelProperty panel =
+        call_convertXYToPanelXY_800E258_object_hasNextXPanelProperty(target_x, target_y);
+
+    /* Fetch that panel's parameter word */
+    call_object_getPanelParameters_result_object_hasNextXPanelProperty params =
+        call_object_getPanelParameters_object_hasNextXPanelProperty(panel.r0, panel.r1);
+
+    /* AND with the literal-pool mask and test for any set bits */
+    return (params.r0 & 0x3800000u) ? 1u : 0u;
+}
+
+/* object_hasNextXPanelProperty(r5 = battle object ptr) -> r0 = 0 or 1 */
+Next object_hasNextXPanelProperty(void) {
+    R0 = object_hasNextXPanelProperty_impl(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── ai_checkNextPanelFlags ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r5, r6; } call_convertXYToPanelXY_800E258_result;

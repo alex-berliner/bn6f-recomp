@@ -1060,6 +1060,153 @@ Next battle_objectUpdate_8133400(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── beastsp_handleInputAndScripts ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { bool z, n; } call_submenu_isOpen_81355D8_result_beastsp_handleInputAndScripts;
+/* register form: generated wrapper: submenu_isOpen_81355D8 has no typed C interface yet */
+static inline call_submenu_isOpen_81355D8_result_beastsp_handleInputAndScripts call_submenu_isOpen_81355D8_beastsp_handleInputAndScripts(void) {
+    GUEST_CALL(submenu_isOpen_81355D8);
+    return (call_submenu_isOpen_81355D8_result_beastsp_handleInputAndScripts){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+/* register form: generated wrapper: submenu_getUnk02 has no typed C interface yet */
+static inline u32 call_submenu_getUnk02(void) {
+    GUEST_CALL(submenu_getUnk02);
+    return R0;
+}
+
+typedef struct { u32 r1; bool z, n; } call_chatbox_mask_eFlags2009F38_result_beastsp_handleInputAndScripts;
+/* register form: generated wrapper: chatbox_mask_eFlags2009F38 has no typed C interface yet */
+static inline call_chatbox_mask_eFlags2009F38_result_beastsp_handleInputAndScripts call_chatbox_mask_eFlags2009F38_beastsp_handleInputAndScripts(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(chatbox_mask_eFlags2009F38);
+    return (call_chatbox_mask_eFlags2009F38_result_beastsp_handleInputAndScripts){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r1; bool z, n; } call_IsButtonPressed_result_beastsp_handleInputAndScripts;
+/* register form: generated wrapper: IsButtonPressed has no typed C interface yet */
+static inline call_IsButtonPressed_result_beastsp_handleInputAndScripts call_IsButtonPressed_beastsp_handleInputAndScripts(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(IsButtonPressed);
+    return (call_IsButtonPressed_result_beastsp_handleInputAndScripts){ R1, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlaySoundEffect_result_beastsp_handleInputAndScripts;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_beastsp_handleInputAndScripts call_PlaySoundEffect_beastsp_handleInputAndScripts(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_beastsp_handleInputAndScripts){ R1, R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r5, r6, r7; bool z, n, c, v; } call_chatbox_runScript_803FD9C_on_eTextScript2028A20_result;
+/* register form: generated wrapper: chatbox_runScript_803FD9C_on_eTextScript2028A20 has no typed C interface yet */
+static inline call_chatbox_runScript_803FD9C_on_eTextScript2028A20_result call_chatbox_runScript_803FD9C_on_eTextScript2028A20(u32 r0, u32 r4, u32 r5) {
+    R0 = r0;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(chatbox_runScript_803FD9C_on_eTextScript2028A20);
+    return (call_chatbox_runScript_803FD9C_on_eTextScript2028A20_result){ R0, R1, R2, R3, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0; } call_chatbox_GetState_8045F4C_result;
+/* register form: generated wrapper: chatbox_GetState_8045F4C has no typed C interface yet */
+static inline call_chatbox_GetState_8045F4C_result call_chatbox_GetState_8045F4C(void) {
+    GUEST_CALL(chatbox_GetState_8045F4C);
+    return (call_chatbox_GetState_8045F4C_result){ R0 };
+}
+
+typedef struct { u32 r4; } call_sub_8134FE0_result;
+/* register form: generated wrapper: sub_8134FE0 has no typed C interface yet */
+static inline call_sub_8134FE0_result call_sub_8134FE0(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_8134FE0);
+    return (call_sub_8134FE0_result){ R4 };
+}
+
+/*
+ * Beast SP sub-menu tick handler.
+ *
+ * Each input frame this dispatches based on whether the sub-menu is open:
+ *  - If open: check the current highlight (OK / Cancel / other).
+ *  - If closed: either exit on SELECT+B, or advance the chatbox script
+ *    when the chatbox is displaying a selection prompt.
+ *
+ * r5 points to the sub-menu state struct (bytes at +2, +3, and word at +0x68
+ * are written here).  r4 is the battle state, r2 is passed through to
+ * PlaySoundEffect, r10 is consumed implicitly by IsButtonPressed.
+ */
+static void beastsp_handleInputAndScripts_impl(u32 r2, u32 r4, u32 r5) {
+    /* --- Sub-menu open case: decide via the current highlight value --- */
+    call_submenu_isOpen_81355D8_result_beastsp_handleInputAndScripts is_open = call_submenu_isOpen_81355D8_beastsp_handleInputAndScripts();
+
+    if (!is_open.z) {
+        /* Z clear → submenu is open; check what item is highlighted. */
+        u32 sel = call_submenu_getUnk02();
+
+        if (sel == 0x24) {
+            /* "OK" highlighted: consume the input, do nothing else. */
+            return;
+        }
+        if (sel == 0x30) {
+            /* "Cancel" highlighted: mark the state byte and close. */
+            ST8(r5 + 3, 0xC);
+            return;
+        }
+        /* Other value: fall through to the closed-submenu path below. */
+    }
+
+    /* --- Submenu not open (or fell through): handle exit / chatbox --- */
+    call_chatbox_mask_eFlags2009F38_result_beastsp_handleInputAndScripts flag_check =
+        call_chatbox_mask_eFlags2009F38_beastsp_handleInputAndScripts(0x20);
+
+    if (!flag_check.z) {
+        /*
+         * Flag 0x20 is set → a chatbox prompt is showing.
+         * Play select sound, then advance or finish the script.
+         */
+        (void)call_PlaySoundEffect_beastsp_handleInputAndScripts(SOUND_MENU_SELECT, r2);
+
+        call_chatbox_GetState_8045F4C_result state =
+            call_chatbox_GetState_8045F4C();
+
+        if (state.r0 != 0) {
+            /* Chatbox still has content: push next page, set running flag. */
+            (void)call_sub_8134FE0(r5);
+            ST32(r5 + 0x68, 0xC);
+            (void)call_chatbox_runScript_803FD9C_on_eTextScript2028A20(0x10, r4, r5);
+            ST8(r5 + 3, 8);
+        } else {
+            /* Chatbox exhausted: run the "done" script, reset state. */
+            (void)call_chatbox_runScript_803FD9C_on_eTextScript2028A20(0x11, r4, r5);
+            ST8(r5 + 3, 4);
+            ST32(r5 + 0x68, 0);
+        }
+    } else {
+        /*
+         * Flag 0x20 is NOT set → check for exit on SELECT or B.
+         */
+        call_IsButtonPressed_result_beastsp_handleInputAndScripts btn =
+            call_IsButtonPressed_beastsp_handleInputAndScripts(JOYPAD_SELECT | JOYPAD_B);
+
+        if (!btn.z) {
+            /* Button pressed: mark exit flag, play sound, run exit script. */
+            ST8(r5 + 2, 0x10);
+            (void)call_PlaySoundEffect_beastsp_handleInputAndScripts(SOUND_EXIT_SUBMENU, r2);
+            (void)call_chatbox_runScript_803FD9C_on_eTextScript2028A20(0xB, r4, r5);
+        }
+        /* Otherwise (button not pressed): nothing to do this frame. */
+    }
+}
+
+/* beastsp_handleInputAndScripts(r2, r4, r5, r10) → r5, r10 */
+Next beastsp_handleInputAndScripts(void) {
+    beastsp_handleInputAndScripts_impl(R2, R4, R5);
+    /* r5 and r10 are unchanged (r5 is a pointer used for stores only). */
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_dispatchModeHandler_8133540 ── */
 /* Mode dispatcher for a battle object: the word at [objectPtr + 0x68] selects
  * one of four handlers in the table at off_8133554 (offset 0, 4, 8 or 12).
@@ -2967,6 +3114,332 @@ Next battle_alignRowCheck_81348DC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── folder_moveChipEntry ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_folder_moveChipEntry;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_folder_moveChipEntry call_PlaySoundEffect_folder_moveChipEntry(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_folder_moveChipEntry){ R1, R2, R3, R4, R5, R6, R7, R10 };
+}
+
+typedef struct { u32 r0, r4, r5, r6, r7; } call_sub_8134F40_result;
+/* register form: generated wrapper: sub_8134F40 has no typed C interface yet */
+static inline call_sub_8134F40_result call_sub_8134F40(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sub_8134F40);
+    return (call_sub_8134F40_result){ R0, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r1, r2, r3; } call_CopyByEightWords_result;
+/* register form: generated wrapper: CopyByEightWords has no typed C interface yet */
+static inline call_CopyByEightWords_result call_CopyByEightWords_folder_moveChipEntry(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyByEightWords);
+    return (call_CopyByEightWords_result){ R1, R2, R3 };
+}
+
+typedef struct { u32 r2, r3; } call_ZeroFillByEightWords_result;
+/* register form: generated wrapper: ZeroFillByEightWords has no typed C interface yet */
+static inline call_ZeroFillByEightWords_result call_ZeroFillByEightWords(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(ZeroFillByEightWords);
+    return (call_ZeroFillByEightWords_result){ R2, R3 };
+}
+
+typedef struct { u32 r0, r2, r5, r7; } call_e_recountChipCopies_result;
+/* register form: generated wrapper: e_recountChipCopies has no typed C interface yet */
+static inline call_e_recountChipCopies_result call_e_recountChipCopies(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(e_recountChipCopies);
+    return (call_e_recountChipCopies_result){ R0, R2, R5, R7 };
+}
+
+/* register form: generated wrapper: sub_8134F88 has no typed C interface yet */
+static inline void call_sub_8134F88(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sub_8134F88);
+}
+
+typedef struct { u32 r2, r5, r6, r7; } call_sub_8134FB0_result;
+/* register form: generated wrapper: sub_8134FB0 has no typed C interface yet */
+static inline call_sub_8134FB0_result call_sub_8134FB0(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(sub_8134FB0);
+    return (call_sub_8134FB0_result){ R2, R5, R6, R7 };
+}
+
+/* register form: generated wrapper: sub_8134F78 has no typed C interface yet */
+static inline void call_sub_8134F78(void) {
+    GUEST_CALL(sub_8134F78);
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool z, n; } call_sub_8135080_result;
+/* register form: generated wrapper: sub_8135080 has no typed C interface yet */
+static inline call_sub_8135080_result call_sub_8135080(u32 r0, u32 r1, u32 r2, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(sub_8135080);
+    return (call_sub_8135080_result){ R0, R1, R2, R3, R4, R5, R6, R7, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r5, r10; } call_folder_chipMoveError_result;
+/* register form: generated wrapper: folder_chipMoveError has no typed C interface yet */
+static inline call_folder_chipMoveError_result call_folder_chipMoveError(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(folder_chipMoveError);
+    return (call_folder_chipMoveError_result){ R2, R5, R10 };
+}
+
+typedef struct { u32 r0, r1, r2; } call_sub_8135244_result;
+/* register form: generated wrapper: sub_8135244 has no typed C interface yet */
+static inline call_sub_8135244_result call_sub_8135244(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_8135244);
+    return (call_sub_8135244_result){ R0, R1, R2 };
+}
+
+typedef struct { u32 r2, r5; } call_battle_copyStateSlotsAndZeroNext_813527C_result;
+/* register form: generated wrapper: battle_copyStateSlotsAndZeroNext_813527C has no typed C interface yet */
+static inline call_battle_copyStateSlotsAndZeroNext_813527C_result call_battle_copyStateSlotsAndZeroNext_813527C(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(battle_copyStateSlotsAndZeroNext_813527C);
+    return (call_battle_copyStateSlotsAndZeroNext_813527C_result){ R2, R5 };
+}
+
+/* register form: generated wrapper: chatbox_clampScrollToTextEnd_813525C has no typed C interface yet */
+static inline void call_chatbox_clampScrollToTextEnd_813525C(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(chatbox_clampScrollToTextEnd_813525C);
+}
+
+typedef struct { u32 r4; } call_folder_retargetIndex_result;
+/* register form: generated wrapper: folder_retargetIndex has no typed C interface yet */
+static inline call_folder_retargetIndex_result call_folder_retargetIndex(u32 r2, u32 r3, u32 r5) {
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(folder_retargetIndex);
+    return (call_folder_retargetIndex_result){ R4 };
+}
+
+typedef struct { u32 r4, r6; } call_folder_swapCursorIndex_result;
+/* register form: generated wrapper: folder_swapCursorIndex has no typed C interface yet */
+static inline call_folder_swapCursorIndex_result call_folder_swapCursorIndex(u32 r0, u32 r2, u32 r3, u32 r5) {
+    R0 = r0;
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(folder_swapCursorIndex);
+    return (call_folder_swapCursorIndex_result){ R4, R6 };
+}
+
+#define CHIP_ENTRY_SIZE 0x20
+
+/* Move a chip copy between folder slots: jack out/in, or swap two slots.
+ * Returns the final value of r2 (the only non-preserved output). */
+static u32 folder_moveChipEntry_impl(u32 r5_in) {
+    u32 r5 = r5_in;
+
+    u8 folder_idx = LD8(r5 + 0x44);
+    u32 chip_data = LD32(A_dword_8134E94 + (u32)folder_idx * 4);
+    u16 slot_a = LD16(r5 + 0x46);
+    u16 slot_b = LD16(r5 + 0x4A);
+
+    u32 r2_result;
+
+    if (slot_a == slot_b) {
+        /* ---- same slot: jack out from one folder into another ---- */
+        if (chip_data == A_word_202A020) {
+            /* Active-folder jack: take the chip out and re-insert into buffer. */
+            u32 entry = chip_data + (u32)slot_a * CHIP_ENTRY_SIZE;
+
+            if (LD16(entry + 0x14) == 0) {
+                r2_result = call_PlaySoundEffect_folder_moveChipEntry(SOUND_CANT_JACK_IN, (u32)slot_a).r2;
+                goto epilogue;
+            }
+
+            call_sub_8134F40_result s = call_sub_8134F40(LD16(entry + 0x1C), r5);
+            r5 = s.r5;
+
+            if (s.r0 == 0) {
+                /* Destination slot is free: copy entry into the pending buffer. */
+                u32 dest = A_unk_202A3E0 + (u32)LD16(r5 + 0x28) * CHIP_ENTRY_SIZE;
+                ST16(entry + 0x16, 1);
+                call_CopyByEightWords_folder_moveChipEntry(entry, dest, CHIP_ENTRY_SIZE);
+                ST16(r5 + 0x28, LD16(r5 + 0x28) + 1);
+            }
+
+            call_ZeroFillByEightWords(entry, CHIP_ENTRY_SIZE);
+            call_e_recountChipCopies_result rc = call_e_recountChipCopies(LD16(r5 + 0x1E));
+            r5 = rc.r5;
+            ST8(r5 + 0x17, rc.r0);
+
+            call_PlaySoundEffect_result_folder_moveChipEntry ps = call_PlaySoundEffect_folder_moveChipEntry(SOUND_MENU_SELECT, rc.r2);
+            r5 = ps.r5;
+
+            u16 row_off = LD16(r5 + 0x20) + LD16(r5 + 0x24);
+            call_sub_8134F88(row_off, r5);
+
+            call_sub_8134FB0_result fb = call_sub_8134FB0(row_off, r5);
+            r5 = fb.r5;
+            r2_result = fb.r2;
+
+            call_sub_8134F78();
+
+        } else {
+            /* Non-active-folder jack: take one copy from a side folder. */
+            u32 entry = chip_data + (u32)slot_a * CHIP_ENTRY_SIZE;
+            u32 flags32 = LD32(entry + 0x14);
+            u32 copies = flags32 >> 16;
+
+            if (copies == 0) {
+                r2_result = call_PlaySoundEffect_folder_moveChipEntry(SOUND_CANT_JACK_IN, flags32).r2;
+                goto epilogue;
+            }
+
+            /* Find the first empty slot in the active folder. */
+            u32 byte_limit = (u32)LD16(r5 + 0x1E) * CHIP_ENTRY_SIZE;
+            u32 search_off = 0;
+            bool found = false;
+
+            for (;;) {
+                if (LD16(A_word_202A020 + search_off) == 0) {
+                    found = true;
+                    break;
+                }
+                search_off += CHIP_ENTRY_SIZE;
+                if ((s32)search_off >= (s32)byte_limit)
+                    break;
+            }
+
+            if (!found) {
+                r2_result = call_PlaySoundEffect_folder_moveChipEntry(SOUND_CANT_JACK_IN, byte_limit).r2;
+                goto epilogue;
+            }
+
+            call_sub_8135080_result chk = call_sub_8135080(
+                LD16(entry), LD16(entry + 0x1C) >> 7, 0, r5);
+            r5 = chk.r5;
+
+            if (!chk.z) {
+                u32 err = (chk.r0 == 2) ? 2 : 0;
+                call_folder_chipMoveError_result ce = call_folder_chipMoveError(
+                    err, chk.r1, chk.r2, chk.r3, chk.r4, r5);
+                r5 = ce.r5;
+                r2_result = ce.r2;
+                goto epilogue;
+            }
+
+            call_PlaySoundEffect_result_folder_moveChipEntry ps2 = call_PlaySoundEffect_folder_moveChipEntry(SOUND_MENU_SELECT, chk.r2);
+            r5 = ps2.r5;
+            copies -= 1;
+
+            if (copies == 0) {
+                /* Last copy removed: move the whole entry into the active folder. */
+                call_CopyByEightWords_folder_moveChipEntry(entry, A_word_202A020 + search_off, CHIP_ENTRY_SIZE);
+
+                call_e_recountChipCopies_result rc2 = call_e_recountChipCopies(LD16(r5 + 0x1E));
+                r5 = rc2.r5;
+                ST8(r5 + 0x17, rc2.r0);
+
+                u32 r0 = entry + CHIP_ENTRY_SIZE;
+                u32 r1 = entry;
+                u32 r2 = (u32)LD16(r5 + 0x2A);
+                u32 r3 = (u32)LD16(r5 + 0x2E) + r2;
+                r2 = (u32)LD16(r5 + 0x28);
+                r2 -= 1;
+                ST16(r5 + 0x28, r2);
+                r2 = r2 - r3;
+
+                if (r2 == 0) {
+                    call_sub_8135244_result s5244 = call_sub_8135244(r5);
+                    r0 = s5244.r0;
+                    r1 = s5244.r1;
+                    r2 = s5244.r2;
+                }
+
+                call_battle_copyStateSlotsAndZeroNext_813527C_result bc =
+                    call_battle_copyStateSlotsAndZeroNext_813527C(r0, r1, r2);
+                r5 = bc.r5;
+                r2_result = bc.r2;
+
+                call_chatbox_clampScrollToTextEnd_813525C(r5);
+                call_sub_8134F78();
+            } else {
+                /* More copies remain: decrement the count in the source entry. */
+                u32 low16 = LD32(entry + 0x14) & 0xFFFF;
+                ST32(entry + 0x14, (copies << 16) | low16);
+
+                call_CopyByEightWords_folder_moveChipEntry(entry, A_word_202A020 + search_off, CHIP_ENTRY_SIZE);
+
+                call_e_recountChipCopies_result rc3 = call_e_recountChipCopies(LD16(r5 + 0x1E));
+                r5 = rc3.r5;
+                ST8(r5 + 0x17, rc3.r0);
+                r2_result = rc3.r2;
+
+                call_sub_8134F78();
+            }
+        }
+
+    } else {
+        /* ---- different slots: swap two entries within the same folder ---- */
+        u32 addr_a = chip_data + (u32)slot_a * CHIP_ENTRY_SIZE;
+        u32 addr_b = chip_data + (u32)slot_b * CHIP_ENTRY_SIZE;
+
+        if (chip_data == A_word_202A020) {
+            /* Active folder: fix up cursor indices before swapping. */
+            call_folder_retargetIndex(slot_a, slot_b, r5);
+            call_folder_swapCursorIndex(0, slot_a, slot_b, r5);
+            call_folder_swapCursorIndex(4, slot_a, slot_b, r5);
+        }
+
+        /* Three-way swap through the temp buffer at unk_2035C6C. */
+        u32 temp = A_unk_2035C6C;
+        call_CopyByEightWords_result c1 = call_CopyByEightWords_folder_moveChipEntry(addr_a, temp, CHIP_ENTRY_SIZE);
+        u32 r2_tmp = c1.r2;
+        call_CopyByEightWords_folder_moveChipEntry(addr_b, addr_a, CHIP_ENTRY_SIZE);
+        call_CopyByEightWords_result c3 = call_CopyByEightWords_folder_moveChipEntry(temp, addr_b, CHIP_ENTRY_SIZE);
+        r2_tmp = c3.r2;
+
+        call_PlaySoundEffect_result_folder_moveChipEntry ps3 = call_PlaySoundEffect_folder_moveChipEntry(SOUND_MENU_SELECT, r2_tmp);
+        r2_result = ps3.r2;
+        r5 = ps3.r5;
+
+        call_sub_8134F78();
+    }
+
+epilogue:
+    ST32(r5 + 0x3C, 0x7FFF);
+    ST32(r5 + 0x44, 0);
+    ST32(r5 + 0x48, 0);
+
+    return r2_result;
+}
+
+/* folder_moveChipEntry(r5 = folder state ptr, r10 = context) -> r2 (r5/r6/r10 preserved) */
+Next folder_moveChipEntry(void) {
+    R2 = folder_moveChipEntry_impl(R5);
+    RETURN_TO_CALLER();
+}
+
 /* ── sub_8134F40 ── */
 /* sub_8134F40(r0 = id, r5 = owner):
  * Walk a per-actor counter table and, for each active entry whose id
@@ -3379,6 +3852,573 @@ Next registerBattleStartScript_81355EC(void) {
     RETURN_TO_CALLER();
 }
 
+/* ── battle_initNaviCustomizerScene_81356F4 ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r2, r3; } call_zeroFillVRAM_result;
+/* register form: generated wrapper: zeroFillVRAM has no typed C interface yet */
+static inline call_zeroFillVRAM_result call_zeroFillVRAM(void) {
+    GUEST_CALL(zeroFillVRAM);
+    return (call_zeroFillVRAM_result){ R2, R3 };
+}
+
+/* register form: generated wrapper: ZeroFill_byte_3001960 has no typed C interface yet */
+static inline void call_ZeroFill_byte_3001960(void) {
+    GUEST_CALL(ZeroFill_byte_3001960);
+}
+
+/* register form: generated wrapper: ZeroFillGFX30025c0 has no typed C interface yet */
+static inline void call_ZeroFillGFX30025c0(void) {
+    GUEST_CALL(ZeroFillGFX30025c0);
+}
+
+typedef struct { u32 r3; } call_toolkit_applyOverlayPalette_80015FC_result;
+/* register form: generated wrapper: toolkit_applyOverlayPalette_80015FC has no typed C interface yet */
+static inline call_toolkit_applyOverlayPalette_80015FC_result call_toolkit_applyOverlayPalette_80015FC(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(toolkit_applyOverlayPalette_80015FC);
+    return (call_toolkit_applyOverlayPalette_80015FC_result){ R3 };
+}
+
+typedef struct { u32 r2; } call_zeroFill_e2009740_result;
+/* register form: generated wrapper: zeroFill_e2009740 has no typed C interface yet */
+static inline call_zeroFill_e2009740_result call_zeroFill_e2009740(void) {
+    GUEST_CALL(zeroFill_e2009740);
+    return (call_zeroFill_e2009740_result){ R2 };
+}
+
+typedef struct { u32 r2, r3, r5; } call_SetScreenFade_result_battle_initNaviCustomizerScene_81356F4;
+/* register form: generated wrapper: SetScreenFade has no typed C interface yet */
+static inline call_SetScreenFade_result_battle_initNaviCustomizerScene_81356F4 call_SetScreenFade_battle_initNaviCustomizerScene_81356F4(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(SetScreenFade);
+    return (call_SetScreenFade_result_battle_initNaviCustomizerScene_81356F4){ R2, R3, R5 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7; bool c, v; } call_battle_resetEStructRecords_8046664_result;
+/* register form: generated wrapper: battle_resetEStructRecords_8046664 has no typed C interface yet */
+static inline call_battle_resetEStructRecords_8046664_result call_battle_resetEStructRecords_8046664(void) {
+    GUEST_CALL(battle_resetEStructRecords_8046664);
+    return (call_battle_resetEStructRecords_8046664_result){ R2, R3, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1; } call_sub_813B920_result_battle_initNaviCustomizerScene_81356F4;
+/* register form: generated wrapper: storeWorkByte_813B920 has no typed C interface yet */
+static inline call_sub_813B920_result_battle_initNaviCustomizerScene_81356F4 call_sub_813B920_battle_initNaviCustomizerScene_81356F4(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(storeWorkByte_813B920);
+    return (call_sub_813B920_result_battle_initNaviCustomizerScene_81356F4){ R1 };
+}
+
+typedef struct { u32 r0, r3, r4, r5, r6, r7; } call_CheckKeyItem_result_battle_initNaviCustomizerScene_81356F4;
+/* register form: generated wrapper: CheckKeyItem has no typed C interface yet */
+static inline call_CheckKeyItem_result_battle_initNaviCustomizerScene_81356F4 call_CheckKeyItem_battle_initNaviCustomizerScene_81356F4(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(CheckKeyItem);
+    return (call_CheckKeyItem_result_battle_initNaviCustomizerScene_81356F4){ R0, R3, R4, R5, R6, R7 };
+}
+
+/* register form: generated wrapper: getIndexedDataTable_813B9E0 has no typed C interface yet */
+static inline u32 call_getIndexedDataTable_813B9E0(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(getIndexedDataTable_813B9E0);
+    return R0;
+}
+
+typedef struct { u32 r5, r7; } call_battle_loadNaviCustomizerGfx_result;
+/* register form: generated wrapper: battle_loadNaviCustomizerGfx has no typed C interface yet */
+static inline call_battle_loadNaviCustomizerGfx_result call_battle_loadNaviCustomizerGfx(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_loadNaviCustomizerGfx);
+    return (call_battle_loadNaviCustomizerGfx_result){ R5, R7 };
+}
+
+/* register form: generated wrapper: sub_813BAA8 has no typed C interface yet */
+static inline void call_sub_813BAA8(void) {
+    GUEST_CALL(sub_813BAA8);
+}
+
+/* register form: generated wrapper: battle_copyWorkBlockToBattleWork_813676C has no typed C interface yet */
+static inline void call_sub_813676C(void) {
+    GUEST_CALL(battle_copyWorkBlockToBattleWork_813676C);
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_sub_813660C_result_battle_initNaviCustomizerScene_81356F4;
+/* register form: generated wrapper: sub_813660C has no typed C interface yet */
+static inline call_sub_813660C_result_battle_initNaviCustomizerScene_81356F4 call_sub_813660C_battle_initNaviCustomizerScene_81356F4(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_813660C);
+    return (call_sub_813660C_result_battle_initNaviCustomizerScene_81356F4){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7; } call_navicust_drawBoardTilemap_result_battle_initNaviCustomizerScene_81356F4;
+/* register form: generated wrapper: navicust_drawBoardTilemap has no typed C interface yet */
+static inline call_navicust_drawBoardTilemap_result_battle_initNaviCustomizerScene_81356F4 call_navicust_drawBoardTilemap_battle_initNaviCustomizerScene_81356F4(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(navicust_drawBoardTilemap);
+    return (call_navicust_drawBoardTilemap_result_battle_initNaviCustomizerScene_81356F4){ R2, R3, R4, R5, R6, R7 };
+}
+
+/* register form: generated wrapper: sub_81362F8 has no typed C interface yet */
+static inline void call_sub_81362F8_battle_initNaviCustomizerScene_81356F4(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_81362F8);
+}
+
+typedef struct { u32 r5, r8, r9, r10, r11, r12; } call_navicust_giveKeyItem14C_result;
+/* register form: generated wrapper: navicust_giveKeyItem14C has no typed C interface yet */
+static inline call_navicust_giveKeyItem14C_result call_navicust_giveKeyItem14C(u32 r5, u32 r7, u32 r9, u32 r11, u32 r12) {
+    R5 = r5;
+    R7 = r7;
+    R9 = r9;
+    R11 = r11;
+    R12 = r12;
+    GUEST_CALL(navicust_giveKeyItem14C);
+    return (call_navicust_giveKeyItem14C_result){ R5, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r2, r3, r4, r5, r6, r7; } call_submenu_rebuildKeyItemList_result;
+/* register form: generated wrapper: submenu_rebuildKeyItemList has no typed C interface yet */
+static inline call_submenu_rebuildKeyItemList_result call_submenu_rebuildKeyItemList(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(submenu_rebuildKeyItemList);
+    return (call_submenu_rebuildKeyItemList_result){ R2, R3, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r1, r2, r4, r5, r6, r7; } call_battle_spawnEStructRecordsFromTable_80465A0_result;
+/* register form: generated wrapper: battle_spawnEStructRecordsFromTable_80465A0 has no typed C interface yet */
+static inline call_battle_spawnEStructRecordsFromTable_80465A0_result call_battle_spawnEStructRecordsFromTable_80465A0(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(battle_spawnEStructRecordsFromTable_80465A0);
+    return (call_battle_spawnEStructRecordsFromTable_80465A0_result){ R1, R2, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7, r10; bool c, v; } call_PlayMusic_result;
+/* register form: generated wrapper: PlayMusic has no typed C interface yet */
+static inline call_PlayMusic_result call_PlayMusic(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlayMusic);
+    return (call_PlayMusic_result){ R1, R2, R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Initialize the Navi Customizer screen: clear VRAM/GFX, set up render info,
+ * configure fade, populate the screen state struct, draw the board, and play
+ * the customizer BGM. */
+static void init_navi_customizer(u32 r5, u32 r9, u32 r10, u32 r11, u32 r12) {
+    /* Clear VRAM and tile/palette buffers. */
+    call_zeroFillVRAM();
+    call_ZeroFill_byte_3001960();
+    call_ZeroFillGFX30025c0();
+
+    /* Apply overlay palette for the customizer layer. */
+    call_toolkit_applyOverlayPalette_80015FC(0x10);
+
+    /* Set up render info: assign BG0 and clear scrolling registers. */
+    u32 render_info = LD32(r10 + oToolkit_RenderInfoPtr);
+    ST16(render_info, 0xDF40);
+    ST16(render_info + 0x10, 0);
+    ST16(render_info + 0x12, 0);
+    ST16(render_info + 0x14, 0);
+    ST16(render_info + 0x16, 0);
+    ST16(render_info + 0x18, 0);
+    ST16(render_info + 0x1A, 0);
+
+    /* Clear the screen buffer region. */
+    call_zeroFill_e2009740();
+
+    /* Configure display/palette settings block. */
+    u32 unk = LD32(r10 + oToolkit_Unk200f3a0_Ptr);
+    ST8(unk + 9, 0x2F);
+    ST8(unk + 0xA, 0x3F);
+    ST8(unk + 0xB, 0x3F);
+    ST8(unk + 3, 6);
+    ST8(unk + 7, 0);
+    ST8(unk + 2, 0xF0);
+    ST8(unk + 6, 0xE);
+
+    /* Set screen mode fields. */
+    ST8(r5 + 1, 4);
+    ST8(r5 + 2, 0);
+
+    /* Begin fade-in. */
+    call_SetScreenFade_battle_initNaviCustomizerScene_81356F4(8, 0x10);
+
+    /* Reset all E-Struct records. */
+    call_battle_resetEStructRecords_8046664();
+
+    /* Clear screen-state fields. */
+    ST8(r5 + 0x17, 0);
+    ST8(r5 + 0x0C, 0);
+    ST8(r5 + 0x13, 0);
+    ST16(r5 + 0x1E, 0);
+    ST16(r5 + 0x20, 0);
+    ST16(r5 + 0x24, 0);
+    ST16(r5 + 0x22, 0);
+    ST16(r5 + 0x26, 0);
+    ST16(r5 + 0x38, 0);
+    ST16(r5 + 0x3A, 0);
+    ST8(r5 + 0x0D, 0);
+    ST8(r5 + 0x0E, 0);
+    ST8(r5 + 0x14, 0);
+    ST16(r5 + 0x30, 0);
+    ST16(r5 + 0x32, 0);
+
+    /* Query the number of owned Navi Customizers. */
+    call_sub_813B920_battle_initNaviCustomizerScene_81356F4(0);
+    ST8(r5 + 0x10, 0);
+
+    /* Check whether the Navi Customizer key item was obtained. */
+    call_CheckKeyItem_result_battle_initNaviCustomizerScene_81356F4 ki = call_CheckKeyItem_battle_initNaviCustomizerScene_81356F4(0x71);
+    ST8(r5 + 0x0F, ki.r0);
+
+    /* Retrieve the indexed data table for customizer content. */
+    u32 data_table = call_getIndexedDataTable_813B9E0(ki.r0);
+    ST32(r5 + 0x44, data_table);
+
+    /* Load Navi Customizer tile graphics. */
+    call_battle_loadNaviCustomizerGfx_result gfx = call_battle_loadNaviCustomizerGfx(r5);
+
+    /* Set up internal sub-screen state. */
+    call_sub_813BAA8();
+    call_sub_813676C();
+
+    /* Initialize the sub-screen state struct. */
+    call_sub_813660C_result_battle_initNaviCustomizerScene_81356F4 sub60c = call_sub_813660C_battle_initNaviCustomizerScene_81356F4(0);
+
+    /* Draw the Navi Customizer board tilemap. */
+    call_navicust_drawBoardTilemap_result_battle_initNaviCustomizerScene_81356F4 tile = call_navicust_drawBoardTilemap_battle_initNaviCustomizerScene_81356F4(0);
+
+    /* Refresh customizer display elements. */
+    call_sub_81362F8_battle_initNaviCustomizerScene_81356F4(tile.r5);
+
+    /* Process the Navi Customizer key-item grant routine. */
+    call_navicust_giveKeyItem14C(tile.r5, tile.r7, r9, r11, r12);
+
+    /* Rebuild the key-item list display. */
+    call_submenu_rebuildKeyItemList_result rebuild = call_submenu_rebuildKeyItemList(tile.r5);
+
+    /* Spawn E-Struct records from the customizer table. */
+    call_battle_spawnEStructRecordsFromTable_80465A0_result spawn =
+        call_battle_spawnEStructRecordsFromTable_80465A0(A_byte_8135628);
+
+    /* Play the Navi Customizer BGM. */
+    call_PlayMusic(SONG_NAVI_CUSTOMIZER, spawn.r2);
+}
+
+/* battle_initNaviCustomizerScene_81356F4
+ * (r5 = state ptr, r9/r10/r11/r12 = toolkit and caller regs) -> outputs: r5 r8 r9 r10 r11 r12 */
+Next battle_initNaviCustomizerScene_81356F4(void) {
+    init_navi_customizer(R5, R9, R10, R11, R12);
+    RETURN_TO_CALLER();
+}
+
+/* ── navicust_handleBoardInput ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { bool z, n; } call_IsButtonPressed_result_navicust_handleBoardInput;
+/* register form: generated wrapper: IsButtonPressed has no typed C interface yet */
+static inline call_IsButtonPressed_result_navicust_handleBoardInput call_IsButtonPressed_navicust_handleBoardInput(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(IsButtonPressed);
+    return (call_IsButtonPressed_result_navicust_handleBoardInput){ ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r2, r3, r5, r10; bool c, v; } call_object_setState30IfAnyUnk2004190EntryActive_result;
+/* register form: generated wrapper: object_setState30IfAnyUnk2004190EntryActive has no typed C interface yet */
+static inline call_object_setState30IfAnyUnk2004190EntryActive_result call_object_setState30IfAnyUnk2004190EntryActive(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(object_setState30IfAnyUnk2004190EntryActive);
+    return (call_object_setState30IfAnyUnk2004190EntryActive_result){ R2, R3, R5, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r5, r10; } call_navicust_boardCursorUp_result;
+/* register form: generated wrapper: navicust_boardCursorUp has no typed C interface yet */
+static inline call_navicust_boardCursorUp_result call_navicust_boardCursorUp(u32 r2, u32 r5) {
+    R2 = r2;
+    R5 = r5;
+    GUEST_CALL(navicust_boardCursorUp);
+    return (call_navicust_boardCursorUp_result){ R5, R10 };
+}
+
+typedef struct { u32 r4, r5, r8, r9, r10, r11, r12; } call_navicust_getCellProgramId_result_navicust_handleBoardInput;
+/* register form: generated wrapper: navicust_getCellProgramId has no typed C interface yet */
+static inline call_navicust_getCellProgramId_result_navicust_handleBoardInput call_navicust_getCellProgramId_navicust_handleBoardInput(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(navicust_getCellProgramId);
+    return (call_navicust_getCellProgramId_result_navicust_handleBoardInput){ R4, R5, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r5, r10; } call_beastsp_feedBoardCodeInput_result;
+/* register form: generated wrapper: beastsp_feedBoardCodeInput has no typed C interface yet */
+static inline call_beastsp_feedBoardCodeInput_result call_beastsp_feedBoardCodeInput(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(beastsp_feedBoardCodeInput);
+    return (call_beastsp_feedBoardCodeInput_result){ R5, R10 };
+}
+
+typedef struct { u32 r5, r10; } call_navicust_boardInputCancelExit_result;
+/* register form: generated wrapper: navicust_boardInputCancelExit has no typed C interface yet */
+static inline call_navicust_boardInputCancelExit_result call_navicust_boardInputCancelExit(u32 r4, u32 r5) {
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(navicust_boardInputCancelExit);
+    return (call_navicust_boardInputCancelExit_result){ R5, R10 };
+}
+
+typedef struct { u32 r5, r10; } call_navicust_handleBoardConfirm_result;
+/* register form: generated wrapper: navicust_handleBoardConfirm has no typed C interface yet */
+static inline call_navicust_handleBoardConfirm_result call_navicust_handleBoardConfirm(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(navicust_handleBoardConfirm);
+    return (call_navicust_handleBoardConfirm_result){ R5, R10 };
+}
+
+typedef struct { u32 r4, r5, r6, r7, r10; } call_PlaySoundEffect_result_navicust_handleBoardInput;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_navicust_handleBoardInput call_PlaySoundEffect_navicust_handleBoardInput(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_navicust_handleBoardInput){ R4, R5, R6, R7, R10 };
+}
+
+/* register form: generated wrapper: navicust_loadSelectedCellParams has no typed C interface yet */
+static inline void call_navicust_loadSelectedCellParams(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(navicust_loadSelectedCellParams);
+}
+
+typedef struct { u32 r3, r5; } call_sub_8135F5C_result;
+/* register form: generated wrapper: sub_8135F5C has no typed C interface yet */
+static inline call_sub_8135F5C_result call_sub_8135F5C(void) {
+    GUEST_CALL(sub_8135F5C);
+    return (call_sub_8135F5C_result){ R3, R5 };
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_sub_813660C_result_navicust_handleBoardInput;
+/* register form: generated wrapper: sub_813660C has no typed C interface yet */
+static inline call_sub_813660C_result_navicust_handleBoardInput call_sub_813660C_navicust_handleBoardInput(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_813660C);
+    return (call_sub_813660C_result_navicust_handleBoardInput){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r2, r3, r5, r6, r7; bool c, v; } call_navicust_drawBoardTilemap_result_navicust_handleBoardInput;
+/* register form: generated wrapper: navicust_drawBoardTilemap has no typed C interface yet */
+static inline call_navicust_drawBoardTilemap_result_navicust_handleBoardInput call_navicust_drawBoardTilemap_navicust_handleBoardInput(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(navicust_drawBoardTilemap);
+    return (call_navicust_drawBoardTilemap_result_navicust_handleBoardInput){ R2, R3, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r12; } call_menu_adjustCursorOrValue_811F7F8_result;
+/* register form: generated wrapper: menu_adjustCursorOrValue_811F7F8 has no typed C interface yet */
+static inline call_menu_adjustCursorOrValue_811F7F8_result call_menu_adjustCursorOrValue_811F7F8(u32 r0, u32 r1, u32 r2, u32 r3, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R5 = r5;
+    GUEST_CALL(menu_adjustCursorOrValue_811F7F8);
+    return (call_menu_adjustCursorOrValue_811F7F8_result){ R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R12 };
+}
+
+/* register form: generated wrapper: navicust_getMoveDir has no typed C interface yet */
+static inline u32 call_navicust_getMoveDir(u32 r1, u32 r5) {
+    R1 = r1;
+    R5 = r5;
+    GUEST_CALL(navicust_getMoveDir);
+    return R0;
+}
+
+/* NavCust board input handler: processes joypad input for the in-battle NavCust board,
+ * dispatching SELECT/START/A/B and D-pad navigation, updating the board cursor and
+ * committing position snapshots at the end of each frame. */
+
+static void navicust_board_handle_input(u32 object, u32 toolkit, u32 initial_r2) {
+    /* Mirror current (x, y) into the "previous" slots. */
+    ST16(object + 0x22, LD16(object + 0x20));
+    ST16(object + 0x26, LD16(object + 0x24));
+
+    bool need_state_check = true;
+
+    if (LD8(object + 0xD) != 0) {
+        /* Object is busy (awaiting animation) – skip all input. */
+    } else {
+        /* SELECT – open the object's state-30 sub-menu if any entry is active. */
+        if (!call_IsButtonPressed_navicust_handleBoardInput(JOYPAD_SELECT).z) {
+            call_object_setState30IfAnyUnk2004190EntryActive(object);
+            need_state_check = false;
+        } else if (!call_IsButtonPressed_navicust_handleBoardInput(JOYPAD_START).z) {
+            /* START – move cursor up, then read the new cell's program ID. */
+            call_navicust_getCellProgramId_navicust_handleBoardInput(
+                call_navicust_boardCursorUp(initial_r2, object).r5);
+            need_state_check = false;
+        } else {
+            u32 joypad = LD32(toolkit + oToolkit_JoypadPtr);
+            if ((LD16(joypad) & 0x10) != 0) {
+                /* Code-input mode bit held – feed the board code to beast-spirit. */
+                call_beastsp_feedBoardCodeInput(LD16(joypad + 2), object);
+                need_state_check = false;
+            } else {
+                /* Clear the "cancel pending" flag. */
+                ST8(object + 0x17, 0);
+
+                if (!call_IsButtonPressed_navicust_handleBoardInput(JOYPAD_START | JOYPAD_B).z) {
+                    /* START|B – cancel and exit the board. */
+                    call_navicust_boardInputCancelExit(0, object);
+                    need_state_check = false;
+                } else if (!call_IsButtonPressed_navicust_handleBoardInput(JOYPAD_A).z) {
+                    /* A – confirm the selected cell. */
+                    call_navicust_handleBoardConfirm(object);
+                    need_state_check = false;
+                } else if ((LD16(joypad + oJoypad_Pressed) & 0x20) != 0) {
+                    /* D-pad pressed bit – select cell: play SFX, enter state 8,
+                     * load cell params, redraw tilemap. */
+                    call_PlaySoundEffect_navicust_handleBoardInput(SOUND_MENU_SELECT, joypad);
+                    ST8(object + 2, 8);
+                    call_navicust_loadSelectedCellParams(object);
+                    call_sub_8135F5C();
+                    call_sub_813660C_navicust_handleBoardInput(1);
+                    call_navicust_drawBoardTilemap_navicust_handleBoardInput(1);
+                    need_state_check = false;
+                } else {
+                    /* Low-sensitivity held D-pad: attempt cursor movement. */
+                    call_menu_adjustCursorOrValue_811F7F8_result cur =
+                        call_menu_adjustCursorOrValue_811F7F8(
+                            LD16(joypad + oJoypad_LowSensitivityHeld), 4, 0, 0, object);
+                    if (cur.r0 != 0) {
+                        /* Cursor moved – mark object busy and refresh program ID. */
+                        call_navicust_getCellProgramId_navicust_handleBoardInput(cur.r5);
+                        ST8(object + 0xD, 0x7F);
+                    }
+                    /* Falls through to state check (need_state_check stays true). */
+                }
+            }
+        }
+    }
+
+    if (need_state_check && LD8(object + 0xC) != 0xC) {
+        /* Advance the board state machine unless it is already at state 0xC. */
+        ST8(object + 0xC, (u8)call_navicust_getMoveDir(0, object));
+    }
+
+    /* Commit: write latest (x, y) into the draw back-buffer and clear flag 0x13. */
+    ST16(object + 0x3A, LD16(object + 0x24));
+    ST16(object + 0x38, LD16(object + 0x20));
+    ST8(object + 0x13, 0);
+}
+
+/* navicust_handleBoardInput(r2 = initial cursor field, r5 = object, r10 = toolkit)
+ * -> outputs r5 r8 r9 r10 r11 r12 (all set by callee wrappers) */
+Next navicust_handleBoardInput(void) {
+    navicust_board_handle_input(R5, R10, R2);
+    RETURN_TO_CALLER();
+}
+
+/* ── battle_loadNaviCustomizerGfx ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r4, r5, r6, r7; } call_getKeyedTableEntry_811FB84_result_battle_loadNaviCustomizerGfx;
+/* register form: generated wrapper: getKeyedTableEntry_811FB84 has no typed C interface yet */
+static inline call_getKeyedTableEntry_811FB84_result_battle_loadNaviCustomizerGfx call_getKeyedTableEntry_811FB84_battle_loadNaviCustomizerGfx(u32 r0, u32 r1) {
+    R0 = r0;
+    R1 = r1;
+    GUEST_CALL(getKeyedTableEntry_811FB84);
+    return (call_getKeyedTableEntry_811FB84_result_battle_loadNaviCustomizerGfx){ R0, R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; bool v; } call_decompAndCopyData_result_battle_loadNaviCustomizerGfx;
+/* register form: generated wrapper: decompAndCopyData has no typed C interface yet */
+static inline call_decompAndCopyData_result_battle_loadNaviCustomizerGfx call_decompAndCopyData_battle_loadNaviCustomizerGfx(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(decompAndCopyData);
+    return (call_decompAndCopyData_result_battle_loadNaviCustomizerGfx){ R1, R2, R3, R4, R5, R6, R7, OVERFLOW_FLAG() };
+}
+
+/* register form: generated wrapper: CopyByEightWords has no typed C interface yet */
+static inline void call_CopyByEightWords_battle_loadNaviCustomizerGfx(u32 r0, u32 r1, u32 r2) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    GUEST_CALL(CopyByEightWords);
+}
+
+typedef struct { u32 r3, r6, r7; bool v; } call_CopyBackgroundTiles_result_battle_loadNaviCustomizerGfx;
+/* register form: generated wrapper: CopyBackgroundTiles has no typed C interface yet */
+static inline call_CopyBackgroundTiles_result_battle_loadNaviCustomizerGfx call_CopyBackgroundTiles_battle_loadNaviCustomizerGfx(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4, u32 r5) {
+    R0 = r0;
+    R1 = r1;
+    R2 = r2;
+    R3 = r3;
+    R4 = r4;
+    R5 = r5;
+    GUEST_CALL(CopyBackgroundTiles);
+    return (call_CopyBackgroundTiles_result_battle_loadNaviCustomizerGfx){ R3, R6, R7, OVERFLOW_FLAG() };
+}
+
+/* battle_loadNaviCustomizerGfx: initialise the Navi Customizer screen.
+ *
+ * Builds a decomp/init-references table at unk_20096E0 from the keyed table
+ * at off_8135C2C (one getKeyedTableEntry per triple, plus its two extra
+ * words, terminated by a NULL word), runs the two init-ref decomp/copy
+ * passes, copies the 0x100-byte palette block into IWRAM, and lays out the
+ * three background tile blocks of the screen. */
+
+/* The callees (decompAndCopyData / CopyBackgroundTiles) leave guest r4-r7
+ * dirty, while this function's contract preserves them; the original restored
+ * them with pop {r4-r7}. The adapter saves and restores them. */
+
+/* base (entry R5) is the Navi Customizer object whose byte 0xF selects the
+ * per-Navi tile source. */
+static void load_navi_customizer_gfx(u32 base) {
+    u32 dest = A_unk_20096E0;   /* table under construction */
+    u32 src = A_off_8135C2C;    /* key/size/extras table */
+    u32 d = 0;                  /* write offset into dest */
+    u32 s = 0;                  /* read offset into src */
+
+    while ((s32)s < (s32)0x30) {
+        u32 key = LD32(src + s);  s += 4;
+        u32 size = LD32(src + s); s += 4;
+        u32 ptr = call_getKeyedTableEntry_811FB84_battle_loadNaviCustomizerGfx(key, size).r0;
+        ST32(dest + d, ptr); d += 4;
+        for (u32 k = 0; k < 2; k++) {   /* the two extra words after each pair */
+            ST32(dest + d, LD32(src + s));
+            d += 4; s += 4;
+        }
+    }
+    ST32(dest + d, 0);                  /* terminate the init-refs list */
+
+    call_decompAndCopyData_battle_loadNaviCustomizerGfx(A_unk_20096E0);
+    call_decompAndCopyData_battle_loadNaviCustomizerGfx(A_off_8135C64);
+    call_CopyByEightWords_battle_loadNaviCustomizerGfx(A_unk_201CF80, A_unk_30019E0, 0x100);
+
+    /* Panel body: full 0x1E x 0x14 tile block. */
+    call_CopyBackgroundTiles_battle_loadNaviCustomizerGfx(0, 0, 1, A_byte_201BE80, 0x1E, 0x14);
+
+    /* Per-Navi panel: the tile source comes from a 3-entry jump table indexed
+     * by the Navi index stored at offset 0xF of the customizer object. */
+    u32 tile_src = LD32(A_off_8135D80 + (LD8(base + 0xF) << 2));
+    call_CopyBackgroundTiles_battle_loadNaviCustomizerGfx(1, 2, 1, tile_src, 0x11, 0x11);
+
+    /* Button/extra panel: 0xC x 9 block. */
+    call_CopyBackgroundTiles_battle_loadNaviCustomizerGfx(0x11, 0xB, 2, A_unk_201D180, 0xC, 9);
+}
+
+/* battle_loadNaviCustomizerGfx(r5 = customizer object, r10) -> r5 r7 unchanged */
+Next battle_loadNaviCustomizerGfx(void) {
+    /* register form: callees clobber r4-r7; the original restored them on
+     * return via its saved registers, so save/restore r4, r6, r7 and r5 here. */
+    u32 base = R5;
+    u32 save_r4 = R4, save_r6 = R6, save_r7 = R7;
+    load_navi_customizer_gfx(base);
+    R4 = save_r4;
+    R5 = base;
+    R6 = save_r6;
+    R7 = save_r7;
+    RETURN_TO_CALLER();
+}
+
 /* ── battle_collectKeyItemSurplus ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2, r3, r4, r5, r6; } call_CheckKeyItem_result;
@@ -3445,6 +4485,132 @@ static u32 collect_key_item_surplus(u32 out_ptr) {
 /* battle_collectKeyItemSurplus(r6 = output list ptr, r10 = toolkit base) -> r2 r3 r5 r6 */
 Next battle_collectKeyItemSurplus(void) {
     R6 = collect_key_item_surplus(R6);
+    RETURN_TO_CALLER();
+}
+
+/* ── navicust_confirmPartPlacement ── */
+/* generated wrappers of the game functions it calls (tools/abi/gen.py) */
+typedef struct { u32 r0, r2, r5, r8, r9, r10, r11, r12; bool z, n; } call_navicust_checkPartPlacement_result;
+/* register form: generated wrapper: navicust_checkPartPlacement has no typed C interface yet */
+static inline call_navicust_checkPartPlacement_result call_navicust_checkPartPlacement(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(navicust_checkPartPlacement);
+    return (call_navicust_checkPartPlacement_result){ R0, R2, R5, R8, R9, R10, R11, R12, ZERO_FLAG(), NEGATIVE_FLAG() };
+}
+
+typedef struct { u32 r5, r8, r9, r10, r11, r12; } call_navicust_installSelectedPart_result;
+/* register form: generated wrapper: navicust_installSelectedPart has no typed C interface yet */
+static inline call_navicust_installSelectedPart_result call_navicust_installSelectedPart(u32 r0, u32 r5) {
+    R0 = r0;
+    R5 = r5;
+    GUEST_CALL(navicust_installSelectedPart);
+    return (call_navicust_installSelectedPart_result){ R5, R8, R9, R10, R11, R12 };
+}
+
+typedef struct { u32 r1; } call_sub_813B920_result_navicust_confirmPartPlacement;
+/* register form: generated wrapper: storeWorkByte_813B920 has no typed C interface yet */
+static inline call_sub_813B920_result_navicust_confirmPartPlacement call_sub_813B920_navicust_confirmPartPlacement(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(storeWorkByte_813B920);
+    return (call_sub_813B920_result_navicust_confirmPartPlacement){ R1 };
+}
+
+/* register form: generated wrapper: sub_81362F8 has no typed C interface yet */
+static inline void call_sub_81362F8_navicust_confirmPartPlacement(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(sub_81362F8);
+}
+
+typedef struct { u32 r4, r5, r8, r9, r10, r11, r12; } call_navicust_getCellProgramId_result_navicust_confirmPartPlacement;
+/* register form: generated wrapper: navicust_getCellProgramId has no typed C interface yet */
+static inline call_navicust_getCellProgramId_result_navicust_confirmPartPlacement call_navicust_getCellProgramId_navicust_confirmPartPlacement(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(navicust_getCellProgramId);
+    return (call_navicust_getCellProgramId_result_navicust_confirmPartPlacement){ R4, R5, R8, R9, R10, R11, R12 };
+}
+
+/* register form: generated wrapper: battle_trackObjectIdInList has no typed C interface yet */
+static inline void call_battle_trackObjectIdInList(u32 r5) {
+    R5 = r5;
+    GUEST_CALL(battle_trackObjectIdInList);
+}
+
+typedef struct { u32 r4, r5, r6, r7; } call_sub_813660C_result_navicust_confirmPartPlacement;
+/* register form: generated wrapper: sub_813660C has no typed C interface yet */
+static inline call_sub_813660C_result_navicust_confirmPartPlacement call_sub_813660C_navicust_confirmPartPlacement(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(sub_813660C);
+    return (call_sub_813660C_result_navicust_confirmPartPlacement){ R4, R5, R6, R7 };
+}
+
+typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; bool c, v; } call_navicust_drawBoardTilemap_result_navicust_confirmPartPlacement;
+/* register form: generated wrapper: navicust_drawBoardTilemap has no typed C interface yet */
+static inline call_navicust_drawBoardTilemap_result_navicust_confirmPartPlacement call_navicust_drawBoardTilemap_navicust_confirmPartPlacement(u32 r0) {
+    R0 = r0;
+    GUEST_CALL(navicust_drawBoardTilemap);
+    return (call_navicust_drawBoardTilemap_result_navicust_confirmPartPlacement){ R1, R2, R3, R4, R5, R6, R7, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+typedef struct { u32 r1, r2, r3, r10; bool c, v; } call_PlaySoundEffect_result_navicust_confirmPartPlacement;
+/* register form: generated wrapper: PlaySoundEffect has no typed C interface yet */
+static inline call_PlaySoundEffect_result_navicust_confirmPartPlacement call_PlaySoundEffect_navicust_confirmPartPlacement(u32 r0, u32 r2) {
+    R0 = r0;
+    R2 = r2;
+    GUEST_CALL(PlaySoundEffect);
+    return (call_PlaySoundEffect_result_navicust_confirmPartPlacement){ R1, R2, R3, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
+}
+
+/* Confirm a part-placement selection on the NavICust board.
+ *
+ * Flow:
+ *   1. checkPartPlacement validates the slot; if rejected (Z clear) → "can't jack in" beep.
+ *   2. Otherwise store the slot halfword at +0x18, commit via installSelectedPart.
+ *   3. Branch on the submenu-state byte at +0x10:
+ *        0  → entering a submenu: status=4, clear counters, run init/repaint chain.
+ *        ≠0 → leaving back to parent: clear +0x10, repaint, clear counters.
+ *   Both accept paths finish with SOUND_MENU_SELECT.
+ */
+static void do_confirm_part_placement(u32 navicust_state) {
+    call_navicust_checkPartPlacement_result check =
+        call_navicust_checkPartPlacement(navicust_state);
+
+    if (!check.z) {
+        /* Invalid slot – rejection beep only. */
+        call_PlaySoundEffect_navicust_confirmPartPlacement(SOUND_CANT_JACK_IN, check.r2);
+        return;
+    }
+
+    /* Valid slot – store it and commit the selection. */
+    ST16(navicust_state + 0x18, (u16)check.r0);
+    call_navicust_installSelectedPart(check.r0, navicust_state);
+
+    if (LD8(navicust_state + 0x10) == 0) {
+        /* Entering submenu: set busy status, clear tick counters, run open chain. */
+        ST8(navicust_state + 2, 4);
+        ST8(navicust_state + 0xE, 0);
+        ST8(navicust_state + 0x14, 0);
+        call_sub_813B920_navicust_confirmPartPlacement(0);
+        call_sub_81362F8_navicust_confirmPartPlacement(navicust_state);
+        call_navicust_getCellProgramId_navicust_confirmPartPlacement(navicust_state);
+        call_battle_trackObjectIdInList(navicust_state);
+        call_sub_813660C_navicust_confirmPartPlacement(0);
+        call_navicust_drawBoardTilemap_result_navicust_confirmPartPlacement draw = call_navicust_drawBoardTilemap_navicust_confirmPartPlacement(0);
+        call_PlaySoundEffect_navicust_confirmPartPlacement(SOUND_MENU_SELECT, draw.r2);
+    } else {
+        /* Leaving back to parent menu: clear state flag, repaint, reset counters. */
+        ST8(navicust_state + 0x10, 0);
+        call_sub_813660C_navicust_confirmPartPlacement(1);
+        call_navicust_drawBoardTilemap_result_navicust_confirmPartPlacement draw = call_navicust_drawBoardTilemap_navicust_confirmPartPlacement(1);
+        ST8(navicust_state + 0xE, 0);
+        ST8(navicust_state + 0x14, 0);
+        call_sub_813B920_navicust_confirmPartPlacement(0);
+        call_PlaySoundEffect_navicust_confirmPartPlacement(SOUND_MENU_SELECT, draw.r2);
+    }
+}
+
+/* navicust_confirmPartPlacement(r5 = state ptr) -> r8 r9 r10 r11 r12 (callee side-effects) */
+Next navicust_confirmPartPlacement(void) {
+    do_confirm_part_placement(R5);
     RETURN_TO_CALLER();
 }
 
