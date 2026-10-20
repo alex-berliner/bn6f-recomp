@@ -1058,7 +1058,7 @@ Next e_setEventFlagFromStruct(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_809CA84 ── */
+/* ── ow_lookupScenarioTileData_809CA84 ── */
 struct TileLookupResult {
     u32 value;   /* r0: byte from tile data + 1, or 0 if no tile data */
     u32 stride;  /* r2: 0x18 if tile data found, else unchanged */
@@ -1090,8 +1090,8 @@ static struct TileLookupResult tile_lookup(u32 toolkit, u32 prev_stride) {
     return res;
 }
 
-/* sub_809CA84(r10 = toolkit) -> r0, r2; preserves r4-r7 */
-Next sub_809CA84(void) {
+/* ow_lookupScenarioTileData_809CA84(r10 = toolkit) -> r0, r2; preserves r4-r7 */
+Next ow_lookupScenarioTileData_809CA84(void) {
     struct TileLookupResult res = tile_lookup(R10, R2);
     R0 = res.value;
     R2 = res.stride;

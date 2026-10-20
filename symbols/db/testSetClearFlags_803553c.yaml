@@ -1,0 +1,67 @@
+name: testSetClearFlags_803553c
+address: '0x0803553C'
+kind: function
+status: confirmed
+summary: Synchronizes five derived event flags to their source flags, then clears a trigger flag.
+interface: propagateDerivedEventFlags_803553c(u32 r10) -> u32 r0 (= 0); clobbers r1 r3; preserves r4-r7
+details: 'First calls clearSetFlags_80355a8 (an upstream helper that likely performs its own set/clear step). Then,
+  for each of five source→derived event-flag pairs, it calls TestEventFlagFromImmediate on the source; if the source
+  flag is set (ZF clear) it calls SetEventFlagFromImmediate on the derived flag: (6,0x7B)->(6,0x82), (8,0x56)->(8,0x5F),
+  (0xA,0x44)->(0xA,0xBA), (0xC,0x6D)->(0xC,0xDC), (0xC,0xA7)->(0xC,0xE0). Finally it unconditionally clears (1,0x20)
+  (EVENT_120) via ClearEventFlagFromImmediate and returns 0 in r0. The function touches no game object structures;
+  all state is in the global event-flag table indexed by (page, bit). r10 is passed in by callers but not read by
+  this body; r4-r7 are pushed/popped unchanged so their values after the call are whatever clearSetFlags_80355a8
+  left them as.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c testSetClearFlags_803553c
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function testSetClearFlags_803553c
+
+    ./wf verify --function testSetClearFlags_803553c --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function testSetClearFlags_803553c
+
+    ./wf verify --function testSetClearFlags_803553c --snapshots build-snapshots'
+  result: 93 compared, 0 differed, 0 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function testSetClearFlags_803553c
+
+    ./wf verify --function testSetClearFlags_803553c --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0803553c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- beastsp
+open_questions:
+- What story or gameplay condition does each source flag represent, and what does the derived flag gate?
+- What does clearSetFlags_80355a8 do before this function runs (it may set or clear additional flags)?
+- Is EVENT_120 (1,0x20) a 'run once' trigger cleared here, or a state-reset flag used elsewhere?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

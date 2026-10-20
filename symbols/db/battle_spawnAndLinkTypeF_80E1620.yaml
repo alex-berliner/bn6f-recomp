@@ -1,0 +1,78 @@
+name: battle_spawnAndLinkTypeF_80E1620
+address: '0x080E1620'
+kind: function
+status: confirmed
+summary: Spawns a type-0xF battle object via object_spawnType4, links it to the caller's battle object,
+  copies alliance/direction, and sets header flag bit 2.
+interface: battle_spawnAndLinkTypeF(r1, r2, r3, r4, r5, r7) -> r0 (spawned object or 0), r1, r2, r3, r4,
+  r5, r6, nzcv
+details: 'Calls object_spawnType4 with type 0xF and pass-through params r1-r4; the spawned pointer returns
+  in r5 of the callee which is then moved to r0. On success (r0 != 0): stores the caller''s original r5
+  (parent battle object) into the new object''s oBattleObject_RelatedObject1Ptr; stores the callee''s
+  r7 (extra-vars block) into oBattleObject_ExtraVars and writes a back-pointer (new object address) at
+  the head of that extra-vars list; copies oBattleObject_AllianceAndDirectionFlip (halfword) from the
+  caller object to the new object; ORs bit 2 (0x04) into oObjectHeader_Flags. On failure (spawn returned
+  0), returns immediately with r0=0 and zero flags. r4-r7 are preserved across the call; r5 is restored
+  from the caller''s stack after the spawner overwrites it.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80E0F02.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80E1620
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80E1620
+
+    ./wf verify --function sub_80E1620 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80E1620
+
+    ./wf verify --function sub_80E1620 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 91 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80E1620
+
+    ./wf verify --function sub_80E1620 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080e1620 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80E0F02.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80E1620 -> battle_spawnAndLinkTypeF_80E1620
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80E0F02.c
+coverage:
+- beastsp
+related:
+- sub_8014606
+open_questions:
+- What game entity does object type 0xF represent? (Chip effect, Custom Object, or something else)
+- What does flag bit 2 in oObjectHeader_Flags signify (linked-to-parent, inheritable, etc.)?
+- Is the extra-vars back-pointer at [r7] used as a linked-list head by some update routine?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80E1620

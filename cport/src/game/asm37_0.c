@@ -87,7 +87,7 @@ Next toolkit_getUnk2004190EntryPtr_813B9FC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_813BB00 ── */
+/* ── battle_checkPanelPlacement_813BB00 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r8, r9, r10, r11, r12; } call_sub_813B790_result;
 /* register form: generated wrapper: ai_dispatchFromGlobalByte has no typed C interface yet */
@@ -159,9 +159,9 @@ static struct scan_result scan_panel_window(u32 panel_id, u32 grid_ptr,
     return out;
 }
 
-/* sub_813BB00(r0=panel_id, r1=grid_ptr, r2=row, r3=col, r5,r8,r9,r10,r11,r12)
+/* battle_checkPanelPlacement_813BB00(r0=panel_id, r1=grid_ptr, r2=row, r3=col, r5,r8,r9,r10,r11,r12)
  *   -> r0, r8, r9, r10, r11, r12; flags nz */
-Next sub_813BB00(void) {
+Next battle_checkPanelPlacement_813BB00(void) {
     struct scan_result res = scan_panel_window(R0, R1, R2, R3, R5, R8, R9, R11, R12);
     R0 = res.r0;
     R8 = res.r8; R9 = res.r9; R11 = res.r11; R12 = res.r12;

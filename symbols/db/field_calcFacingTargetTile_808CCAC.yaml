@@ -1,0 +1,77 @@
+name: field_calcFacingTargetTile_808CCAC
+address: '0x0808CCAC'
+kind: function
+status: confirmed
+summary: Computes the tile coordinate one cell ahead of the player in their facing direction (8-way) and
+  writes it into the target object's position fields.
+interface: void field_calcFacingTargetTile_808CCAC(u32 obj /*r5*/, u32 playerCtx /*r10*/); // writes obj+0x1A
+  (x tile) and obj+0x1C (y tile); r5 preserved
+details: 'Calls GetOWPlayerFacingDirection to get the player''s 8-way facing (0–7) and ReadOWPlayerObjectCoords
+  to get the player''s tile coordinates (16.16 fixed point; shifted right by 16 to get the integer tile
+  index). Adds or subtracts 0x18 (one tile in pixel units) to x and/or y depending on direction: 0 = (+x,-y),
+  1 = (+x), 2 = (+x,+y), 3 = (+y), 4 = (-x,+y), 5 = (-x), 6 = (-x,-y), default = (-y). Stores the resulting
+  tile x into [r5+0x1A] and y into [r5+0x1C] as signed halfwords. r10 (player context pointer) is listed
+  in the register contract but is not referenced in this function''s body.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_808CCAC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_808CCAC
+
+    ./wf verify --function sub_808CCAC --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_808CCAC
+
+    ./wf verify --function sub_808CCAC --snapshots build-snapshots'
+  result: 39 compared, 0 differed, 53 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_808CCAC
+
+    ./wf verify --function sub_808CCAC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808ccac ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_808CCAC -> field_calcFacingTargetTile_808CCAC
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm24.c
+coverage:
+- beastsp
+open_questions:
+- What object type is r5? The +0x1A/+0x1C fields suggest a generic object struct; could be an NPC, an
+  interaction target, or a cutscene entity.
+- Why is r10 (player context) in the contract but unused? Possibly a caller passes it for a sibling function
+  or the ABI is shared across a group of similar routines.
+- The default (facing >= 7) branch matches case 0's y adjustment only; confirm whether facing 7 truly
+  means 'down' and falls through, or is an error path.
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_808CCAC

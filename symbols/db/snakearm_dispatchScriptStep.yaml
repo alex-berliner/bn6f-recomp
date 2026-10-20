@@ -1,44 +1,71 @@
 name: snakearm_dispatchScriptStep
 address: '0x08112A4A'
 kind: function
-status: probable
-summary: Dispatches the snakearm boss AI's per-step script handler based on the AI state's ScriptId
-interface: (r6 = AI state object) -> r0 = whatever the dispatched step handler returns; lr set so handler
-  can return to this frame
-details: Reads the byte at oAIState_ScriptId of the AI object in r6, uses it to index a table of Thumb
-  function pointers at off_8112A5C, sets lr to pc (so the callee's bx lr lands back at the pop) and jumps
-  to the handler. Index 0 falls into sub_8112A64, index 1 into battle_aiSnakeArmTickStep_8112A78; larger
-  ScriptIds would read garbage from beyond the table. This is a classic two-entry script stepper for the
-  SnakeArm boss AI, letting the battle loop tick one scripted step per call.
+status: confirmed
+summary: Thunks one SnakeArm boss-AI script step by jumping into the handler selected via the script-ID byte in
+  the AI state.
+interface: snakearm_dispatchScriptStep(r4, r5, r6=aiState, r7, r10, lr) -> r1, r5, r8, r9, r10, r11, r12; preserves
+  r4, r6; clobbers r0, r2, r3, r7, lr, nzcv
+details: Reads the script-ID byte at aiState+oAIState_ScriptId (offset 0 within the AI state struct). Uses that
+  byte as a raw (unscaled) word offset into the two-entry jump table at off_8112A5C, so script id 0 selects battle_aiSnakeArmStepInitStage4
+  and script id 4 selects battle_aiSnakeArmTickStep_8112A78. Loads the handler address into r1, sets r0 to the script
+  id, and calls through r1 with bx r1. The entire caller register file (except r0 and r1 as noted) is passed through
+  to the handler; the handler's writes to r5 and r8-r12 become this thunk's outputs. r4 (loop counter or scratch)
+  and r6 (AI state pointer) are pushed/popped to survive the call. The thunk itself has no game logic; it is a per-boss
+  dispatch trampoline that lets the battle-AI tick loop call the correct step handler generically.
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: ldrb r0,[r6,#oAIState_ScriptId]; ldr r1,[table,r0] selects the handler by the AI state's script
-    step; mov lr,pc; bx r1 with pop {r4,r6,pc} makes each handler continue to this dispatcher's epilogue;
-    table entry 1 is battle_aiSnakeArmTickStep_8112A78, tying this to the snakearm AI subsystem; r6 (not
-    a passed register) is the AI object, matching a per-object battle update convention
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm32.s:9690
-  reproduce: python3 tools/asmcat.py 0x08112A4A
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c snakearm_dispatchScriptStep
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function snakearm_dispatchScriptStep
+
+    ./wf verify --function snakearm_dispatchScriptStep --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function snakearm_dispatchScriptStep
+
+    ./wf verify --function snakearm_dispatchScriptStep --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 28 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function snakearm_dispatchScriptStep
+
+    ./wf verify --function snakearm_dispatchScriptStep --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08112a4a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm32.c
 coverage:
 - battlesweep
 - beastsp
 open_questions:
-- what sub_8112A64 (step 0) does
-- whether ScriptId can exceed 1 in practice and what happens then
-- where the battle loop calls this and how the AI state's ScriptId is advanced
+- Why is the script-ID offset unscaled (byte value, not multiplied by 4)? Likely the two handlers expect ids 0 and
+  4 to match the +4 word stride, but the game may write 4 directly rather than 1.
+- Is there a larger jump table elsewhere for other bosses, or is this two-entry table unique to SnakeArm?
+- What registers does each handler actually read beyond the full file? The contract only records what the dispatch
+  thunk preserves/clobbers.
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8112A4A -> snakearm_dispatchScriptStep
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8112A4A
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

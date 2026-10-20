@@ -92,12 +92,12 @@ static inline call_init_clearBeastSpEventFlagTable_result call_init_clearBeastSp
 }
 
 typedef struct { u32 r3, r4, r6, r7, r10; bool c, v; } call_sound_8000672_result_init_beastSpScenario;
-/* register form: generated wrapper: sound_8000672 has no typed C interface yet */
+/* register form: generated wrapper: sound_dispatchSmashHandler_8000672 has no typed C interface yet */
 static inline call_sound_8000672_result_init_beastSpScenario call_sound_8000672_init_beastSpScenario(u32 r0, u32 r1, u32 r2) {
     R0 = r0;
     R1 = r1;
     R2 = r2;
-    GUEST_CALL(sound_8000672);
+    GUEST_CALL(sound_dispatchSmashHandler_8000672);
     return (call_sound_8000672_result_init_beastSpScenario){ R3, R4, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
@@ -183,12 +183,12 @@ static inline call_sub_808D11C_result call_sub_808D11C(void) {
 }
 
 typedef struct { u32 r3, r4, r5, r6, r7, r10; bool c, v; } call_sound_8000672_result_pet_tryStartRandomEncounterStep_808CB0C;
-/* register form: generated wrapper: sound_8000672 has no typed C interface yet */
+/* register form: generated wrapper: sound_dispatchSmashHandler_8000672 has no typed C interface yet */
 static inline call_sound_8000672_result_pet_tryStartRandomEncounterStep_808CB0C call_sound_8000672_pet_tryStartRandomEncounterStep_808CB0C(u32 r0, u32 r1, u32 r2) {
     R0 = r0;
     R1 = r1;
     R2 = r2;
-    GUEST_CALL(sound_8000672);
+    GUEST_CALL(sound_dispatchSmashHandler_8000672);
     return (call_sound_8000672_result_pet_tryStartRandomEncounterStep_808CB0C){ R3, R4, R5, R6, R7, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
@@ -208,10 +208,10 @@ static inline call_ReadOWPlayerObjectCoords_result call_ReadOWPlayerObjectCoords
 }
 
 typedef struct { u32 r5; } call_sub_808CCAC_result;
-/* register form: generated wrapper: sub_808CCAC has no typed C interface yet */
+/* register form: generated wrapper: field_calcFacingTargetTile_808CCAC has no typed C interface yet */
 static inline call_sub_808CCAC_result call_sub_808CCAC(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_808CCAC);
+    GUEST_CALL(field_calcFacingTargetTile_808CCAC);
     return (call_sub_808CCAC_result){ R5 };
 }
 
@@ -499,7 +499,7 @@ Next spawnOverworldMapObjects_808CBA0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_808CBD8 ── */
+/* ── overworld_leaveArea_808CBD8 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2, r4, r6; } call_SpawnOverworldMapObject_result;
 /* register form: generated wrapper: SpawnOverworldMapObject has no typed C interface yet */
@@ -527,12 +527,12 @@ static inline call_gameState_setUnk09_8001172_result call_gameState_setUnk09_800
 }
 
 typedef struct { u32 r3, r10; bool c, v; } call_sound_8000672_result;
-/* register form: generated wrapper: sound_8000672 has no typed C interface yet */
+/* register form: generated wrapper: sound_dispatchSmashHandler_8000672 has no typed C interface yet */
 static inline call_sound_8000672_result call_sound_8000672(u32 r0, u32 r1, u32 r2) {
     R0 = r0;
     R1 = r1;
     R2 = r2;
-    GUEST_CALL(sound_8000672);
+    GUEST_CALL(sound_dispatchSmashHandler_8000672);
     return (call_sound_8000672_result){ R3, R10, CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
@@ -558,9 +558,9 @@ static u32 leave_area_event(u32 callerR4, u32 toolkit) {
     return 0;
 }
 
-/* sub_808CBD8(r4 = passed to SpawnOverworldMapObject, r10 = toolkit) -> r0=0, nz.
+/* overworld_leaveArea_808CBD8(r4 = passed to SpawnOverworldMapObject, r10 = toolkit) -> r0=0, nz.
  * Preserved: r4 r5 r6 r7 r10. Outputs from callees: r2 (Spawn), r3 (gameState/sound). */
-Next sub_808CBD8(void) {
+Next overworld_leaveArea_808CBD8(void) {
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6;
     u32 r0val = leave_area_event(saved_r4, R10);
     R4 = saved_r4, R5 = saved_r5, R6 = saved_r6;
@@ -663,7 +663,7 @@ Next ow_storePlayerPosDup(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_808CCAC ── */
+/* ── field_calcFacingTargetTile_808CCAC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: GetOWPlayerFacingDirection has no typed C interface yet */
 static inline u32 call_GetOWPlayerFacingDirection(void) {
@@ -706,8 +706,8 @@ static void set_facing_adjusted_coords(u32 obj) {
     ST16(obj + 0x1C, (u16)(s16)y);
 }
 
-/* sub_808CCAC(r5 = object pointer, r10 = player context) -> r5 (preserved) */
-Next sub_808CCAC(void) {
+/* field_calcFacingTargetTile_808CCAC(r5 = object pointer, r10 = player context) -> r5 (preserved) */
+Next field_calcFacingTargetTile_808CCAC(void) {
     set_facing_adjusted_coords(R5);
     RETURN_TO_CALLER();
 }
@@ -1344,9 +1344,9 @@ Next ai_getAIModeForMapGroup_808D084(void) {
 /* ── ow_setupMapTiles_808D108 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r5, r6, r7; } call_sub_8142CB0_result;
-/* register form: generated wrapper: sub_8142CB0 has no typed C interface yet */
+/* register form: generated wrapper: battle_resolveMapTileAddr_8142CB0 has no typed C interface yet */
 static inline call_sub_8142CB0_result call_sub_8142CB0(void) {
-    GUEST_CALL(sub_8142CB0);
+    GUEST_CALL(battle_resolveMapTileAddr_8142CB0);
     return (call_sub_8142CB0_result){ R0, R5, R6, R7 };
 }
 

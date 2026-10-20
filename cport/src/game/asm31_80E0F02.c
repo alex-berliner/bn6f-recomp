@@ -343,7 +343,7 @@ Next snakearm_initObject(void)
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80E1620 ── */
+/* ── battle_spawnAndLinkTypeF_80E1620 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; } call_object_spawnType4_result_sub_80E1620;
 /* register form: generated wrapper: object_spawnType4 has no typed C interface yet */
@@ -409,10 +409,10 @@ static SpawnLinkResult spawn_and_link(u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u3
     return res;
 }
 
-/* sub_80E1620(r1 = spawn param, r2 = spawn param, r3 = spawn param,
+/* battle_spawnAndLinkTypeF_80E1620(r1 = spawn param, r2 = spawn param, r3 = spawn param,
  *             r4 = spawn param, r5 = battle object, r7 = extra vars)
  * -> r0 = spawned object (or 0), r1, r2, r3, r4, r5, r6, flags */
-Next sub_80E1620(void) {
+Next battle_spawnAndLinkTypeF_80E1620(void) {
     SpawnLinkResult res = spawn_and_link(R1, R2, R3, R4, R5, R7);
     R0 = res.r0;
     R1 = res.r1;

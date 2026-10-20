@@ -1,51 +1,78 @@
 name: submenu_handleConfirmOrExitInput
 address: '0x08133564'
 kind: function
-status: probable
-summary: 'Per-frame input handler for an open submenu: adjusts its cursor on D-pad input, advances to
-  state 4 on A, and on B plays the exit sound, runs a closing text script, and closes itself.'
-interface: (r5 = submenu state struct, r10 = toolkit) -> void; also uses global event flag word and joypad
-details: First bails out if event flag bit 0x80 (chatbox_mask_eFlags2009F38) is set, then feeds the low-sensitivity
-  held joypad value to menu_adjustCursorOrValue_811F7F8 with mask 7 to move the menu's cursor index; if
-  the cursor changed, it returns. On newly-pressed A it stores 4 into [r5+0x68], which looks like the
-  struct's next-phase/state word, and returns. On newly-pressed B it plays SOUND_EXIT_SUBMENU, runs script
-  0xA (or 0x1B if submenu_isOpen_81355D8 says another submenu besides state 0x20 is open) from the eTextScript2028A20
-  archive, clears the byte flag at [r5+3], and zeroes [r5+0x68]. The A and B branches are mutually exclusive
-  with the cursor-adjust branch via early returns.
+status: confirmed
+summary: 'Processes A/B button presses on an open submenu: A queues a confirm action, B plays the exit sound and
+  runs the appropriate closing chatbox script, clearing the submenu input state.'
+interface: void submenu_handleConfirmOrExitInput_8133564(SubmenuState *r5, Toolkit *r10)
+details: "r5 points to the active submenu's state structure; r10 points to the global toolkit.\n1. Calls chatbox_mask_eFlags2009F38(0x80);\
+  \ if the chatbox is displaying text\n   (flag set, Z clear after the call) the function returns immediately, blocking\n\
+  \   all submenu input while dialogue is on screen.\n2. Loads the toolkit joypad pointer (offset oToolkit_JoypadPtr)\
+  \ and reads the\n   16-bit low-sensitivity held-button mask (offset oJoypad_LowSensitivityHeld).\n3. Passes that\
+  \ mask together with literals 7, 0, 0 and the submenu-state pointer r5\n   to menu_adjustCursorOrValue_811F7F8.\
+  \  A non-zero return signals a cursor/value\n   movement was consumed this frame, so the function returns without\
+  \ touching\n   confirm/exit logic.\n4. Checks IsButtonPressed(JOYPAD_A).  If A was pressed (Z clear), stores the\n\
+  \   deferred-action code 4 at state offset 0x68 so the main menu loop can process\n   the confirmation on a later\
+  \ frame, then returns.\n5. Checks IsButtonPressed(JOYPAD_B).  If B was NOT pressed (Z set), returns.\n   If B\
+  \ WAS pressed:\n   - Plays SOUND_EXIT_SUBMENU.\n   - Queries submenu_isOpen_81355D8() to pick the closing chatbox\
+  \ script:\n     0x1B if the submenu is still open (multi-level), 0x0A otherwise (single-level).\n   - Invokes\
+  \ chatbox_runScript_803FD9C_on_eTextScript2028A20 with that script id.\n   - Clears the byte at state+3 (input-pending\
+  \ flag) to 0 and the u32 at\n     state+0x68 (deferred-action word) to 0, fully resetting the submenu's\n    \
+  \ input-handling state.\nRegister contract note: the declared outputs r8/r9/r10/r12 are incidental side-\neffects\
+  \ of the callees; the function itself only modifies memory via r5 and r10\nand clobbers r0–r3.  r4 is saved/restored\
+  \ across the prologue.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: bl chatbox_mask_eFlags2009F38 with r0=0x80, bne exit — pauses handling during a flagged state;
-    ldr oToolkit_JoypadPtr / oJoypad_LowSensitivityHeld then bl menu_adjustCursorOrValue_811F7F8 with
-    r1=7 — D-pad cursor movement for a submenu; IsButtonPressed(JOYPAD_A) -> str 4, [r5,0x68] — confirm
-    advances the struct's state word; IsButtonPressed(JOYPAD_B) -> PlaySoundEffect(SOUND_EXIT_SUBMENU)
-    — B closes the submenu; chatbox_runScript...2028A20 with 0xA or 0x1B picked by submenu_isOpen_81355D8,
-    then strb 0, [r5,3] and str 0, [r5,0x68] — closing script plus self-reset
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm36.s:6715
-  - 0x0811F7EC IsButtonPressed
-  - 0x080005CC PlaySoundEffect
-  - 0x08045F3C chatbox_mask_eFlags2009F38
-  reproduce: python3 tools/asmcat.py 0x08133564
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c submenu_handleConfirmOrExitInput
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function submenu_handleConfirmOrExitInput
+
+    ./wf verify --function submenu_handleConfirmOrExitInput --snapshots build-snapshots'
+  result: 'captured calls: 36 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 154 out
+    of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function submenu_handleConfirmOrExitInput
+
+    ./wf verify --function submenu_handleConfirmOrExitInput --snapshots build-snapshots'
+  result: 55 compared, 0 differed, 37 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function submenu_handleConfirmOrExitInput
+
+    ./wf verify --function submenu_handleConfirmOrExitInput --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08133564 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm36.c
 coverage:
 - beastsp
 open_questions:
-- Which submenu/screen this belongs to (recorded only under the 'beastsp' route); callers are unknown
-- Exact layout of the r5 state struct, in particular the meaning of state 4 at [r5+0x68] and the byte
-  flag at [r5+3]
-- Meaning of script indices 0xA and 0x1B in eTextScript2028A20
+- What does deferred-action code 4 mean in the main loop? Likely 'confirm current entry' but not verified here.
+- Are script ids 0x0A and 0x1B defined in the eTextScript2028A20 table, and what text/closing behaviour do they
+  produce?
+- State offset 3 (input-pending u8) – is it set by a different function before this handler runs, and does its value
+  ever differ from 1?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8133564 -> submenu_handleConfirmOrExitInput
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8133564
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

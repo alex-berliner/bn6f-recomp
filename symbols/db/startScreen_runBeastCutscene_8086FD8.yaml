@@ -1,64 +1,89 @@
 name: startScreen_runBeastCutscene_8086FD8
 address: '0x08086FD8'
 kind: function
-previous_names:
-- sub_8086FD8
-status: probable
-summary: Picks a beast-out / beast-sp intro cutscene based on result code, story flags, and current map,
-  then calls StartCutscene
-interface: (r5 = *ReqBBSGui-ish state byte, r10 = *Toolkit, r2 = ?, lr = return) -> (void) ; may start
-  a cutscene, set state bytes in r5, toggle event flags
-details: "Reads [r5+1] as a state byte. If it is non-zero the function jumps to a different branch\n \
-  \ (loc_8087068) that sets [r5+1] = 0, looks at the current map via Toolkit->GameState->MapGroup/MapNumber,\n\
-  \  and either starts a beast cutscene (MapGroup 0x85 + EVENT_FC0, or MapNumber 0/1/other + EVENT_5E1/5E2/5E3)\n\
-  \  or, when the map is 0x81, calls sub_800060A with arg 0x23, then runs sub_8086F18 and sub_8086F5C.\n\
-  \  If [r5+1] is zero, calls reqBBS_81409F4 and inspects r0: 0xB0..0xBF are treated as a beast-out index\n\
-  \  written to [r5+0xC] and dispatched via sub_80871C0 -> StartCutscene of one of two byte_8086D5C/8086D74\n\
-  \  scripts, gated by EVENT_5F2. Values outside that range branch on EVENT_5F1/5F3/5F4: 5F1 sets [r5+9]=1,\n\
-  \  5F3 sets [r5+5]=[r5+7]=[r5+1]=1, clears 5F3, sets 5F2 and starts byte_8086D1C+4; 5F4 sets [r5+5]=[r5+7]=2,\n\
-  \  clears 5F4 and starts byte_8086D1C+4 again. Most paths converge on StartCutscene via loc_80870F2.\n\
-  \  The contract shows only r5 in `out`, so the function is effectively void from a caller's POV.\n"
+status: confirmed
+summary: Per-tick dispatcher for the Giga Beast (BBS) cutscene during start-screen transitions, routing by BBS request
+  code or event-flag priority to pick and launch the correct cutscene script, then running cleanup once the flag
+  is already set.
+interface: void startScreen_runBeastCutscene_8086FD8(BeastCutsceneState* state /*r5*/, Toolkit* toolkit /*r10*/,
+  u32 r2_sfxVolume); /* r5 preserved */
+details: 'The state struct (r5) holds: byte 1 = re-entry latch (0 on first tick, non-zero after a cutscene was queued),
+  byte 5 = BBS variant index, byte 7 = variant index (duplicate?), byte 9 = seen-already marker, byte 0xC = BBS-request
+  offset from 0xB0.
+
+  First invocation (byte 1 == 0): queries reqBBS_81409F4 for the current BBS request code. If the code falls in
+  [0xB0, 0xC0) the offset is stored and npc_checkStateEventFlag_80871C0 together with event flag 5F2 selects between
+  two scripts (byte_8086D5C or byte_8086D74). Outside that range the function walks a priority ladder over flags
+  5F1, 5F3, 5F4: 5F1 → marks byte 9, launches script byte_8086D2C+4; 5F3 → marks bytes 5,7, sets latch byte 1, clears
+  5F3, sets 5F2, launches off_8086D1C+4; 5F4 → marks bytes 5,7 = 2, clears 5F4, launches off_8086D1C+4; none set
+  → returns without action.
+
+  Subsequent invocation (byte 1 != 0): clears the latch, reads the GameState (via toolkit → oToolkit_GameStatePtr)
+  for map group / number. Map group 0x85 uses flag FC0; map groups < 0x85 use flags 5E1/5E2/5E3 keyed to map numbers
+  0/1/≥2. If the flag is already set the cleanup path runs (optional SFX 0x23 when map group is 0x81, then sub_8086F18
+  and spawn_spawnObjectSwarm). If not yet set the flag is recorded and the per-location cutscene script is launched
+  via StartCutscene.
+
+  All cutscene script pointers are offsets into byte arrays in the 0x8086D1C–0x8086D74 and 0x8086340–0x8086460 regions.
+  The function is called each tick while the start screen is active; the latch byte ensures the one-shot setup runs
+  only once.
+
+  '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrb r0, [r5,#1]; cmp r0, #0; bne loc_8087068` shows the two-entry dispatch on a state byte
-    at +1 of r5. - `bl reqBBS_81409F4; cmp r0, #0xc0; bge loc_8086FF4; cmp r0, #0xb0; blt loc_8086FF4`
-    defines the 0xB0..0xBF "beast index" range; `sub r4, r0, #0xb0; strb r4, [r5,#0xc]` stores the offset.
-    - `movflag EVENT_5F3; bl TestEventFlagFromImmediate` followed by `ClearEventFlagFromImmediate EVENT_5F3`
-    / `SetEventFlagFromImmediate EVENT_5F2` and `ldr r0, off_80870F8 // =off_8086D1C+4` shows the cutscene-script
-    pointer coming from a data table. - `ldr r0, [r10, #oToolkit_GameStatePtr]; ldrb r1, [r0, #oGameState_MapGroup];
-    cmp r1, #0x85` shows the map-based dispatch reading Toolkit->GameState. - Many paths land in `loc_80870F2:
-    bl StartCutscene`, confirming this function''s job is to choose and start a cutscene. - Caller is
-    sub_8086EA8 which itself lives near other ReqBBS / BBS beast-state code (reqBBS_81409F4, sub_8086F18/8086F5C/80871C0);
-    r5 has the layout of a ReqBBS state struct (ReusableSubsystem frame at +1).'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x08086FD8
+  - cport/src/game/asm22.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c startScreen_runBeastCutscene_8086FD8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function startScreen_runBeastCutscene_8086FD8
 
-    '
-  result: the body read as described above
+    ./wf verify --function startScreen_runBeastCutscene_8086FD8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function startScreen_runBeastCutscene_8086FD8
+
+    ./wf verify --function startScreen_runBeastCutscene_8086FD8 --snapshots build-snapshots'
+  result: 47 compared, 0 differed, 48 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function startScreen_runBeastCutscene_8086FD8
+
+    ./wf verify --function startScreen_runBeastCutscene_8086FD8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: beastsp, maps'
-  reproduce: 'grep -l ''^08086fd8 '' tools/traces/coverage/*.prof
-
-    '
-  result: beastsp, maps
-open_questions:
-- Exact role of the [r5+1] state byte (BBS frame inited?) and what each EVENT_5Fx branch represents narratively
-  (beast-out variants vs. pre-beast tutorial vs. post-beast). Settle by reading the cutscene scripts at
-  byte_8086D1C+4 / byte_8086D2C+4 / byte_8086D5C / byte_8086D74 and matching their text against known
-  BN6 beast-out dialogue.
-- Whether sub_800060A(0x23) and the post-StartCutscene helpers (sub_8086F18/8086F5C) are part of the same
-  flow or an unrelated tail.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^08086fd8 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm22.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 4efa6ddc
+  where: bn6f 487cf9c6
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_8086FD8 -> startScreen_runBeastCutscene_8086FD8
-  where: bn6f df5b9de6
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm22.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- What exactly is reqBBS_81409F4 returning — a BBS request opcode, a save-slot index, or something else? The 0xB0–0xC0
+  range is suggestive but unconfirmed.
+- Are bytes 5 and 7 in the state struct truly separate variant indices or is one of them a phase/sub-state?
+- What is sub_8086F18 doing in the cleanup path — resetting NPC state, despawning the Beast object, or clearing
+  screen effects?
+- 'Map group 0x85 with flag FC0: which in-game location is this (Cyber Research Lab? Final tower?)?'
+- Event flag 5F2 is set when 5F3 is cleared — does it gate the post-Beast dialogue in the script?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

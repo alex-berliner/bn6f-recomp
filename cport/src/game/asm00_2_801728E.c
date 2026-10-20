@@ -296,7 +296,7 @@ Next battle_tickIntroState_80174BE(void) {
  * Turn-end handling for a battle object. If the battle flag 0x40 is set, the
  * object's actor type (byte 1 of the GetVerActorTyAndAIIdx record for its
  * NameID) is 2, and the first word of its AI data block (aidata+0x40) is
- * still zero, run sub_80E1620 (r1 = actor type, r7 = AI data block pointer).
+ * still zero, run battle_spawnAndLinkTypeF_80E1620 (r1 = actor type, r7 = AI data block pointer).
  * In every case the object is marked as having acted: CurAction (offset 9)
  * = 8 and the current phase is cleared. r0 = 0 on return.
  * Flags: N/Z from the final "mov r0,#0"; C/V from the last compare or callee. */
@@ -318,7 +318,7 @@ Next battle_endTurnMarkActed_8017888(void) {
             if (R0 != 0) {
                 SET_FLAGS_CMP(R0, 0);
             } else {
-                GUEST_CALL(sub_80E1620);
+                GUEST_CALL(battle_spawnAndLinkTypeF_80E1620);
             }
         }
     }

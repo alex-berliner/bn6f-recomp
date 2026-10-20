@@ -590,7 +590,7 @@ Next initWorkArea5Entries_80467D8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80468BA ── */
+/* ── initWorkArea5_80468BA ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2, r3; } call_sub_8046900_result;
 /* register form: generated wrapper: sub_8046900 has no typed C interface yet */
@@ -621,8 +621,8 @@ static work_area_init_result do_work_area_init(void) {
                                     res.n, res.z, res.c, res.v };
 }
 
-/* sub_80468BA(r4-r7,lr saved; calls two initializers) -> r0-r3 + nzcv */
-Next sub_80468BA(void) {
+/* initWorkArea5_80468BA(r4-r7,lr saved; calls two initializers) -> r0-r3 + nzcv */
+Next initWorkArea5_80468BA(void) {
     work_area_init_result res = do_work_area_init();
     R0 = res.r0;
     R1 = res.r1;

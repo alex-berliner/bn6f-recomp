@@ -394,7 +394,7 @@ Next sub_80EC350(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80EC5EC ── */
+/* ── ai_beastStrikeStep_80EC5EC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: object_setAnimation has no typed C interface yet */
 static inline void call_object_setAnimation_sub_80EC5EC(u32 r0, u32 r5) {
@@ -522,9 +522,9 @@ static void beast_strike_step(u32 r2_val, u32 battle_obj, u32 attack_vars, u32 r
         ST16(attack_vars + oAIAttackVars_HitElement, 4);
 }
 
-/* sub_80EC5EC(r2 = sound param, r5 = battle obj, r7 = attack vars, r10 = ai extra) -> void
+/* ai_beastStrikeStep_80EC5EC(r2 = sound param, r5 = battle obj, r7 = attack vars, r10 = ai extra) -> void
  * Outputs r4-r6, r8-r10 come from callees (wrappers already set them). */
-Next sub_80EC5EC(void) {
+Next ai_beastStrikeStep_80EC5EC(void) {
     beast_strike_step(R2, R5, R7, R10);
     RETURN_TO_CALLER();
 }
@@ -2481,7 +2481,7 @@ Next ai_lungeForwardThreePanels(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F16E0 ── */
+/* ── battle_aiAttackStep_80F16E0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r5, r7; } call_sub_80C92CC_result_sub_80F16E0;
 /* register form: generated wrapper: sub_80C92CC has no typed C interface yet */
@@ -2567,8 +2567,8 @@ static u32 ai_attack_step_sub_80F16E0(u32 panel, u32 attack, u32 r1_in)
     return STEP_TIMER_INIT;
 }
 
-/* sub_80F16E0(r5 = panel, r7 = attack vars) -> r1 = timer value, r5 unchanged */
-Next sub_80F16E0(void) {
+/* battle_aiAttackStep_80F16E0(r5 = panel, r7 = attack vars) -> r1 = timer value, r5 unchanged */
+Next battle_aiAttackStep_80F16E0(void) {
     u32 saved_r4 = R4;
     u32 saved_r6 = R6;
     R1 = ai_attack_step_sub_80F16E0(R5, R7, R1);
@@ -3108,7 +3108,7 @@ Next ai_attackDispatchStep_80F7EA6(void)
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F7ED8 ── */
+/* ── aiAttack_selectPanelTick_80F7ED8 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3; } call_object_highlightPanel_result_sub_80F7ED8;
 /* register form: generated wrapper: object_highlightPanel has no typed C interface yet */
@@ -3164,13 +3164,13 @@ static u32 tick_select_panel(u32 r5_battle, u32 r7_aivars, u32 in_r1) {
     return out_r1;
 }
 
-/* sub_80F7ED8(r5 = battle obj, r7 = AIAttackVars) -> r1 */
-Next sub_80F7ED8(void) {
+/* aiAttack_selectPanelTick_80F7ED8(r5 = battle obj, r7 = AIAttackVars) -> r1 */
+Next aiAttack_selectPanelTick_80F7ED8(void) {
     R1 = tick_select_panel(R5, R7, R1);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F7FC2 ── */
+/* ── battle_aiAttackFormationTick_80F7FC2 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r5, r7; } call_sub_80C92CC_result_sub_80F7FC2;
 /* register form: generated wrapper: sub_80C92CC has no typed C interface yet */
@@ -3242,8 +3242,8 @@ static struct attack_tick_result ai_attack_tick(u32 battle_obj, u32 vars, u32 r1
     return (struct attack_tick_result){ r1_in, battle_obj };
 }
 
-/* sub_80F7FC2(r5 = battle object, r7 = AI attack vars, r1 = pass-through) -> r1, r5 */
-Next sub_80F7FC2(void) {
+/* battle_aiAttackFormationTick_80F7FC2(r5 = battle object, r7 = AI attack vars, r1 = pass-through) -> r1, r5 */
+Next battle_aiAttackFormationTick_80F7FC2(void) {
     /* register form: r4 and r6 are push/pop-saved in the original (used as locals for
      * sub_80C92CC arguments); reproduce the preservation here. */
     u32 saved_r4 = R4;
@@ -3256,7 +3256,7 @@ Next sub_80F7FC2(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F803E ── */
+/* ── battle_aiStepPanelMove_80F803E ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; } call_object_removePanelReserve_result_sub_80F803E;
 /* register form: generated wrapper: object_removePanelReserve has no typed C interface yet */
@@ -3353,7 +3353,7 @@ static u32 ai_attack_step_sub_80F803E(u32 obj, u32 ai_vars, u32 r1_in) {
     return r1;
 }
 
-Next sub_80F803E(void) {
+Next battle_aiStepPanelMove_80F803E(void) {
     R1 = ai_attack_step_sub_80F803E(R5, R7, R1);
     RETURN_TO_CALLER();
 }
@@ -3476,7 +3476,7 @@ Next object_pickRandomAdjacentPanel(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F8256 ── */
+/* ── battle_pickPanel_80F8256 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2, r3, r4, r5; bool c, v; } call_object_checkPanelParameters_result;
 /* register form: generated wrapper: object_checkPanelParameters has no typed C interface yet */
@@ -3507,7 +3507,7 @@ static inline call_GetPositiveSignedRNG_result_sub_80F8256 call_GetPositiveSigne
     return (call_GetPositiveSignedRNG_result_sub_80F8256){ R0, R2, R3 };
 }
 
-/* sub_80F8256: pick a panel column for a battle object.
+/* battle_pickPanel_80F8256: pick a panel column for a battle object.
  *
  * Reads the object's column-preference byte at [r5+0x16], looks up a
  * two-byte entry in a table, validates the panel via checkPanelParameters,
@@ -3589,7 +3589,7 @@ static pick_panel_result pick_panel(u32 r2_in, u32 r3_in, u32 r5_in) {
     return res;
 }
 
-Next sub_80F8256(void) {
+Next battle_pickPanel_80F8256(void) {
     u32 saved_r7 = R7;
     pick_panel_result r = pick_panel(R2, R3, R5);
     R0 = r.col;
@@ -3754,7 +3754,7 @@ Next battle_aiLoadAttackVarsFromTables(void) {
  *
  * Reads the HitElement byte from the AI attack vars (r7) and calls one of
  * three element handlers through the table at off_80F8720:
- *   entry 0 -> sub_80F872C
+ *   entry 0 -> battle_aiAttackStep_80F872C
  *   entry 1 -> ai_attackStepWindupAnim3Hit8
  *   entry 2 -> ai_tickAttackWindup_80F87DA
  * The raw HitElement byte is used directly as the BYTE offset into the
@@ -3791,7 +3791,7 @@ Next ai_attack_dispatchByHitElement_80F870C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F872C ── */
+/* ── battle_aiAttackStep_80F872C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r4; bool z, n, c, v; } call_object_canMove_result_sub_80F872C;
 /* register form: generated wrapper: object_canMove has no typed C interface yet */
@@ -3820,7 +3820,7 @@ static inline call_object_setFlag1_result_sub_80F872C call_object_setFlag1_sub_8
     return (call_object_setFlag1_result_sub_80F872C){ R1, R2 };
 }
 
-/* sub_80F872C: AI attack step logic – chooses a panel, reserves it, and
+/* battle_aiAttackStep_80F872C: AI attack step logic – chooses a panel, reserves it, and
  * advances the attack state machine for one battle object. */
 
 /* Table indexed by alliance * 8 (two u32 entries per alliance). */
@@ -3912,9 +3912,9 @@ static u32 ai_attack_step_sub_80F872C(u32 object, u32 ai_vars, u32 r1_in)
 
 /* ---- thin adapter ---- */
 
-/* sub_80F872C(r5 = battle object, r7 = AI attack vars, lr, r1 [pass-through])
+/* battle_aiAttackStep_80F872C(r5 = battle object, r7 = AI attack vars, lr, r1 [pass-through])
  * -> r1;  clobbers r0 r2-r4 r6 r7 lr flags; preserves r5, r8-r12 */
-Next sub_80F872C(void)
+Next battle_aiAttackStep_80F872C(void)
 {
     R1 = ai_attack_step_sub_80F872C(R5, R7, R1);
     RETURN_TO_CALLER();
@@ -4114,7 +4114,7 @@ Next ai_dispatchAttackStep_80F8996(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F89C0 ── */
+/* ── battle_aiAttackPanelMove_80F89C0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r4; bool z, n; } call_object_canMove_result_sub_80F89C0;
 /* register form: generated wrapper: object_canMove has no typed C interface yet */
@@ -4197,8 +4197,8 @@ static void ai_attack_panel_move(u32 object, u32 r6, u32 ai_vars) {
     call_object_exitAttackState_sub_80F89C0(object, r6, ai_vars);
 }
 
-/* sub_80F89C0(r5=object, r6=?, r7=AI-attack-vars) -> r1 from callee */
-Next sub_80F89C0(void) {
+/* battle_aiAttackPanelMove_80F89C0(r5=object, r6=?, r7=AI-attack-vars) -> r1 from callee */
+Next battle_aiAttackPanelMove_80F89C0(void) {
     ai_attack_panel_move(R5, R6, R7);
     RETURN_TO_CALLER();
 }
@@ -4375,7 +4375,7 @@ Next battle_aiChargeAttackTick_80F8A66(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F8A9C ── */
+/* ── ai_attackNextStep_80F8A9C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3; } call_object_setCounterTime_result_sub_80F8A9C;
 /* register form: generated wrapper: object_setCounterTime has no typed C interface yet */
@@ -4561,8 +4561,8 @@ static Sub80F8A9CResult ai_attack_step_sub_80F8A9C(u32 r1_in, u32 battleObj, u32
     return result;
 }
 
-/* sub_80F8A9C(r5 = battle object, r7 = AI attack vars, r10) -> r1, r5, r10 */
-Next sub_80F8A9C(void) {
+/* ai_attackNextStep_80F8A9C(r5 = battle object, r7 = AI attack vars, r10) -> r1, r5, r10 */
+Next ai_attackNextStep_80F8A9C(void) {
     Sub80F8A9CResult result = ai_attack_step_sub_80F8A9C(R1, R5, R7, R10);
     R1  = result.r1;
     R5  = result.r5;
@@ -4622,7 +4622,7 @@ Next ai_updateAttackHoldState(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80F8CF8 ── */
+/* ── battle_getRandomFilteredPanel_80F8CF8 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r4, r5; } call_object_getPanelsIgnoreColumnFiltered_result_sub_80F8CF8;
 /* register form: generated wrapper: object_getPanelsIgnoreColumnFiltered has no typed C interface yet */
@@ -4698,8 +4698,8 @@ static void sub_80F8CF8_body(u32 col_filter, u32 row_filter, u32 battle_state,
     SP += 0x20;
 }
 
-/* sub_80F8CF8(r2 = col_filter, r3 = row_filter, r5 = battle_state) -> r0, r1 */
-Next sub_80F8CF8(void) {
+/* battle_getRandomFilteredPanel_80F8CF8(r2 = col_filter, r3 = row_filter, r5 = battle_state) -> r0, r1 */
+Next battle_getRandomFilteredPanel_80F8CF8(void) {
     u32 saved_r7 = R7;
     u32 out_r0, out_r1;
     sub_80F8CF8_body(R2, R3, R5, &out_r0, &out_r1);
@@ -7100,7 +7100,7 @@ Next ai_circusManLoadAttackParams(void)
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FEE14 ── */
+/* ── battle_aiAttackStepDispatch_80FEE14 ── */
 /* AI attack-step dispatcher: r7 points to the attacker's AIAttackVars.
  * The HitElement byte indexes the 7-entry jump table at off_80FEE28
  * (entries are addressed by byte offset, not scaled).  The selected
@@ -7109,7 +7109,7 @@ Next ai_circusManLoadAttackParams(void)
  * this function's outputs for its caller. */
 
 /* register form: jump-table tail call; the handler's r1, r5, r8-r12
- * flow back to sub_80FEE14's caller unchanged, and the call target
+ * flow back to battle_aiAttackStepDispatch_80FEE14's caller unchanged, and the call target
  * is only known at run time, so plain C cannot express the dispatch. */
 static void ai_attack_step_dispatch(u32 attackVars) {
     u32 element = LD8(attackVars + oAIAttackVars_HitElement);
@@ -7119,7 +7119,7 @@ static void ai_attack_step_dispatch(u32 attackVars) {
     GUEST_CALL_ADDR(handler);
 }
 
-Next sub_80FEE14(void) {
+Next battle_aiAttackStepDispatch_80FEE14(void) {
     ai_attack_step_dispatch(R7);
     RETURN_TO_CALLER();
 }
@@ -7274,7 +7274,7 @@ Next battle_resetAIAttackStepState_80FEF50(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FEF60 ── */
+/* ── battle_aiAttackStep_80FEF60 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3, r4; } call_object_highlightPanelRegion_result_sub_80FEF60;
 /* register form: generated wrapper: object_highlightPanelRegion has no typed C interface yet */
@@ -7329,13 +7329,13 @@ static u32 ai_attack_step_sub_80FEF60(u32 battle_obj, u32 attack_vars, u32 r1_in
     return r1_in;
 }
 
-/* sub_80FEF60(r5 = battle object, r7 = AI attack vars) -> r1 */
-Next sub_80FEF60(void) {
+/* battle_aiAttackStep_80FEF60(r5 = battle object, r7 = AI attack vars) -> r1 */
+Next battle_aiAttackStep_80FEF60(void) {
     R1 = ai_attack_step_sub_80FEF60(R5, R7, R1);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FEFA4 ── */
+/* ── aiAttack_stepTargetReady_80FEFA4 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r5; } call_sub_80FF680_result;
 /* register form: generated wrapper: aiAttack_runStepTwice_80FF680 has no typed C interface yet */
@@ -7395,8 +7395,8 @@ static struct AiStepResult ai_attack_step_sub_80FEFA4(u32 r1_in, u32 r5, u32 r7)
     return (struct AiStepResult){cycles, r5};
 }
 
-/* sub_80FEFA4(r5, r7) -> r1, r5 */
-Next sub_80FEFA4(void) {
+/* aiAttack_stepTargetReady_80FEFA4(r5, r7) -> r1, r5 */
+Next aiAttack_stepTargetReady_80FEFA4(void) {
     struct AiStepResult out = ai_attack_step_sub_80FEFA4(R1, R5, R7);
     R1 = out.r1;
     R5 = out.r5;
@@ -8769,7 +8769,7 @@ Next ai_attackStepTick_80FFC5E(void) {
  * r7 points at the AI's attack variables; the hitElement byte stored there
  * selects one of five attack step routines from the jump table at
  * off_80FFC94:
- *   0 ai_panelTargetAttackStep   1 sub_80FFD20      2 sub_80FFD6A
+ *   0 ai_panelTargetAttackStep   1 ai_attackStep_80FFD20      2 ai_chargeAttack_step_80FFD6A
  *   3 ai_chargeShotAttackStep    4 ai_chipAttackTick
  * The chosen step runs with the element in r0, its own table entry in r1 and
  * the rest of the incoming state (r2 r3 r5 r6 r7 r10) unchanged. r7 is
@@ -8945,7 +8945,7 @@ Next ai_panelTargetAttackStep(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FFD20 ── */
+/* ── ai_attackStep_80FFD20 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; } call_object_removePanelReserve_result_sub_80FFD20;
 /* register form: generated wrapper: object_removePanelReserve has no typed C interface yet */
@@ -9021,13 +9021,13 @@ static void ai_attack_step_sub_80FFD20(u32 battle_obj, u32 ai_vars) {
     ST16(ai_vars + oAIAttackVars_StepTimer, 2);
 }
 
-/* sub_80FFD20(r5 = battle object, r7 = AI attack vars) -> r1 */
-Next sub_80FFD20(void) {
+/* ai_attackStep_80FFD20(r5 = battle object, r7 = AI attack vars) -> r1 */
+Next ai_attackStep_80FFD20(void) {
     ai_attack_step_sub_80FFD20(R5, R7);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80FFD6A ── */
+/* ── ai_chargeAttack_step_80FFD6A ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0; } call_object_getFrontDirection_result_sub_80FFD6A;
 /* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
@@ -9090,8 +9090,8 @@ static u32 ai_attack_step_sub_80FFD6A(u32 battleObj, u32 aiVars, u32 r1In) {
     return hl.r1;
 }
 
-/* sub_80FFD6A(r5 = battleObj, r7 = aiVars) -> r1 */
-Next sub_80FFD6A(void) {
+/* ai_chargeAttack_step_80FFD6A(r5 = battleObj, r7 = aiVars) -> r1 */
+Next ai_chargeAttack_step_80FFD6A(void) {
     R1 = ai_attack_step_sub_80FFD6A(R5, R7, R1);
     RETURN_TO_CALLER();
 }
@@ -10419,7 +10419,7 @@ Next battle_objectPhaseStepInitExtraVars_810A5D6(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_810A648 ── */
+/* ── battle_aiAttackCycle_810A648 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: object_getFlag has no typed C interface yet */
 static inline u32 call_object_getFlag_sub_810A648(u32 r5) {
@@ -10528,8 +10528,8 @@ static u32 choose_ai_attack(u32 obj, u32 ai_state, u32 attack_vars) {
     return r1_from_set;
 }
 
-/* sub_810A648(r5 = obj, r6 = ai_state, r7 = attack_vars) -> r1 */
-Next sub_810A648(void) {
+/* battle_aiAttackCycle_810A648(r5 = obj, r6 = ai_state, r7 = attack_vars) -> r1 */
+Next battle_aiAttackCycle_810A648(void) {
     R1 = choose_ai_attack(R5, R6, R7);
     RETURN_TO_CALLER();
 }
@@ -10637,7 +10637,7 @@ Next ai_attackStepPlayIntroAnim(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_810AF90 ── */
+/* ── battle_aiAttackStep_810AF90 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0; } call_object_getFrontDirection_result_sub_810AF90;
 /* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
@@ -10714,13 +10714,13 @@ static void ai_attack_step_sub_810AF90(u32 object_ptr, u32 ai_vars_ptr, u32 inpu
     ST16(ai_vars_ptr + oAIAttackVars_SubStepIndex, 8);
 }
 
-/* sub_810AF90(r2 = sound param, r5 = object, r7 = ai vars, lr) -> r1 r2 r3 r4 r5 r6 r7 r10 lr */
-Next sub_810AF90(void) {
+/* battle_aiAttackStep_810AF90(r2 = sound param, r5 = object, r7 = ai vars, lr) -> r1 r2 r3 r4 r5 r6 r7 r10 lr */
+Next battle_aiAttackStep_810AF90(void) {
     ai_attack_step_sub_810AF90(R5, R7, R2);
     RETURN_TO_CALLER();
 }
 
-/* ── sub_810B06A ── */
+/* ── battle_dispatchAttackByHitElement_810B06A ── */
 /* Hit-element jump table (off_810B07C), indexed by the HitElement byte
  * of the AI attack vars:
  *   0: ai_slideLungeAttackStart              (no-op / default for unknown element)
@@ -10761,8 +10761,8 @@ static void run_attack_action(u32 attack_vars) {
     dispatch_handler(handler_addr, element);
 }
 
-/* sub_810B06A (r7 = AI attack vars) -> r1 r5 r8 r9 r10 r11 r12 */
-Next sub_810B06A(void) {
+/* battle_dispatchAttackByHitElement_810B06A (r7 = AI attack vars) -> r1 r5 r8 r9 r10 r11 r12 */
+Next battle_dispatchAttackByHitElement_810B06A(void) {
     run_attack_action(R7);
     RETURN_TO_CALLER();
 }
@@ -10813,7 +10813,7 @@ Next ai_setAttackTargetPanel(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_810B30C ── */
+/* ── spawn_allyWithRandomDir_810B30C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r4, r5, r6, r7; } call_spawn_t1_0x47_probablyGeneric_80C468C_result;
 /* register form: generated wrapper: spawn_t1_0x47_probablyGeneric_80C468C has no typed C interface yet */
@@ -10863,10 +10863,10 @@ static u32 init_battle_obj(u32 caller_arg, u32 obj) {
     return subs_operand;
 }
 
-/* sub_810B30C(r1 = caller_arg, r5 = battle_object) -> r0 r1 r2 r3 r4 nzcv
+/* spawn_allyWithRandomDir_810B30C(r1 = caller_arg, r5 = battle_object) -> r0 r1 r2 r3 r4 nzcv
  * r2/r3/r4 are already in the guest registers from the wrapper calls;
  * r5/r6/r7 preserved. */
-Next sub_810B30C(void) {
+Next spawn_allyWithRandomDir_810B30C(void) {
     u32 subs_operand = init_battle_obj(R1, R5);
     R0 = 0x6C;
     R1 = 0;
@@ -11101,7 +11101,7 @@ Next battle_checkAlliancePanelAtObjectPos(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_810B6F0 ── */
+/* ── battle_configureAiAttack_810B6F0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r3, r7; } call_GetPositiveSignedRNG_result_sub_810B6F0;
 /* register form: generated wrapper: GetPositiveSignedRNG has no typed C interface yet */
@@ -11153,8 +11153,8 @@ static u32 configure_ai_attack(u32 mode, u32 ai_data, u32 battle_obj,
     return r3_out;
 }
 
-/* sub_810B6F0(r0 = mode, r4 = AIData*, r5 = BattleObject*, r7 = AIAttackVars*) -> r3, r7 (preserved) */
-Next sub_810B6F0(void) {
+/* battle_configureAiAttack_810B6F0(r0 = mode, r4 = AIData*, r5 = BattleObject*, r7 = AIAttackVars*) -> r3, r7 (preserved) */
+Next battle_configureAiAttack_810B6F0(void) {
     R3 = configure_ai_attack(R0, R4, R5, R7, R3);
     RETURN_TO_CALLER();
 }
@@ -11293,7 +11293,7 @@ Next battle_tryStartChipAttack_810BDC4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_810BE2A ── */
+/* ── battle_assignPanelAttack_810BE2A ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r3, r7; } call_GetRNG_result;
 /* register form: generated wrapper: GetRNG has no typed C interface yet */
@@ -11302,7 +11302,7 @@ static inline call_GetRNG_result call_GetRNG(void) {
     return (call_GetRNG_result){ R0, R3, R7 };
 }
 
-/* sub_810BE2A: 0810BE2A-0810BE74 THUMB, bn6f asm31.s:183015 */
+/* battle_assignPanelAttack_810BE2A: 0810BE2A-0810BE74 THUMB, bn6f asm31.s:183015 */
 /*   inputs:  r5 lr
  *   outputs: nz c v r0 r1 r2 r3 r4 r7 lr
  *   clobbers (unused by callers): -
@@ -11349,7 +11349,7 @@ static PanelLookup panel_attack_lookup(u32 obj) {
     return out;
 }
 
-Next sub_810BE2A(void) {
+Next battle_assignPanelAttack_810BE2A(void) {
     PanelLookup res = panel_attack_lookup(R5);
     R0 = res.result;
     R1 = 0x62;

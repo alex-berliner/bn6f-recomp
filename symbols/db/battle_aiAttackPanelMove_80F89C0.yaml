@@ -1,0 +1,83 @@
+name: battle_aiAttackPanelMove_80F89C0
+address: '0x080F89C0'
+kind: function
+status: confirmed
+summary: 'AI attack step: pick a destination panel via the per-alliance callback, slide the object there,
+  or abort the attack.'
+interface: void battle_aiAttackPanelMove_80F89C0(BattleObject *object /*r5*/, u32 r6, AIAttackVars *ai_vars
+  /*r7*/) /* returns r1 from callee; clobbers r0-r4,r6-r7,all flags */
+details: 'Gate: calls object_canMove (r5=object); if zero-flag set (cannot move) jumps to exit. Panel-data
+  table at byte_80F8A0C holds 8-byte entries indexed by BattleObject_Alliance (shifted left by 3). Entry
+  layout: word0 = arg1, word1 = arg2 for the callback. The panel-choose callback is read from AIAttackVars_PanelChooseCallback
+  (r7+0x?), invoked with r0=table base, r1=arg1, r2=arg2; it returns panel X in r0, panel Y in r1. On
+  success (r0 != 0): writes FuturePanelX/Y into the object, calls object_reservePanel, sets OBJECT_FLAGS_CANNOT_SLIDE
+  via object_setFlag1, sets CurAnim=4 (slide), StepTimer=3, HasMoved=1, HitElement=4. On failure: sets
+  HasMoved=0 and calls object_exitAttackState. r6 is passed through to object_exitAttackState but its
+  role is unclear from this call alone.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80F89C0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F89C0
+
+    ./wf verify --function sub_80F89C0 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F89C0
+
+    ./wf verify --function sub_80F89C0 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 63 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F89C0
+
+    ./wf verify --function sub_80F89C0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080f89c0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F89C0 -> battle_aiAttackPanelMove_80F89C0
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What role does r6 play here? It is only forwarded to object_exitAttackState.
+- Is HitElement=4 a fixed value (e.g. 'slide' element) or is it overridden elsewhere before this step?
+- What does CurAnim=4 represent in the animation table (slide-to-panel vs. other)? Confirmed by reservePanel
+  + CANNOT_SLIDE flag usage.
+- The panel-choose callback signature (r0..r3 in, r0/r1 out) – is it a single function shared across alliances
+  or per-ally?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80F89C0

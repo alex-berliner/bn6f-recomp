@@ -1,0 +1,94 @@
+name: battle_pickChipAttr_80AA910
+address: '0x080AA910'
+kind: function
+status: confirmed
+summary: Select a chip attribute for the active navi using stats byte 0x26 to choose between direct chip
+  application, single-offset read, or random table-column scan.
+interface: u16 battle_pickChipAttr_80AA910(u32 naviId0 /*r0*/, u32 naviId1 /*r1*/, u32 attrIdx /*r2*/,
+  u32 coordX /*r3*/, u32 coordY /*r4*/, u32 statNavi /*r5*/) → r0; outputs c, v; clobbers nz, r1–r3, lr;
+  preserves r4–r7
+details: 'Calls GetBattleNaviStatsByte(r5, 0x26) to read a mode byte from the stat navi''s battle stats.
+  Bit 0 set → Mode A: select navi (sub_80AAA3C mode 0), get base (sub_80AAE98), apply chip (sub_80AAB04
+  with r3, r4) and return its result. Bit 1 clear → Mode B: select navi mode 0, get base, compute offset
+  via damage_jitter_80AAA98(r2,r3,r4,0,base), return LD16(base + offset). Bit 1 set → Mode C: select navi
+  mode 1 (returns 0 → give -1), get base, compute offset via damage_jitter_80AAA98(r2,r3,r4,2,base).  If
+  offset >= 0x14, bump base by 0x14 and reduce offset. Then scan pairs of u16 entries at (base + col)
+  stepping back by 4 from offset down to col >= 4, collecting entries whose top two bits (15:14) are zero
+  into a 2-element pool on the stack. If no pair found in the backward pass and offset < 0x12, scan forward
+  by 4 up to 0x14. If still none, return -1.  Otherwise call GetPositiveSignedRNG(r7=original offset)
+  to get a random number, SWI 6 to divide by the found-count (remainder = chosen index), and return the
+  selected u16 from the pool.  The c/v flags carry the random index back to the caller.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80AA910
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80AA910
+
+    ./wf verify --function sub_80AA910 --snapshots build-snapshots'
+  result: 'captured calls: 7 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    289 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80AA910
+
+    ./wf verify --function sub_80AA910 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 85 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80AA910
+
+    ./wf verify --function sub_80AA910 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battles1, battles2, beastsp, menus3, story2, story4, story5, story6, story7, story8,
+    story9.'
+  reproduce: grep -l '^080aa910 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80AA910 -> battle_pickChipAttr_80AA910
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- battles1
+- battles2
+- beastsp
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story7
+- story8
+- story9
+open_questions:
+- What exactly do sub_80AAB04 (chip apply) and sub_80AAA3C (navi select, mode 0 vs 1) do in game terms?
+- What does the 0x26 stats byte encode—is it a per-navi chip-slot descriptor or an RNG seed selector?
+- Is the 2-element pool size a hard cap on the attribute table column width, or could a wider table exist?
+- Why does the backward scan stop at col >= 4 (skipping columns 0–3) rather than col >= 0?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80AA910

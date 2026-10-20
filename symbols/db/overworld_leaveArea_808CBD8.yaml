@@ -1,0 +1,80 @@
+name: overworld_leaveArea_808CBD8
+address: '0x0808CBD8'
+kind: function
+status: confirmed
+summary: 'Handles transitioning out of the current area: spawns the overworld map object, sets a BBS flag,
+  switches game state to mode 3, and plays a departure sound unless the map group is 0x85.'
+interface: u32 overworld_leaveArea_808CBD8(/* r4 = spawnArg, r10 = toolkit */); // returns r0 = 0, sets
+  nz; preserves r4-r7, r10
+details: Calls SpawnOverworldMapObject(0x11, 0, 0, 0, r4) to create the overworld map entity (object ID
+  0x11), passing the caller's r4 as the 5th argument (likely the originating entity/area index). Then
+  calls reqBBS_setFlag_e17b0f7_8140A00 to mark a BBS progression flag. Sets gameState unk09 field to 3
+  (overworld/exploration mode). Reads the map group from gameState+oGameState_MapGroup; if the group is
+  not 0x85, plays sound 0x1F with argument 0x13B (a transition SFX). Returns 0 with flags updated. Map
+  group 0x85 appears to be a special area where the departure sound is suppressed. The function explicitly
+  saves and restores r5 around the SpawnOverworldMapObject call because that callee clobbers r5.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm24.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_808CBD8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_808CBD8
+
+    ./wf verify --function sub_808CBD8 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_808CBD8
+
+    ./wf verify --function sub_808CBD8 --snapshots build-snapshots'
+  result: 94 compared, 0 differed, 0 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_808CBD8
+
+    ./wf verify --function sub_808CBD8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808cbd8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm24.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_808CBD8 -> overworld_leaveArea_808CBD8
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm24.c
+coverage:
+- beastsp
+related:
+- sound_8000672
+open_questions:
+- What does game state 3 represent exactly (overworld walk mode vs. net-area exit sequence)?
+- What is the BBS flag e17b0f7 and which event area does it gate?
+- Why is map group 0x85 special (sound suppressed)? Could be the main overworld hub or a scripted ending
+  sequence.
+- What does object ID 0x11 represent (the overworld map entity, a player-walkable world object)?
+- What is the sound 0x1F with parameter 0x13B (likely a door-close or warp SFX)?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_808CBD8

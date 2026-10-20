@@ -1,49 +1,69 @@
 name: shop_addItemStockEntry
 address: '0x08048CCC'
 kind: function
-status: probable
-summary: Merges an 8-byte item/stock record into an indexed inventory-style list, stacking quantities
-  up to 0xFF or filling the first empty slot.
-interface: (r0 = list index, r1 = pointer to 8-byte entry {id, count, halfword, byte, pad}) -> void; flags
-  not meaningful
-details: The function looks up an entry at dword_8046B98 + r0*0x10; field +8 (added to the toolkit's ShopDataPtr)
-  is the record array base and field +0xC its record count. For each of the caller-supplied 8-byte records
-  it first scans the array for a record whose bytes 0, 2 and 4 all match; on a match it adds the record's
-  count (byte 1) to the stored count, saturating at 0xFF. If no matching record exists, it scans for the
-  first record with id byte 0 (empty slot) and CopyBytes-copies the whole 8-byte record there. Both scans
-  iterate the array in 8-byte strides up to the count from +0xC.
+status: confirmed
+summary: Merges a batch of 8-byte item entries into a shop's stock table, adding quantities of matching items or
+  copying new items into empty slots
+interface: void shop_addItemStockEntry(u32 tableIndex /*r0*/, u32 sourceEntries /*r1*/); /* uses r10 as toolkit
+  ptr; outputs r0-r3 + NZCV */
+details: 'Looks up a 16-byte record in the global table at dword_8046B98 via tableIndex*0x10; reads slotCount from
+  offset 0x0C and a stock-list base offset from 0x08, then adds the ShopDataPtr (read from toolkit at oToolkit_ShopDataPtr,
+  loaded via r10) to form the live pointer r8. Iterates up to slotCount 8-byte entries in the source array pointed
+  to by r1. For each non-empty source entry (ID byte != 0): (1) linear-search the stock list for an existing slot
+  whose ID (byte 0), sub-id (u16 at byte 2), and type/flag (byte 4) all match; if found, add the source quantity
+  (byte 1) to the existing quantity and clamp the sum to 255 via a signed comparison against 0xFF; (2) if no match,
+  linear-search again for the first slot with ID byte == 0 and CopyBytes the 8-byte source entry into it; (3) if
+  the stock is full, the entry is silently dropped. Outer loop advances source by 8 and increments r0, terminating
+  when r0 reaches slotCount. Leaves r0-r3 and NZCV flags set from the final cmp r0,r5.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'sub_8048CCC:008 ldr r7, off_8046B98; mul r0,#0x10 indexes a 0x10-byte descriptor per list;
-    sub_8048CCC:014 ldr r5,[r7,#0xC] / ldr r7,[r7,#8]: array base and count come from the descriptor;
-    sub_8048CCC:020 add r7, r10''s oToolkit_ShopDataPtr: the array lives in the toolkit''s shop data buffer;
-    sub_8048CCC:030-062 compares bytes 0/2/4 of each stride-8 record, then add byte1 with cmp r4,#0xFF
-    clamp stored back; sub_8048CCC:074-086 falls through to a second scan for byte0==0 and calls CopyBytes(src=r6,
-    dest=r7, 8) to fill the empty slot'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm03_2.s:4344
-  - 0x08048F88 sub_8048F88
-  - 0x08000920 CopyBytes
-  reproduce: python3 tools/asmcat.py 0x08048CCC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-212108'
+  - cport/src/game/asm03_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c shop_addItemStockEntry
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function shop_addItemStockEntry
+
+    ./wf verify --function shop_addItemStockEntry --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function shop_addItemStockEntry
+
+    ./wf verify --function shop_addItemStockEntry --snapshots build-snapshots'
+  result: 16 compared, 0 differed, 25 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function shop_addItemStockEntry
+
+    ./wf verify --function shop_addItemStockEntry --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08048ccc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_2.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm03_2.c
 coverage:
 - beastsp
 open_questions:
-- exact meaning of the 8-byte record's halfword field and byte 4 (item id vs. price vs. flags)
-- whether the ShopDataPtr-named buffer is truly shop stock or a generic item inventory; the sole caller
-  sub_8048F88 would clarify the source of the records
+- What determines tableIndex at call sites (shop type, chapter, or event ID)?
+- Are the sub-id (byte 2-3) and flag (byte 4) fields item category / variant selectors?
 sources:
-- wf investigate investigate-20261018-212108
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f aea1c835
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_8048CCC -> shop_addItemStockEntry
-  where: bn6f e44158ed
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8048CCC
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

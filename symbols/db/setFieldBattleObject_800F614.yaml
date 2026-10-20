@@ -1,0 +1,74 @@
+name: setFieldBattleObject_800F614
+address: '0x0800F614'
+kind: function
+status: confirmed
+summary: Inserts a battle-object pointer into the battle state's object list, keyed by alliance and slot type, evicting
+  and zeroing the HP of any displaced object.
+interface: void battle_placeObjectSlot(u32 r0_newObject, u32 r1_alliance, u32 r2_type, u32 r10_toolkit) -> flags
+  nzcv, r1_slotAddr, r2_evicted, r3_state; clobbers r1 r2 r3
+details: 'Resolves the battle-state pointer via toolkit (r10 + oToolkit_BattleStatePtr), then indexes into BattleObjectList
+  using alliance (row stride 0xC) and type (slot stride 8) to compute the target slot address. If type == 0 (main
+  slot), the slot is a two-entry FIFO: if the first entry is empty the object is placed there; if the second is
+  empty it is appended; if both are occupied the oldest entry is shifted out, the new object takes slot 1, and the
+  evicted object''s BattleObject_HP (offset oBattleObject_HP, u16) is zeroed. If type != 0 (sub slot), the single-pointer
+  slot is overwritten in place; any previously stored object also has its HP zeroed. Flags: N and Z reflect the
+  last TST of 0 (always Z=1, N=0); C and V come from the final ADDS of oBattleState_BattleObjectList to the computed
+  base. r1 returns the slot base address, r2 returns the evicted object pointer (0 if none), r3 is a side-effect
+  value (0 after eviction paths, type<<3 when sub-slot had no prior object).'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c setFieldBattleObject_800F614
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function setFieldBattleObject_800F614
+
+    ./wf verify --function setFieldBattleObject_800F614 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out of
+    domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function setFieldBattleObject_800F614
+
+    ./wf verify --function setFieldBattleObject_800F614 --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 82 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function setFieldBattleObject_800F614
+
+    ./wf verify --function setFieldBattleObject_800F614 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, chips.'
+  reproduce: grep -l '^0800f614 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- beastsp
+- chips
+open_questions:
+- Are the two main-slot entries a strict FIFO or do callers rely on the shift order for priority? (The code always
+  shifts entry1 into entry0 and puts new into entry1, so the newest is in the second slot.)
+- Does zeroing HP of the evicted object cause an immediate death animation, or is HP==0 merely a sentinel cleaned
+  up later by the main loop?
+- The C/V flags from the final ADDS are caller-visible; which callers depend on them rather than treating them as
+  discarded?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

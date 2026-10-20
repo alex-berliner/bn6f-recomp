@@ -1,0 +1,81 @@
+name: battle_aiAttackStep_80F872C
+address: '0x080F872C'
+kind: function
+status: confirmed
+summary: 'AI attack state-machine step: on first tick picks and reserves a target panel via an alliance-indexed
+  callback, then slides toward it; on subsequent ticks counts down the hit-timer and fires the attack
+  element.'
+interface: void battle_aiAttackStep(u32 r5 /*battleObject*/, u32 r7 /*aiAttackVars*/, /* r1 pass-through/clobbered
+  */); /* clobbers r0-r4,r6,r7,flags; r5,r8-r12 preserved */
+details: 'Reads aiAttackVars.AttackElement. If zero (first tick): writes AttackElement=4, calls object_canMove;
+  if that returns Z (cannot move) it aborts the attack by setting AttackDuration=0x50 and HitElement=8.
+  Otherwise it indexes a two-u32-per-alliance table at byte_80F8784 (offset = Alliance*8), loads two values,
+  retrieves aiAttackVars.PanelChooseCallback, and jumps through it (mov lr,pc; bx r0) expecting the callback
+  to return panel X in r0 and panel Y in r1. Those coordinates are stored into battleObject.FuturePanelX/Y,
+  then object_reservePanel is called to claim the tile. The CANNOT_SLIDE flag is set via object_setFlag1,
+  CurAnim is written to 4 (slide), and StepTimer is set to 3. If AttackElement was already non-zero (subsequent
+  ticks): decrements StepTimer; when it reaches zero it writes HitElement=4, completing the attack. The
+  table at byte_80F8784 holds per-alliance (Player/Net) panel-selection parameters: entries look like
+  {0x10, 0x88F0000} for alliance 0 and {0x30, 0xF880000} for alliance 1.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80F872C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F872C
+
+    ./wf verify --function sub_80F872C --snapshots build-snapshots'
+  result: 'captured calls: 36 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    181 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F872C
+
+    ./wf verify --function sub_80F872C --snapshots build-snapshots'
+  result: 13 compared, 0 differed, 70 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F872C
+
+    ./wf verify --function sub_80F872C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080f872c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F872C -> battle_aiAttackStep_80F872C
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Exact semantics of the two table values passed to PanelChooseCallback (tile-size and mask/offset?)
+- What HitElement values 4 and 8 represent (which damage element / no-attack sentinel?)
+- Whether AttackElement=4 is a fixed 'melee/slide' code or a per-weapon value
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80F872C

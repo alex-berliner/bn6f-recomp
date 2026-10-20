@@ -1,0 +1,70 @@
+name: t3_0x5f_80D0394
+address: '0x080D0394'
+kind: function
+status: confirmed
+summary: 'Per-frame state machine for a type-3 battle object: dispatches through a 3-entry jump table (init spawned
+  object, update collision/destroy, destroy wrapper) then performs sprite physics update.'
+interface: void battleObject_t3StateUpdate(void) — r5 = BattleObject*, modifies r5/r8–r12 through handlers; returns
+  with those registers set.
+details: Reads the one-byte CurState field at r5+oBattleObject_CurState, indexes a jump table at off_80D03AC (three
+  entries), and branches via bx r1 with lr set so the handler returns to the caller. State 0 calls battleObject_initSpawnedObject_80D03B8
+  (first-frame setup for a newly spawned tile-3 object); state 1 calls object_updateCollisionAndDestroy (checks
+  overlap with hazards/attacks and may remove the object); state 2 calls object_destroyWrapper_80D04D2 (final teardown).
+  After whichever handler runs, object_updateSpritePaused is called to advance the object's sprite animation/physics.
+  The handlers themselves may reassign r5 (to a different object) or update the r8–r12 scratch registers that the
+  battle engine uses for tile coordinates and timing; those modifications propagate back to the caller.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c t3_0x5f_80D0394
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x5f_80D0394
+
+    ./wf verify --function t3_0x5f_80D0394 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x5f_80D0394
+
+    ./wf verify --function t3_0x5f_80D0394 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 41 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x5f_80D0394
+
+    ./wf verify --function t3_0x5f_80D0394 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d0394 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What does 't3' mean — a specific tile/object category index, or an internal type tag?
+- Why is object_updateSpritePaused called even in the destroy path (state 2) — does the wrapper return early if
+  the object is already dead?
+- Confirm r4 and r10 input roles; the contract lists them as inputs but the disassembly only reads r5.
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

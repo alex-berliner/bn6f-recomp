@@ -1,0 +1,79 @@
+name: map_allocObject_8004822
+address: '0x08004822'
+kind: function
+status: confirmed
+summary: Allocate the next free overworld map object (type 9) from a 56-slot pool, returning its address
+  or 0 if full.
+interface: r0..r4 = init data (byte at +0x01, dwords at +0x04/+0x0C/+0x10/+0x14); r5 out = object pointer
+  or 0; flags clobbered; r1-r4,r6 preserved across the call.
+details: 'Scans eActiveOverworldMapObjectsBitfield from slot 55 (0x37) down to 0. For each slot it computes
+  bit = 0x80000000 >> (slot & 0x1F) and word index = (slot >> 5) * 4, then tests the bit. On the first
+  free slot it ORs the bit in (claiming it) and writes a 0x78-byte object at eOverworldMapObject55 - (55
+  - slot) * 0x78. Fields written: +0x00 = 9 (type tag for this object class), +0x01 = original r0 (u8),
+  +0x04 = original r4, +0x08 = 0 (cleared), +0x0C = original r1, +0x10 = original r2, +0x14 = original
+  r3. Because the function pops r0-r4 before writing those fields, the stored values are the caller''s
+  originals rather than the loop-modified registers. If every slot is occupied the loop falls through
+  to a null return in r5. The pool base label eOverworldMapObject55 confirms 56 slots × 0x78 bytes = 0x1980
+  bytes total.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_8004822
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8004822
+
+    ./wf verify --function sub_8004822 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    0 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8004822
+
+    ./wf verify --function sub_8004822 --snapshots build-snapshots'
+  result: 92 compared, 0 differed, 0 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8004822
+
+    ./wf verify --function sub_8004822 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08004822 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_1.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8004822 -> map_allocObject_8004822
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_1.c
+coverage:
+- beastsp
+open_questions:
+- What does type-tag 9 represent in the map-object enum (NPC, obstacle, trigger zone, etc.)?
+- Are the +0x04/+0x0C/+0x10/+0x14 fields coordinates, sprite pointer, and interaction script, or something
+  else?
+- Does a companion free/deallocate function clear the bit and reset the struct?
+- Is the pool ever compacted, or is first-fit-from-55-down the permanent policy?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_8004822

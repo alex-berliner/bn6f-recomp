@@ -3208,15 +3208,15 @@ Next chatbox_setFlag0x1000AndAdvanceStep_80426E0(void) {
 /* ── chatbox_stepUpdateAndContinue_8042820 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2, r4, r5, r6, r7; } call_sub_809CA84_result;
-/* register form: generated wrapper: sub_809CA84 has no typed C interface yet */
+/* register form: generated wrapper: ow_lookupScenarioTileData_809CA84 has no typed C interface yet */
 static inline call_sub_809CA84_result call_sub_809CA84(void) {
-    GUEST_CALL(sub_809CA84);
+    GUEST_CALL(ow_lookupScenarioTileData_809CA84);
     return (call_sub_809CA84_result){ R0, R2, R4, R5, R6, R7 };
 }
 
 /* Chatbox step (0x08042820).
  *
- * sub_809CA84 does the per-frame chatbox processing. It returns the value the
+ * ow_lookupScenarioTileData_809CA84 does the per-frame chatbox processing. It returns the value the
  * chatbox control block should remember (r0) and refreshes the box's working
  * registers (r2, r4, r5, r6, r7); it runs with the caller's r4/r5/r10 still
  * in place, since the wrapper passes no argument registers.
@@ -3225,13 +3225,13 @@ static inline call_sub_809CA84_result call_sub_809CA84(void) {
  *   - stores the returned value into the control block at r5+0x4C, and
  *   - advances the r4 counter by 2.
  *
- * The caller only consumes r0 (= 1, "continue") and the registers sub_809CA84
+ * The caller only consumes r0 (= 1, "continue") and the registers ow_lookupScenarioTileData_809CA84
  * left behind; N/Z/C/V, r1 and lr are clobbered per the contract, so no flag
  * setting is needed here. */
 static u32 chatbox_step(void) {
     call_sub_809CA84_result box = call_sub_809CA84();
 
-    /* Record the value sub_809CA84 produced in the chatbox control block. */
+    /* Record the value ow_lookupScenarioTileData_809CA84 produced in the chatbox control block. */
     ST32(box.r5 + 0x4C, box.r0);
 
     /* The chatbox cursor/counter moves up by two each step. */
@@ -3240,7 +3240,7 @@ static u32 chatbox_step(void) {
 
 Next chatbox_stepUpdateAndContinue_8042820(void) {
     /* r4 exits advanced by 2 and r0 is the success value; r2/r5/r6/r7 were
-       already left in the guest registers by the call to sub_809CA84, so the
+       already left in the guest registers by the call to ow_lookupScenarioTileData_809CA84, so the
        adapter must not write them again. */
     R4 = chatbox_step();
     R0 = 1;

@@ -1,0 +1,75 @@
+name: battle_dispatchWeatherCompHandler_811DF1C
+address: '0x0811DF1C'
+kind: function
+status: confirmed
+summary: Jump-table dispatcher that selects and calls a weather-compensation handler based on a per-object
+  state byte, passing eWeatherCompState as context.
+interface: void battle_dispatchWeatherCompHandler(BattleObject* r5); // r1=selector, r6=&eWeatherCompState
+  passed to handler; r2,r3,r5,r10,r11 returned by handler
+details: 'Reads a byte at object+8 (r5) as a direct byte-offset into a 3-entry jump table at off_811DF30.
+  Entries: [0]=battleObject_initNaviRosterEntry_811DF40, [1]=sub_811DF94, [2]=sub_811DFCC. Before branching
+  (mov lr, pc; bx r0), loads r1 with the selector byte and r6 with the address of eWeatherCompState, so
+  each handler receives those as arguments. The handler''s results in r2, r3, r5, r10, r11 are read back
+  directly by the original caller via the register contract. No return value is marshalled back through
+  r0.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_811DF1C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811DF1C
+
+    ./wf verify --function sub_811DF1C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    299 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811DF1C
+
+    ./wf verify --function sub_811DF1C --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 29 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811DF1C
+
+    ./wf verify --function sub_811DF1C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0811df1c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811DF1C -> battle_dispatchWeatherCompHandler_811DF1C
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- beastsp
+open_questions:
+- What does eWeatherCompState represent structurally (array indexed by weather ID, per-CP context, etc.)?
+- Why is entry 0 named initNaviRosterEntry—does selector 0 mean 'no weather yet, initialize' while 1/2
+  are update/apply?
+- Are the three handlers mutually exclusive state-machine steps or selectable per-frame?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_811DF1C

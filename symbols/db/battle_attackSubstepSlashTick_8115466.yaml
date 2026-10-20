@@ -1,0 +1,82 @@
+name: battle_attackSubstepSlashTick_8115466
+address: '0x08115466'
+kind: function
+status: confirmed
+summary: Decrements an AI attack sub-step counter; on wrap, spawns a slash effect object at the attacker's
+  forward position.
+interface: void battle_attackSubstepSlashTick_8115466(u32 attacker /*r5*/, u32 attack_vars /*r7*/)  //
+  preserves r5,r7; clobbers r0-r3,r4,lr,nzcv
+details: "Reads the 8-bit oAIAttackVars_SubStepIndex from the AI attack variable block (r7) and decrements\n\
+  it. If the result is non-zero the function returns immediately (early exit at locret). When the\ncounter\
+  \ reaches zero it is reloaded with 4 (SUBSTEP_RELOAD). On that reload the function:\n  - Calls object_getFrontDirection\
+  \ with the acting battle object (r5) to obtain the 4-bit facing\n    direction index.\n  - Multiplies\
+  \ facing by 0xE0000 (14 px in 12.4 fixed-point) to get a forward x-offset.\n  - Reads the attacker's\
+  \ (x,y,z) position triple at attacker+0x34 via LDMIA.\n  - Adds the x-offset to x and adds SLASH_Z_OFFSET\
+  \ (0x80000, loaded from literal byte_81154E8)\n    to z.\n  - Calls spawn_t1_0x0_EffectObject with r1=x,\
+  \ r2=y, r3=z, r4=1 to instantiate a type-1\n    slash visual effect.\nThe function is a single sub-step\
+  \ tick within a multi-phase AI attack routine; it runs every\nframe the parent attack state is active.\
+  \ r4 is saved/restored around the two callees because\nspawn_t1 clobbers it. The byte_81154E8 literal\
+  \ is currently 0x0, so the z-offset is effectively\nnil in this build.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_8115466
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8115466
+
+    ./wf verify --function sub_8115466 --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    190 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8115466
+
+    ./wf verify --function sub_8115466 --snapshots build-snapshots'
+  result: 32 compared, 0 differed, 63 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8115466
+
+    ./wf verify --function sub_8115466 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08115466 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8115466 -> battle_attackSubstepSlashTick_8115466
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Does byte_81154E8 get patched at runtime, or is the 0x80000 SLASH_Z_OFFSET in the C wrapper an inferred
+  constant?
+- Confirm that type-1 effect objects are specifically the sword/slash sprite and not a generic 'other'
+  bucket.
+- What is the full multi-step attack sequence this tick belongs to (parent caller chain)?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_8115466

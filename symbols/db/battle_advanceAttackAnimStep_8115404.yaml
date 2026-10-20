@@ -1,0 +1,79 @@
+name: battle_advanceAttackAnimStep_8115404
+address: '0x08115404'
+kind: function
+status: confirmed
+summary: Per-frame battle-AI update that checks whether the current attack animation has finished, decrements
+  the step timer, and on expiry refreshes collision data and exits the attack state.
+interface: void battle_advanceAttackAnimStep(u32 r5_battleObj, u32 r7_attackVars); /* out r1; clobbers
+  r0,r2,r3,r6,r7,nzcv,lr; preserves r4 */
+details: 'Reads byte field oBattleObject_CurAnim on the battle object (r5); if non-zero it calls sprite_getFrameParameters
+  and tests bit 7 of the returned r0. When that bit is set the animation is considered complete and CurAnim
+  is cleared to 0. Regardless of the animation check, decrements the halfword oAIAttackVars_StepTimer
+  (r7) by 1. When the unsigned result wraps below zero (bge fails), it calls object_updateCollisionData
+  with mode args (r1=1, r2=2, r3=3, r5=battleObj) then object_exitAttackState with the updated r6/r7 from
+  the collision call, transitioning the battle object out of its attack sub-state. Returns whatever value
+  ends up in r1 (pass-through of caller''s r1 on the early path, or the result from object_exitAttackState
+  on the timeout path). Fields touched: oBattleObject_CurAnim (byte), oAIAttackVars_StepTimer (halfword).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_8115404
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8115404
+
+    ./wf verify --function sub_8115404 --snapshots build-snapshots'
+  result: 'captured calls: 32 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    255 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8115404
+
+    ./wf verify --function sub_8115404 --snapshots build-snapshots'
+  result: 6 compared, 0 differed, 88 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8115404
+
+    ./wf verify --function sub_8115404 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08115404 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8115404 -> battle_advanceAttackAnimStep_8115404
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What role does r10 (listed as an input) play? It appears unused in the visible body.
+- The collision-mode constants 1,2,3 passed to object_updateCollisionData are undocumented.
+- Does r6 carry meaningful state into this function beyond being overwritten by the collision/exit calls?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_8115404

@@ -1,0 +1,83 @@
+name: battle_tickCollisionHighlight_80C7D08
+address: '0x080C7D08'
+kind: function
+status: confirmed
+summary: 'Per-frame tick for a battle object''s collision-highlight state machine: initialises phase 4
+  on first entry, re-highlights the object''s panel each frame, clears the collision region when hit or
+  when short timer expires, and destroys the object when the main timer reaches zero.'
+interface: u32 battle_tickCollisionHighlight_80C7D08(r5 = battle_object_ptr) -> r1 (pass-through from
+  callee)
+details: 'CurPhase byte at oBattleObject_CurPhase: if zero (first frame) sets CurPhase=4, oBattleObject_Timer=0xF
+  (15 frames main lifetime), oBattleObject_Timer2=0xA (10 frames highlight window).  On subsequent frames:
+  reads oBattleObject_CollisionDataPtr -> oCollisionData_FlagsFromCollision; if non-zero (object was hit
+  by a bullet or attack) calls object_clearCollisionRegion.  Then calls object_highlightPanel with oBattleObject_PanelX/PanelY
+  to keep the panel flash visible.  Decrements oBattleObject_Timer2; on reaching zero clears the collision
+  region again (highlight window ended).  Decrements oBattleObject_Timer; on reaching zero clears the
+  collision region a final time and writes CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized,
+  signalling the main loop to remove this object next update.  r1 is written to on the first-frame path
+  (set to 4) and otherwise carries the return value of whichever callee last touched it.  nz flags are
+  clobbered by the sub/bgt pairs; lr is saved/restored.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80C7D08
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80C7D08
+
+    ./wf verify --function sub_80C7D08 --snapshots build-snapshots'
+  result: 'captured calls: 32 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80C7D08
+
+    ./wf verify --function sub_80C7D08 --snapshots build-snapshots'
+  result: 36 compared, 0 differed, 55 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80C7D08
+
+    ./wf verify --function sub_80C7D08 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080c7d08 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80C7D08 -> battle_tickCollisionHighlight_80C7D08
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What game effect does the 15-frame / 10-frame timing correspond to visually (enemy panel-flash before
+  teleport, chip-effect highlight, boss intro)?
+- Is r1 on the first-frame path (value 4) consumed by the caller to signal 'initialised'?
+- Does object_highlightPanel toggle a tile on the battle background or set an overlay sprite?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80C7D08

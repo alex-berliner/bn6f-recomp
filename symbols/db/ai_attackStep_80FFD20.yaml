@@ -1,0 +1,78 @@
+name: ai_attackStep_80FFD20
+address: '0x080FFD20'
+kind: function
+status: confirmed
+summary: 'Per-frame AI attack step: on first call commits a panel move and starts the attack animation
+  with a 2-frame timer, then on expiry stops the animation and triggers the hit.'
+interface: 'void ai_attackStep(u32 r5 /*battleObject*/, u32 r7 /*AIAttackVars*/) -> u32 r1 /*from object_setFlag1*/;
+  flags: clobbers nzcv'
+details: 'Two-phase state machine keyed on AIAttackVars_AttackElement. Init phase (element==0): writes
+  element=4 (Wood), CurAnim=3 (attack anim), copies FuturePanelX/Y into PanelX/Y, calls object_removePanelReserve,
+  object_setCoordinatesFromPanels, object_updateCollisionPanels, object_clearFlag(0x40 /*panel-occupied*/),
+  object_setFlag1(1<<OBJECT_FLAGS_CURRENTLY_MOVING_1_BIT), and sets StepTimer=2. Countdown phase (element!=0):
+  decrements StepTimer; while >0 returns early; at expiry writes CurAnim=0 and HitElement=8 to trigger
+  damage application. Touches fields: AIAttackVars.{AttackElement,StepTimer,HitElement}, BattleObject.{CurAnim,FuturePanelX/Y,PanelX/Y}.
+  Output r1 is a side-effect of object_setFlag1.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80FFD20
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FFD20
+
+    ./wf verify --function sub_80FFD20 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    183 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FFD20
+
+    ./wf verify --function sub_80FFD20 --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 84 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FFD20
+
+    ./wf verify --function sub_80FFD20 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080ffd20 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FFD20 -> ai_attackStep_80FFD20
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Is AttackElement=4 always Wood or does this function vary the element by AI context (the value 4 is
+  hardcoded here, suggesting a specific attack type)?
+- What exactly does HitElement=8 signify—standard damage tick, or a special element-less hit?
+- Does the caller loop over multiple AIAttackVars slots, or is this invoked once per object per frame?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80FFD20

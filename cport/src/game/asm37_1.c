@@ -67,9 +67,9 @@ static inline call_pet_testIsMapGroupAllowed_8141AA8_result call_pet_testIsMapGr
 }
 
 typedef struct { u32 r3, r4, r5, r6, r7; } call_sub_80468BA_result;
-/* register form: generated wrapper: sub_80468BA has no typed C interface yet */
+/* register form: generated wrapper: initWorkArea5_80468BA has no typed C interface yet */
 static inline call_sub_80468BA_result call_sub_80468BA(void) {
-    GUEST_CALL(sub_80468BA);
+    GUEST_CALL(initWorkArea5_80468BA);
     return (call_sub_80468BA_result){ R3, R4, R5, R6, R7 };
 }
 
@@ -653,25 +653,25 @@ Next init_queueBeastSpGfx(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8142CB0 ── */
+/* ── battle_resolveMapTileAddr_8142CB0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r5; } call_sub_8142D58_result;
-/* register form: generated wrapper: sub_8142D58 has no typed C interface yet */
+/* register form: generated wrapper: ow_calcMapTileOffset_8142D58 has no typed C interface yet */
 static inline call_sub_8142D58_result call_sub_8142D58(void) {
-    GUEST_CALL(sub_8142D58);
+    GUEST_CALL(ow_calcMapTileOffset_8142D58);
     return (call_sub_8142D58_result){ R0, R5 };
 }
 
 typedef struct { u32 r0, r5; } call_sub_8142DA0_result;
-/* register form: generated wrapper: sub_8142DA0 has no typed C interface yet */
+/* register form: generated wrapper: map_resolveTileAddress_8142DA0 has no typed C interface yet */
 static inline call_sub_8142DA0_result call_sub_8142DA0(u32 r0) {
     R0 = r0;
-    GUEST_CALL(sub_8142DA0);
+    GUEST_CALL(map_resolveTileAddress_8142DA0);
     return (call_sub_8142DA0_result){ R0, R5 };
 }
 
 /* Resolve a map-tile data pointer: combines the tile offset returned by
- * sub_8142DA0 with the tile-array base inside the MapTilesState (0x200BE70). */
+ * map_resolveTileAddress_8142DA0 with the tile-array base inside the MapTilesState (0x200BE70). */
 static u32 resolve_map_tile_address(void) {
     /* register form: call_sub_8142D58's wrapper reads R5 for the MapTilesState pointer */
     R5 = A_eMapTilesState200be70;
@@ -679,8 +679,8 @@ static u32 resolve_map_tile_address(void) {
     call_sub_8142D58_result step1 = call_sub_8142D58();
     call_sub_8142DA0_result step2 = call_sub_8142DA0(step1.r0);
 
-    /* step2.r5 is the battle-relative tiles-state pointer (sub_8142D58's r5 output
-       carried into sub_8142DA0).  Offset 0xC holds the tile-table base; the field
+    /* step2.r5 is the battle-relative tiles-state pointer (ow_calcMapTileOffset_8142D58's r5 output
+       carried into map_resolveTileAddress_8142DA0).  Offset 0xC holds the tile-table base; the field
        at +8 gives the per-tile stride base.  The final address is the tile offset
        from step2.r0 added to the tile array computed here. */
     u32 tiles_state  = step2.r5;
@@ -690,8 +690,8 @@ static u32 resolve_map_tile_address(void) {
     return step2.r0 + tile_array;
 }
 
-/* sub_8142CB0(r10 = battle context) -> r0 (absolute tile address); r5-r7 preserved */
-Next sub_8142CB0(void) {
+/* battle_resolveMapTileAddr_8142CB0(r10 = battle context) -> r0 (absolute tile address); r5-r7 preserved */
+Next battle_resolveMapTileAddr_8142CB0(void) {
     u32 saved_r5 = R5;
     R0 = resolve_map_tile_address();
     R5 = saved_r5;
@@ -746,7 +746,7 @@ Next ow_stampMapTileTemplate(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8142D58 ── */
+/* ── ow_calcMapTileOffset_8142D58 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: ow_getAreaMapTilesOffset has no typed C interface yet */
 static inline u32 call_ow_getAreaMapTilesOffset(void) {
@@ -778,13 +778,13 @@ static u32 calc_map_tile_offset(void) {
     return base + offset;
 }
 
-/* sub_8142D58() -> r0 */
-Next sub_8142D58(void) {
+/* ow_calcMapTileOffset_8142D58() -> r0 */
+Next ow_calcMapTileOffset_8142D58(void) {
     R0 = calc_map_tile_offset();
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8142DA0 ── */
+/* ── map_resolveTileAddress_8142DA0 ── */
 /* Resolve a tile's memory address by adding/subtracting a computed offset
  * from a base pointer.  The first byte of the map-tiles state is the map
  * width; the byte at tile-data+0x9 is an index where bit 7 selects the
@@ -809,8 +809,8 @@ static u32 resolve_map_tile_addr(u32 base_addr, u32 tile_state_ptr, u32 tile_dat
     }
 }
 
-/* sub_8142DA0(r0 = base address) -> r0 = adjusted tile address */
-Next sub_8142DA0(void) {
+/* map_resolveTileAddress_8142DA0(r0 = base address) -> r0 = adjusted tile address */
+Next map_resolveTileAddress_8142DA0(void) {
     R0 = resolve_map_tile_addr(R0, A_eMapTilesState200be70, A_unk_2000B40);
     RETURN_TO_CALLER();
 }

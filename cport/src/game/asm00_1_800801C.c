@@ -419,11 +419,11 @@ static void sound_setup_800065A(u32 channel, u32 param, u32 pitch)
     GUEST_CALL(sound_800065A);
 }
 
-/* register form: calls sound_8000672 outside this file, which has no typed C interface yet */
+/* register form: calls sound_dispatchSmashHandler_8000672 outside this file, which has no typed C interface yet */
 static void sound_play_8000672(u32 channel, u32 sound_id)
 {
     R0 = channel; R1 = sound_id;
-    GUEST_CALL(sound_8000672);
+    GUEST_CALL(sound_dispatchSmashHandler_8000672);
 }
 
 /* register form: the battle state pointer is carried in r5 and the guest callees above
@@ -2804,10 +2804,10 @@ static void init_navi_stats_default(u32 navi_stats, u32 battle_buf) {
     GUEST_CALL(initNaviStats_WithDefaultStatsMaybe_8013438);
 }
 
-/* register form: calls sub_8013554 outside this file, which has no typed C interface yet */
+/* register form: calls initBattleNaviData_8013554 outside this file, which has no typed C interface yet */
 static void init_navi_stats_battle7(u32 navi_stats, u32 battle_buf) {
     R0 = navi_stats; R4 = battle_buf;
-    GUEST_CALL(sub_8013554);
+    GUEST_CALL(initBattleNaviData_8013554);
 }
 
 /* register form: calls battle_initChipSelectState outside this file, which has no typed C interface yet */

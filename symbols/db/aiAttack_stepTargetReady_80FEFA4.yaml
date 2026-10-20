@@ -1,0 +1,81 @@
+name: aiAttack_stepTargetReady_80FEFA4
+address: '0x080FEFA4'
+kind: function
+status: confirmed
+summary: 'AI attack sub-step handler: initializes the attack on first call, checks whether the target
+  (via scratch pointer or ai-attack-param pointer) has its ''ready'' byte set, and otherwise advances
+  the sub-step counter while selecting a hit-element value.'
+interface: aiAttack_stepTargetReady_80FEFA4(void) -> r1:u32, r5:u32 /* r5=battleObject*, r7=aiAttackVars*,
+  reads r1 as passthrough/return */
+details: 'The AI attack variables struct (pointed to by r7) carries oAIAttackVars_AttackElement, _ScratchVar,
+  _AiAttackParam, _SubStepIndex, _TimerOrCycles, _PanelParamFlags2, and _HitElement. On the very first
+  invocation AttackElement is still zero; the handler stamps it with 4, sets the battle object''s oBattleObject_CurAnim
+  to 8 (the attack-anim slot), and delegates the rest to aiAttack_runStepTwice_80FF680. On subsequent
+  calls it two-phase-checks target readiness: first the pointer stored in oAIAttackVars_ScratchVar (dereferenced,
+  byte+6 non-zero means ready), then oAIAttackVars_AiAttackParam (same byte+6 test). If either is ready
+  it writes 1 to oAIAttackVars_PanelParamFlags2 and returns, passing r1 through unchanged. If the param
+  pointer is null the handler increments oAIAttackVars_SubStepIndex, compares it against oAIAttackVars_TimerOrCycles,
+  and picks oAIAttackVars_HitElement: 0xC while still cycling and not yet flagged, 0x14 once the sub-step
+  count is exhausted or PanelParamFlags2 is already set. r1 receives TimerOrCycles in that last branch
+  (effectively a sub-step-limit return value); in every other path r1 is untouched. r5 is always preserved.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80FEFA4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FEFA4
+
+    ./wf verify --function sub_80FEFA4 --snapshots build-snapshots'
+  result: 'captured calls: 24 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FEFA4
+
+    ./wf verify --function sub_80FEFA4 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 93 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FEFA4
+
+    ./wf verify --function sub_80FEFA4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080fefa4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FEFA4 -> aiAttack_stepTargetReady_80FEFA4
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What attack element value is 4 (the initial oAIAttackVars_AttackElement stamp)?
+- What hit-element codes 0xC and 0x14 represent in the damage-type table.
+- Why r1 is set to TimerOrCycles in the sub-step branch – is the caller using it as a loop bound?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80FEFA4

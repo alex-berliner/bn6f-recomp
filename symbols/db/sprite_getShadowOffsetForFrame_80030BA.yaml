@@ -1,57 +1,73 @@
 name: sprite_getShadowOffsetForFrame_80030BA
 address: '0x080030BA'
 kind: function
-previous_names:
-- sub_80030BA
-status: probable
-summary: Look up the per-frame (dx, dy) shadow offset entry for a sprite given the current frame index.
-interface: (r0 = spriteDataPtr?, r1 = frameIndex) -> r0 = dx, r1 = dy (or both 0 if missing/none)
-details: "Saves r4-r7/lr; r0 is the ObjectHeader/T-Something base (kept in r5). Reads\n  `oObjectHeader_TypeAndSpriteOffset`\
-  \ (high nibble = Type), shifts left 4 to get a\n  spriteData offset in 0x10-byte units and adds it to\
-  \ the base to land on the\n  per-sprite ObjectSprite block. Loads the sprite's `Unk_20` (frame table\
-  \ base-ish\n  ptr) and `Unk_1c+0xc` (stride? or table 2 base), combines them via\n  `r3 = Unk_18 + *(Unk_1c+0xc)`,\
-  \ indexes with `idx = *(Unk_20)` *4 to read an entry,\n  then adjusts r2 in-place with `r2 += r3` so\
-  \ that subsequent byte reads walk\n  entries of 5 bytes each (so this is a [u8 frame; s8 dx; s8 dy;\
-  \ ?; ?] style table).\n  Iterates from r4=0 forward while `byte0 != 0xFF`; when r4 == r1 (requested\
-  \ frame\n  index), reads two bytes at +1/+2 as signed dx/dy and returns them. If the loop\n  hits the\
-  \ 0xFF terminator first it returns (0,0). The \"frame 0xFF\" sentinel acts\n  as table end; r1 is therefore\
-  \ a small index into the shadow/anchor table.\n"
+status: confirmed
+summary: Return the (X, Y) shadow-grounding offset for a given animation frame index of a sprite object, or (0,
+  0) past the table's 0xFF sentinel.
+interface: sprite_getShadowOffsetForFrame_80030BA(r0 = sprite object ptr, r1 = target frame index) -> r0 = shadow
+  X (s8 sign-extended), r1 = shadow Y (s8 sign-extended); clobbers r2 r3 NZCV; preserves r4-r7 via push/pop.
+details: "Computes the sprite-data base by masking the object header's TypeAndSpriteOffset byte with 0xF0 and adding\
+  \ it to the object pointer. From the sprite-data record it follows oObjectSprite_AnimFrameDataPtr to get the current\
+  \ animation-frame byte, multiplies by 4 to form a word-array offset, then combines oObjectSprite_AnimationResourcePtr\
+  \ with the +0xC subframe offset (read through oObjectSprite_AnimationSubFramePtr) to resolve a relative pointer\
+  \ into the animation-resource blob. That blob is a list of 5-byte shadow-offset records:\n  byte 0 = flag (0xFF\
+  \ = end-of-list sentinel),\n  byte 1 = signed X offset,\n  byte 2 = signed Y offset,\n  bytes 3-4 = unused.\n\
+  The list is walked in 5-byte steps; when the step counter equals r1 the two signed bytes are loadedsb into r0/r1\
+  \ and returned. Hitting the sentinel first returns (0, 0). r5 holds the object ptr internally and r6 is never\
+  \ written; both are restored by the prologue/epilogue."
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: '- `ldrb r3, [r5,#oObjectHeader_TypeAndSpriteOffset]; lsr r3,#4; lsl r3,#4; add r5,r5,r3` matches
-    the documented "Type*0x10 sprite slot" pattern. - `ldr r3,[r5,#oObjectSprite_Unk_20]` followed by
-    `ldrb r2,[r3]; lsl r2,r2,#2` treats `Unk_20` as a u8 stride *4 table indexed by frame. - Loop `cmp
-    r3,#0xff; beq end` over 5-byte records (`add r2,#5`) is a classic terminator-walked table. - Success
-    path does `ldrsb r0,[r2,#1]; ldrsb r1,[r2,#2]` — signed 16-bit pair returned in r0/r1, consistent
-    with a 2D offset. - Fall-through (`mov r0,#0; mov r1,#0; pop {pc}`) returns zeros when the requested
-    frame index is absent.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm00_2.s
-  reproduce: 'python3 tools/asmcat.py 0x080030BA
+  - cport/src/game/sprite_8002F2C.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c sprite_getShadowOffsetForFrame_80030BA
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sprite_getShadowOffsetForFrame_80030BA
 
-    '
-  result: the body read as described above
+    ./wf verify --function sprite_getShadowOffsetForFrame_80030BA --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sprite_getShadowOffsetForFrame_80030BA
+
+    ./wf verify --function sprite_getShadowOffsetForFrame_80030BA --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 50 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sprite_getShadowOffsetForFrame_80030BA
+
+    ./wf verify --function sprite_getShadowOffsetForFrame_80030BA --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp'
-  reproduce: 'grep -l ''^080030ba '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp
-open_questions:
-- Exact semantics of the [r3,r2]/[Unk_18 + Unk_1c+0xc] indirection and of bytes
-- +3..+4 of each record. Settling it needs to see what populates
-- '`Unk_18/Unk_1c/Unk_20` for a known sprite, and what sub_80B8932 does with the'
-- returned dx/dy.
-sources:
-- discovery session 2026-10-14 (outside model minimax/MiniMax-M3, build/repro/discover3)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080030ba ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/sprite_8002F2C.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f 4b6ad669
+  where: bn6f 487cf9c6
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80030BA -> sprite_getShadowOffsetForFrame_80030BA
-  where: bn6f 25419b15
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/sprite_8002F2C.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Are the two unused bytes (offsets +3 and +4) within each 5-byte record reserved or meaningful in a different context?
+- What sprite types or NPCs actually consume the returned shadow offset during rendering, and is (0,0) drawn as
+  'no shadow'?
+- Is the +0xC field on the subframe structure a well-known animation metadata word (e.g. a frame-table base offset)?
+  It is read as an ldr with no named field.
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

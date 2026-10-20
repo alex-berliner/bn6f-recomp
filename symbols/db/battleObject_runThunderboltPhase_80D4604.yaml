@@ -1,0 +1,83 @@
+name: battleObject_runThunderboltPhase_80D4604
+address: '0x080D4604'
+kind: function
+status: confirmed
+summary: 'Tick handler for a thunderbolt battle object: counts down, then strikes the nearest enemy with
+  a lightning bolt at that enemy''s tile.'
+interface: void battleObject_runThunderboltPhase(u32 r5 /*BattleObject**/, u32 r10); /* returns r1, r5
+  modified */
+details: 'Per-frame phase handler stored in the BattleObject''s phase-dispatch table. On the first tick
+  it sets PhaseInitialized, CurAnim=3 (thunderbolt animation), and Timer=0x0A (10-frame fuse).  If Param1==4
+  the object is an inert variant and is immediately set to CUR_STATE_DESTROY. Subsequent ticks decrement
+  Timer; while (s32)(Timer-1) > 0 the function returns so the animation plays. When the fuse expires:
+  clears the object''s collision region, XORs the alliance field to obtain the opposing side, calls battleObject_findClosestEnemyBattleObject
+  to locate the nearest foe on that side, reads the foe''s tile X (+0x12) and Y (+0x13), loads the self
+  object''s DamageAndStaminaDamageCounterDisabler word, and calls spawnThunderboltObject at the foe''s
+  position with type=3. Regardless of which branch produced it, the object pointed to by r5 after the
+  spawn (or the original object for the Param1==4 shortcut) is marked CUR_STATE_DESTROY. r10 is an input
+  the register contract notes but the function body never touches directly; it may be consumed by one
+  of the callees via frame-pointer conventions.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80D4604
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D4604
+
+    ./wf verify --function sub_80D4604 --snapshots build-snapshots'
+  result: 'captured calls: 23 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    194 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D4604
+
+    ./wf verify --function sub_80D4604 --snapshots build-snapshots'
+  result: 40 compared, 0 differed, 55 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D4604
+
+    ./wf verify --function sub_80D4604 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d4604 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D4604 -> battleObject_runThunderboltPhase_80D4604
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Why does Param1==4 mean 'inert / do not fire'? Is this a specific battle-card variant?
+- What does r5 become after spawnThunderboltObject returns, and why is that (rather than the original
+  r5) marked DESTROY?
+- r10 is declared as an input but never read in this body – which callee actually uses it?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80D4604

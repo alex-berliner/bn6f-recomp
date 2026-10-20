@@ -1,0 +1,81 @@
+name: battle_aiAttackStep_80F16E0
+address: '0x080F16E0'
+kind: function
+status: confirmed
+summary: 'Advances the AI attack state-machine by one frame: initializes element/damage and spawns a hit-effect
+  on first activation, otherwise counts down the step timer and resets the hit element when it expires.'
+interface: 'u32 battle_aiAttackStep_80F16E0(BattleObject *panel /* r5 */, AIAttackVars *attack /* r7 */);
+  /* returns in r1: 0x5A on init, caller''s r1 otherwise; r5/r7 preserved; r4/r6 saved-and-restored around
+  sub_80C92CC call; flags clobbered */'
+details: 'Two branches keyed on AIAttackVars.AttackElement (offset oAIAttackVars_AttackElement, byte).
+  Branch 1 (element==0, first activation): sets AttackElement to 4 (fire), adds AttackBoost into Damage
+  (16-bit), then calls sub_80C92CC to spawn a hit visual-effect at the attacker''s panel (BattleObject.PanelX/Y
+  passed as r0/r1, InitFlag as r2, type 0xA0000 packed with attr 0x000A0204 into r4/r3, panel pointer
+  in r5, full Damage in r6). Sets StepTimer to 0x5A (90 frames). Returns that value in r1. Branch 2 (element!=0,
+  countdown): decrements StepTimer (16-bit signed); if result > 0 returns caller''s r1 unchanged; if <=
+  0 writes HitElement = 0x14 (neutral hit) to signal the effect is done. r4 and r6 are push/pop''d because
+  sub_80C92CC clobbers them but the caller expects them preserved. Structures touched: AIAttackVars (AttackElement
+  byte, Damage u16, AttackBoost u16, StepTimer u16, InitFlag byte, HitElement u16) and BattleObject (PanelX
+  byte, PanelY byte).'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80F16E0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F16E0
+
+    ./wf verify --function sub_80F16E0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    176 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F16E0
+
+    ./wf verify --function sub_80F16E0 --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 79 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F16E0
+
+    ./wf verify --function sub_80F16E0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080f16e0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F16E0 -> battle_aiAttackStep_80F16E0
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- beastsp
+open_questions:
+- What does element value 4 represent exactly (fire?) and is 0x14 (20) the canonical 'no-element' HitElement
+  or a specific status?
+- 'sub_80C92CC: confirm it is the generic battle-effect/visual-effect spawner and what the type nibble
+  0xA encodes.'
+- Is the 0x5A timer value tuned per-attack or fixed for this element-4 attack family?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80F16E0

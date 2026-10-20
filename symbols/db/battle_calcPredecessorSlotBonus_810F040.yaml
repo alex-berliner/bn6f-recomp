@@ -1,0 +1,81 @@
+name: battle_calcPredecessorSlotBonus_810F040
+address: '0x0810F040'
+kind: function
+status: confirmed
+summary: Snapshots the object's HP, then counts allied battle-slot entries of kinds 0x4F–0x54 that precede
+  this object in list order, storing a 0x14-per-count bonus into the object's field at offset 0x6C.
+interface: battle_calcPredecessorSlotBonus_810F040(r5 = BattleObject*, r10 = Toolkit*) -> r0=bonus, r1=0x6C,
+  r3=count, nzcv set; preserves r4-r7,r5
+details: '1. Reads the object''s 16-bit HP (oBattleObject_HP) and stores it as a 32-bit snapshot in oBattleObject_ExtraVars+8.
+  2. Determines the object''s alliance (oBattleObject_Alliance), uses it as an index into a two-entry
+  table (0x80 for alliance 0, 0x90 for alliance 1) to locate a 4-slot pointer array inside the BattleState
+  (resolved via oToolkit_BattleStatePtr). 3. Iterates the 4 slot pointers; for each non-null entry reads
+  kind at offset 0x28 (u16) and entry-index at offset 3 (u8). If kind is in [0x4F,0x54] AND entry-index
+  < this object''s oObjectHeader_ListIndex (signed compare), increments a counter. 4. Multiplies the count
+  by 0x14 (20) and writes the result as a 16-bit value into oBattleObject field 0x6C. The kinds 0x4F–0x54
+  likely correspond to a contiguous block of battle-entity types (possibly NPC allies or custom objects).
+  The bonus at 0x6C may feed a damage or effect calculation elsewhere.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_810F040
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810F040
+
+    ./wf verify --function sub_810F040 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810F040
+
+    ./wf verify --function sub_810F040 --snapshots build-snapshots'
+  result: 31 compared, 0 differed, 61 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810F040
+
+    ./wf verify --function sub_810F040 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810f040 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810F040 -> battle_calcPredecessorSlotBonus_810F040
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What entity kinds 0x4F–0x54 represent (specific NPC types, custom chips, or battle-object categories).
+- What game mechanic consumes the 0x14-per-predecessor bonus written to offset 0x6C.
+- Why the alliance table only has two entries (0x80 and 0x90)—is alliance a strict binary or does the
+  table extend elsewhere.
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_810F040

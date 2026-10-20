@@ -503,7 +503,7 @@ Next initNaviStats_WithDefaultStatsMaybe_8013438(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8013554 ── */
+/* ── initBattleNaviData_8013554 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: ZeroFillByWord has no typed C interface yet */
 static inline void call_ZeroFillByWord(u32 r0, u32 r1) {
@@ -565,8 +565,8 @@ static void init_navi_struct(u32 base) {
         ST8(base + off, 0xFF);
 }
 
-/* sub_8013554(r0 = navi struct base, r10 for stats call) -> preserved r4 */
-Next sub_8013554(void) {
+/* initBattleNaviData_8013554(r0 = navi struct base, r10 for stats call) -> preserved r4 */
+Next initBattleNaviData_8013554(void) {
     init_navi_struct(R0);
     RETURN_TO_CALLER();
 }
@@ -1709,7 +1709,7 @@ Next battle_clearObjectStatusUnlessPhase1(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8014606 ── */
+/* ── object_updateCollisionAndResolveCleared_8014606 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r2; } call_object_setFlag1_result_sub_8014606;
 /* register form: generated wrapper: object_setFlag1 has no typed C interface yet */
@@ -1739,7 +1739,7 @@ static inline call_object_updateCollisionData_result_sub_8014606 call_object_upd
 }
 
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6; bool z, n, c, v; } call_sub_80E1620_result;
-/* register form: generated wrapper: sub_80E1620 has no typed C interface yet */
+/* register form: generated wrapper: battle_spawnAndLinkTypeF_80E1620 has no typed C interface yet */
 static inline call_sub_80E1620_result call_sub_80E1620(u32 r1, u32 r2, u32 r3, u32 r4, u32 r5, u32 r7) {
     R1 = r1;
     R2 = r2;
@@ -1747,21 +1747,21 @@ static inline call_sub_80E1620_result call_sub_80E1620(u32 r1, u32 r2, u32 r3, u
     R4 = r4;
     R5 = r5;
     R7 = r7;
-    GUEST_CALL(sub_80E1620);
+    GUEST_CALL(battle_spawnAndLinkTypeF_80E1620);
     return (call_sub_80E1620_result){ R0, R1, R2, R3, R4, R5, R6, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
 /*
- * sub_8014606: set collision flag 0x30 on the current object, rebuild its
+ * object_updateCollisionAndResolveCleared_8014606: set collision flag 0x30 on the current object, rebuild its
  * collision geometry, and if the object's status dword (at base+0x40) reads
- * as zero, delegate to the secondary collision handler sub_80E1620.
+ * as zero, delegate to the secondary collision handler battle_spawnAndLinkTypeF_80E1620.
  *
- * Inputs:  r4 = (unused on entry but forwarded to sub_80E1620 on the zero path)
+ * Inputs:  r4 = (unused on entry but forwarded to battle_spawnAndLinkTypeF_80E1620 on the zero path)
  *          r5 = object reference
  *          r6 = base pointer of the object block
  *          r10, lr = standard context
  * Outputs: r0-r6 from the callees, r7 restored, lr = original return,
- *          nz/c/v from CMP r0,#0 (non-zero path) or sub_80E1620 (zero path).
+ *          nz/c/v from CMP r0,#0 (non-zero path) or battle_spawnAndLinkTypeF_80E1620 (zero path).
  * r4, r5, r6, r7 end in the same state as the original assembly produces
  * (r4/r6 from callees, r5/r7 unchanged from entry).
  */
@@ -1837,13 +1837,13 @@ static sub_8014606_result sub_8014606_impl(u32 r4, u32 r5, u32 r6) {
     return out;
 }
 
-/* sub_8014606(r4, r5, r6, r10, lr) -> {r0..r7, lr, nz, c, v}
+/* object_updateCollisionAndResolveCleared_8014606(r4, r5, r6, r10, lr) -> {r0..r7, lr, nz, c, v}
  * register form: the four condition flags arise from either "cmp r0,#0"
- * (non-zero status) or the return of sub_80E1620 (zero status).  No single
+ * (non-zero status) or the return of battle_spawnAndLinkTypeF_80E1620 (zero status).  No single
  * guest instruction reproduces both cases, so the adapter writes them
  * directly rather than through one SET_FLAGS_* call.  R7 is merely restored
  * from the original value held in the saved-stack slot (push {r7}). */
-Next sub_8014606(void) {
+Next object_updateCollisionAndResolveCleared_8014606(void) {
     u32 saved_r7 = R7;
     sub_8014606_result res = sub_8014606_impl(R4, R5, R6);
     R0 = res.r0; R1 = res.r1; R2 = res.r2; R3 = res.r3;

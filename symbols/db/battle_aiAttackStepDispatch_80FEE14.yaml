@@ -1,0 +1,78 @@
+name: battle_aiAttackStepDispatch_80FEE14
+address: '0x080FEE14'
+kind: function
+status: confirmed
+summary: Tail-calls the current AI attack-phase handler selected by the attacker's HitElement field via
+  a 7-entry jump table.
+interface: void battle_aiAttackStepDispatch_80FEE14(void *r7 /* AIAttackVars */); /* r5, lr in; r1, r5,
+  r8-r12 out */
+details: 'r7 points to the attacker''s AIAttackVars structure. The byte at offset oAIAttackVars_HitElement
+  indexes the jump table at off_80FEE28 (7 entries, addressed by raw byte offset, no scaling). Each entry
+  is a Thumb handler address for a distinct attack-step phase: 0 = aiAttackStepChooseMovePanel (panel
+  selection), 1 = battleObject_throwArcingMoveUpdate (projectile arc update), 2 = battle_resetAIAttackStepState
+  (reset), 3/4 = unknown sub-steps, 5 = battle_aiAttackWindupTick (windup countdown), 6 = ai_attackStepWaitCurAnim0
+  (animation wait). The selected handler is tail-called via bx after moving lr to pc; the handler''s live-out
+  registers (r1, r5, r8–r12) pass straight through to this function''s caller. r0 retains the HitElement
+  value and r1 the handler code address at the moment of the branch.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80FEE14
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FEE14
+
+    ./wf verify --function sub_80FEE14 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    298 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FEE14
+
+    ./wf verify --function sub_80FEE14 --snapshots build-snapshots'
+  result: 4 compared, 0 differed, 20 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FEE14
+
+    ./wf verify --function sub_80FEE14 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080fee14 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FEE14 -> battle_aiAttackStepDispatch_80FEE14
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What are steps 3 and 4 (sub_80FEF60, sub_80FEFA4)?
+- Does any caller modify HitElement mid-sequence, or is it set once per attack?
+- Is the unscaled byte-offset indexing intentional or a table-construct bug that still works because the
+  7 entries happen to be 4 bytes apart?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80FEE14

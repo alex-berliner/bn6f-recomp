@@ -1,0 +1,78 @@
+name: battle_rosterIconUpdate_811DF94
+address: '0x0811DF94'
+kind: function
+status: confirmed
+summary: Per-frame tick for a single battle roster icon sprite; resets it to idle when the slot is empty,
+  plays a reaction animation on EVENT_BF2, or applies shade, then advances the sprite animation.
+interface: 'void battle_rosterIconUpdate_811DF94(void) /* in: r5=sprite, r6=roster-entry; out: r2,r3,r5
+  from sprite_update; clobbers r0,r1,flags,lr; preserves r4,r5 (r5 overwritten by sprite_update result)
+  */'
+details: 'Reads the animation-state byte at [r6+0xB]. When 0 (slot idle/empty): writes 0xFF to [r6+4]
+  to mark the roster slot empty, calls sprite_setAnimation(0), sprite_loadAnimationData, sprite_noShadow,
+  then battle_rosterIconSetShade. When non-zero: tests event flag BF2 (group 0xB, value 0xF2) via TestEventFlagFromImmediate;
+  if the flag is clear it just calls battle_rosterIconSetShade (greyed-out icon), if set it calls sprite_playAltAnimationOnce
+  (a reaction/flinch animation). Both paths then call sprite_update and return its r2,r3,r5. The sprite
+  pointer (r5) and roster-entry pointer (r6) are the caller''s loop variables; r10 is also passed in but
+  unused here. r4 is saved on the stack but never written.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32_811CAEC.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_811DF94
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811DF94
+
+    ./wf verify --function sub_811DF94 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811DF94
+
+    ./wf verify --function sub_811DF94 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 89 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811DF94
+
+    ./wf verify --function sub_811DF94 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0811df94 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32_811CAEC.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811DF94 -> battle_rosterIconUpdate_811DF94
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32_811CAEC.c
+coverage:
+- beastsp
+open_questions:
+- What does the 0xB byte represent exactly—animation index, phase counter, or a 'slot occupied' boolean?
+- What is EVENT_BF2 (group 0xB, flag 0xF2) in the game script—likely a specific battle event that triggers
+  the roster icon reaction animation.
+- Why is r10 listed as an input but never referenced in the body?
+- Does the caller loop over multiple roster icons, passing different r6 offsets each iteration?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_811DF94

@@ -1,0 +1,79 @@
+name: owPlayer_stepOnce_808FD1C
+address: '0x0808FD1C'
+kind: function
+status: confirmed
+summary: Advance the overworld player one tile-step in the facing direction, decrementing a per-move countdown;
+  returns whether a step was taken.
+interface: owPlayer_stepOnce(r10 /*player ctx*/ , lr) -> nz /*1 stepped, 0 stopped*/ , r2 /*copy flag
+  0x00400000 on move*/, r3/r7 /*from owPlayer_copyCoords callee*/ ; clobbers r0 r1 c v lr; preserves r4
+  r5 r7
+details: Loads a global state-block pointer (via off_808F5D4). Decrements the byte at offset 0x17 (remaining-move
+  countdown); if it hits zero the player has finished its multi-step command and the function returns
+  0 (Z set). Otherwise it reads the player's current (x,y) from ReadOWPlayerObjectCoords, applies a fixed
+  displacement of 8<<16 (one tile in sub-pixel coords) in the direction byte at offset 0x18 (1=+x/east,
+  3=+y/south, 5=-x/west, default=-y/north), then commits the new position via owPlayer_copyCoordsToNextCoords…_809e188
+  with r2=0x00400000. Returns 1 (NZ set). r10 is the implicit overworld-player context register passed
+  by callers. The caller loop presumably invokes this once per frame while the countdown is nonzero.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm25.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_808FD1C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_808FD1C
+
+    ./wf verify --function sub_808FD1C --snapshots build-snapshots'
+  result: 'captured calls: 15 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_808FD1C
+
+    ./wf verify --function sub_808FD1C --snapshots build-snapshots'
+  result: 94 compared, 0 differed, 0 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_808FD1C
+
+    ./wf verify --function sub_808FD1C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0808fd1c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm25.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_808FD1C -> owPlayer_stepOnce_808FD1C
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm25.c
+coverage:
+- beastsp
+open_questions:
+- Is the countdown byte at 0x17 set to a tile-distance (e.g. 1–255) by a higher-level walk/movement command
+  handler, or does it count animation frames?
+- What are the exact semantics of the 0x00400000 flag (r2) consumed by the copyCoords callee—does it trigger
+  collision/warp checks?
+- Does direction byte 0x18 use 1/3/5/(7) as cardinal+diagonal or is 7 unused (default falls through to
+  -y)?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_808FD1C

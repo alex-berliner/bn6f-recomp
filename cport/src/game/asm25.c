@@ -382,7 +382,7 @@ Next ow_startBeastOutHit(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_808FD1C ── */
+/* ── owPlayer_stepOnce_808FD1C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1; } call_ReadOWPlayerObjectCoords_result_sub_808FD1C;
 /* register form: generated wrapper: ReadOWPlayerObjectCoords has no typed C interface yet */
@@ -401,7 +401,7 @@ static inline call_owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectl
     return (call_owPlayer_copyCoordsToNextCoordsWritePlayerCoordsThenIndirectlySetPlayerCoordsMaybe_809e188_result_sub_808FD1C){ R3, R7 };
 }
 
-/* sub_808FD1C: Advance the overworld player one step.
+/* owPlayer_stepOnce_808FD1C: Advance the overworld player one step.
  * Decrements a per-move counter; if it reaches zero the player stops.
  * Otherwise reads the player's current (x,y), shifts them by the step
  * distance in the facing direction, and commits the new position via
@@ -460,8 +460,8 @@ static struct OWMoveResult ow_player_step(u32 r2_in, u32 r3_in, u32 r7_in) {
     return res;
 }
 
-/* sub_808FD1C(r10, lr) → nz, r2, r3, r7 */
-Next sub_808FD1C(void) {
+/* owPlayer_stepOnce_808FD1C(r10, lr) → nz, r2, r3, r7 */
+Next owPlayer_stepOnce_808FD1C(void) {
     struct OWMoveResult res = ow_player_step(R2, R3, R7);
     R2 = res.r2;
     R3 = res.r3;
@@ -644,9 +644,9 @@ static inline call_TestPETMenuDataFlag_result call_TestPETMenuDataFlag(u32 r0) {
 }
 
 typedef struct { u32 r3, r4, r5, r6, r7; } call_sub_80468BA_result;
-/* register form: generated wrapper: sub_80468BA has no typed C interface yet */
+/* register form: generated wrapper: initWorkArea5_80468BA has no typed C interface yet */
 static inline call_sub_80468BA_result call_sub_80468BA(void) {
-    GUEST_CALL(sub_80468BA);
+    GUEST_CALL(initWorkArea5_80468BA);
     return (call_sub_80468BA_result){ R3, R4, R5, R6, R7 };
 }
 

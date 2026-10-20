@@ -1,0 +1,78 @@
+name: battle_setAIAttackVelocity_8111B06
+address: '0x08111B06'
+kind: function
+status: confirmed
+summary: Initializes AI enemy attack movement by zeroing velocities, setting step timer and charge cycles,
+  then computing fixed-point per-axis velocity from panel deltas.
+interface: void battle_setAIAttackVelocity(BattleObject *obj /* r5 */, AIAttackVars *atk /* r7 */);  //
+  clobbers r0-r3, flags; preserves r5, r7, lr
+details: 'Helper invoked by sub_8111B06 (the Next step of an AI attack routine). Writes obj->XVelocity
+  = obj->YVelocity = 0. Sets atk->StepTimer = 0x10 and atk->ChargeCycles = 8 (0x10 >> 1). Then for Y:
+  reads atk->TargetPanelY - obj->PanelY; if nonzero, computes fixed-point velocity (0x180000 / 0x10 =
+  0x18000) * delta via BIOS divide (svc 6) and stores into obj->YVelocity. For X: reads atk->TargetPanelX
+  - obj->PanelX; if nonzero, computes (0x280000 / 0x10 = 0x28000) * delta and stores into obj->XVelocity.
+  The two speeds differ (0x18000 vs 0x28000), so horizontal traversal is faster than vertical, matching
+  the 10×5 grid layout. The svc 6 divide is the standard GBA BIOS unsigned divide (result in r0, remainder
+  in r1); the function saves the dividend on the stack to preserve it as the multiply operand.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_8111B06
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8111B06
+
+    ./wf verify --function sub_8111B06 --snapshots build-snapshots'
+  result: 'captured calls: 6 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    252 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8111B06
+
+    ./wf verify --function sub_8111B06 --snapshots build-snapshots'
+  result: 15 compared, 0 differed, 81 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8111B06
+
+    ./wf verify --function sub_8111B06 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08111b06 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8111B06 -> battle_setAIAttackVelocity_8111B06
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Are 0x18000 and 0x28000 per-panel speeds or per-frame speeds after the step-timer countdown?
+- Does ChargeCycles = 8 feed a separate charge-up animation, or is it purely a movement step count?
+- Is this the only caller pattern, or do other AI attacks reuse sub_8111B06 with different timer/charge
+  constants?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_8111B06

@@ -1604,7 +1604,7 @@ Next npc_clearOverworldNpcStateWord_8004702(void)
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8004822 ── */
+/* ── map_allocObject_8004822 ── */
 /* Scan the overworld map object pool from slot 55 down to 0, looking for a
  * free bit in eActiveOverworldMapObjectsBitfield.  If found, claim the bit,
  * initialise the 0x78-byte object struct at the matching address, and return
@@ -1652,8 +1652,8 @@ static u32 alloc_overworld_map_object(u32 r0_arg, u32 r1_arg,
     return 0;
 }
 
-/* sub_8004822(r0..r4 = init data) -> r5 = object address or 0 */
-Next sub_8004822(void) {
+/* map_allocObject_8004822(r0..r4 = init data) -> r5 = object address or 0 */
+Next map_allocObject_8004822(void) {
     R5 = alloc_overworld_map_object(R0, R1, R2, R3, R4);
     RETURN_TO_CALLER();
 }

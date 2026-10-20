@@ -1,0 +1,94 @@
+name: battle_pickPanel_80F8256
+address: '0x080F8256'
+kind: function
+status: confirmed
+summary: Picks a battle panel (column, row) for an object using its preference byte, validating and randomly
+  selecting from filtered column candidates.
+interface: void battle_pickPanel_80F8256(u32 r2_ctx, u32 r3_ctx, BattleObj *r5 /*[+0x16]=panelPrefIndex*/);
+  // returns r0=col, r1=row; r4-r7 preserved
+details: 'Reads object byte at [r5+0x16], indexes into a 2-byte-pair lookup table at
+
+  0x080F82AC (single entry: 0x02,0x02 → col 2, row 2). Passes those coords
+
+  plus r2/r3 to object_checkPanelParameters; a non-zero return means rejection,
+
+  in which case the raw table bytes are returned unchanged in r0/r1.
+
+  On acceptance, object_getPanelsInColumnFiltered is called (want_col as r0,
+
+  r2/r3 as context, output buffer at sp+8) to enumerate valid panels in that
+
+  column. If count==0 the function returns col=0. Otherwise GetPositiveSignedRNG
+
+  supplies a random index, BIOS SWI 6 (Mod) maps it into [0,count), and the
+
+  selected packed byte is split: lower nibble → r0 (column), upper nibble → r1 (row).
+
+  The 0x20-byte stack frame also stashes r2/r3 across the checkPanel call and
+
+  holds the filtered-panel list buffer (up to 0x18 entries at sp+8).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80F8256
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F8256
+
+    ./wf verify --function sub_80F8256 --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    184 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F8256
+
+    ./wf verify --function sub_80F8256 --snapshots build-snapshots'
+  result: 43 compared, 0 differed, 51 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F8256
+
+    ./wf verify --function sub_80F8256 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080f8256 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F8256 -> battle_pickPanel_80F8256
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What battle entities set [r5+0x16] and how does the table's single row (col=2,row=2) relate to them?
+- Is 0x20 in the second pair entry (if index>0 ever reached) a valid row or a sentinel?
+- What exact context does object_getPanelsInColumnFiltered expect in r2/r3 (battle scene ptr, panel grid
+  ptr)?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80F8256

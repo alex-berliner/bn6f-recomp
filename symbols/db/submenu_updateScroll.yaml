@@ -1,76 +1,73 @@
 name: submenu_updateScroll
 address: '0x08135A44'
 kind: function
-status: probable
-summary: 'Per-frame scroll/refresh of a submenu work struct: bails out if chatbox bits 0x80 or 0x20 are
-  set, or if chatbox_GetState_8045F4C is nonzero (returning after copying r5+0x16 into r5+2 and one chatbox_8040818
-  call); otherwise clears r5+0xc/0x10, rebuilds the 25 oToolkit_Unk2004190 entries, then clamps the 4-row
-  scroll window around the target index from r5+0x1a.'
-interface: (r0 = unused; r5 = menu work struct preloaded by caller) -> updates struct fields (2, c, 10,
-  20, 24) and calls state-machine helpers; flags set by final cmp used by locret branch only
-details: 'First it bails out unless both chatbox flag bits 0x80 and 0x20 of eFlags2009F38 are clear, so
-  it only runs when no cutscene/text is active. It copies the byte at [r5+0x16] into [r5+2], then calls
-  chatbox_8040818 on every path (once if the chatbox state selector is nonzero, twice otherwise), clearing
-  [r5+0xc] to 0x10 and [r5+0x10] to 0 when the chatbox is idle. It then loops i = 0..0x18 over the 8-byte
-  entries of oToolkit_Unk2004190_Ptr, feeding entry pointer and index into sub_81366F4 and calling sub_813B9C4(i)
-  and sub_813BA48(i) — a rebuild/refresh pass over all 25 entries. Finally sub_8135D9C runs, and sub_813660C/sub_813C1C0
-  are called with 1, or with 0 when [r5+0x16] == 4, suggesting a flag toggle depending on list mode. The
-  tail reads a halfword at [r5+0x1a], passes it through sub_8135DF8 to get a target index, and clamps
-  the scroll window to 4 rows: if the target is <=3 it stores [r5+0x20] = target and [r5+0x24] = 0, otherwise
-  it shifts [r5+0x1e]/[r5+0x20] so the cursor stays inside the window and writes the resulting offset
-  into [r5+0x24]. The use of r5 without setting it means the caller must supply the work struct (a state-machine
-  context), and the [r5+0x16] value selects between two update modes.'
+status: confirmed
+summary: Rebuilds the chip/item list and refreshes the scroll window in the submenu navigation panel.
+interface: void submenu_updateScroll(void)  // r5=submenu_struct*, r6, r7, r10=caller context; r5 may be updated
+  internally but r4–r7 are restored on return
+details: "Gates on chatbox event flags 0x80 and 0x20 (both must be set) before doing any work.\nMirrors the substate\
+  \ byte at +0x16 into scratch byte +0x2.\nIf the chatbox is not idle (chatbox_GetState nonzero), simply calls chatbox_8040818\
+  \ and returns.\nOtherwise enters the full rebuild flow:\n  - Writes 0x10 to +0xc (display mode) and 0 to +0x10.\n\
+  \  - Loops 25 times (0x19) over toolkit_2004190 entries: fetches each entry pointer,\n    reads its halfword,\
+  \ calls sub_81366F4, then sub_813B9C4 and sub_813BA48 to clear\n    and reinitialise the slot.\n  - Rebuilds the\
+  \ key-item list via submenu_rebuildKeyItemList.\n  - Draws the NavICustom board tilemap (sub_813660C(1), navicust_drawBoardTilemap(1)).\n\
+  Scroll-window handling branches on substate (+0x16):\n  - != 4: redraws tilemap with scroll enabled and returns.\n\
+  \  - == 4: disables scroll drawing, reads content height from +0x1a via sub_8135DF8,\n    then clamps the 2D scroll\
+  \ offset (+0x20) and top (+0x24) using viewport height (+0x1e).\n    If content fits (<=3 rows) sets offset=rows,\
+  \ top=0; otherwise computes overflow\n    and stores the deficit.\nStruct fields touched (submenu object at r5):\n\
+  \  +0x02 byte, +0x0c byte, +0x10 byte, +0x16 byte (substate),\n  +0x1a hword (content height), +0x1e hword (viewport\
+  \ height),\n  +0x20 hword (scroll offset), +0x24 hword (scroll top/deficit).\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: 'early `bl chatbox_mask_eFlags2009F38` with #0x80 then #0x20 and `beq` exits gate the whole
-    update behind cutscene/chat flags; loop `cmp r4, #0x19` over toolkit_getUnk2004190EntryPtr calls sub_81366F4/sub_813B9C4/sub_813BA48
-    per entry — a 25-item list rebuild; tail math on [r5+0x1a]/[r5+0x1e]/[r5+0x20]/[r5+0x24] with `cmp
-    r1, #4` / `sub r1, #4` implements a 4-row scrolling window clamp around the cursor; both branches
-    call chatbox_8040818 and [r5+0xc]=0x10 / [r5+0x10]=0 are reset when the chatbox is idle, typical menu-frame
-    bookkeeping; recorded in the beastsp route, consistent with a Beast Out/spirit-related selection menu
-    scroll handler'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm36.s:11717
-  - 0x08045F4C chatbox_GetState_8045F4C
-  - 0x08045F3C chatbox_mask_eFlags2009F38
-  - 0x0813B9FC toolkit_getUnk2004190EntryPtr_813B9FC
-  reproduce: python3 tools/asmcat.py 0x08135A44
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary''s later parts (loop, scroll clamping) mostly match the asm: the 0..0x18 loop calls
-    toolkit_getUnk2004190EntryPtr and sub_81366F4/sub_813B9C4/sub_813BA48, and r5 fields 0x1a/0x1e/0x20/0x24
-    are scrolled around a 4-row window. However the early exits differ: the chatbox_8040818 path returns
-    at locret immediately (b locret_8135AF2) before any toolkit refresh or scroll logic, so it is not
-    ''on every path'' as claimed; only the branch where chatbox_GetState_8045F4C == 0 does the full refresh+scroll.
-    Also r0 is set to 0x80/0x20 (used as flag mask) on entry, not unused. The name/topic (submenu scroll
-    update) is reasonable but should reflect that the heavy refresh only runs when chatbox is idle.; run
-    wf investigate investigate-20261018-155607; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
-    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c submenu_updateScroll
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function submenu_updateScroll
+
+    ./wf verify --function submenu_updateScroll --snapshots build-snapshots'
+  result: 'captured calls: 26 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 83 out of
+    domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function submenu_updateScroll
+
+    ./wf verify --function submenu_updateScroll --snapshots build-snapshots'
+  result: 95 compared, 0 differed, 0 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function submenu_updateScroll
+
+    ./wf verify --function submenu_updateScroll --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08135a44 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm36.c
 coverage:
 - beastsp
 open_questions:
-- which menu/struct owns the r5 work area (fields 0x16/0x1a/0x1e/0x20/0x24) — needs a caller to confirm
-  the subsystem
-- meaning of the 25 entries in oToolkit_Unk2004190 and what sub_81366F4/sub_813B9C4/sub_813BA48 do per
-  entry
-- what sub_8135DF8 computes from [r5+0x1a] (presumably a cursor->scroll-index mapping)
-- 'The summary''s later parts (loop, scroll clamping) mostly match the asm: the 0..0x18 loop calls toolkit_getUnk2004190EntryPtr
-  and sub_81366F4/sub_813B9C4/sub_813BA48, and r5 fields 0x1a/0x1e/0x20/0x24 are scrolled around a 4-row
-  window. However the early exits differ: the chatbox_8040818 path returns at locret immediately (b locret_8135AF2)
-  before any toolkit refresh or scroll logic, so it is not ''on every path'' as claimed; only the branch
-  where chatbox_GetState_8045F4C == 0 does the full refresh+scroll. Also r0 is set to 0x80/0x20 (used
-  as flag mask) on entry, not unused. The name/topic (submenu scroll update) is reasonable but should
-  reflect that the heavy refresh only runs when chatbox is idle.'
+- What substate values besides 4 are valid for +0x16, and what UI mode does each represent?
+- Does sub_81366F4 filter which toolkit entries become visible list items, or does it copy all?
+- The 0x80/0x20 flag gate likely corresponds to a specific submenu page unlock; confirm which menu this is (chip
+  select vs. Navi Custom vs. key items).
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_8135A44 -> submenu_updateScroll
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_8135A44
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

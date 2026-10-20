@@ -1,43 +1,73 @@
 name: weatherComp_layOrbTrail_809005C
 address: '0x0809005C'
 kind: function
-previous_names:
-- sub_809005C
-status: probable
-summary: 'Mr. Weather comp: the rainbow-orb trail. While flag 0xBE4 is set and eWeatherCompState+0x20
-  is 0: with A held (Joypad held & 1) and fewer than 0xFA orbs, every frame MegaMan moves (sub_8090308)
-  counts +8 down and at 0 reloads it with 5 and returns 1 (the caller lays an orb, map object 0x1D); A
-  released (or 0xFA orbs): +8 = 1 and, if there are orbs, the trail is dropped (+6 = 0, flags 0xBE5, PET_DISABLED,
-  0x1739 cleared, the ring points at 0x2011B30 zeroed).'
-interface: r5 = eWeatherCompState, r10 = toolkit -> r0 = 1 (lay an orb) or 0, Z
+status: confirmed
+summary: Weather-component per-frame step that spawns a 5-frame orb-trail particle stream when the player holds
+  A during the BE4 trail-ready event, then resets the associated event flags and countdown timer.
+interface: 'u32 weatherComp_layOrbTrail_809005C(void *battleObj /*r5*/, void *toolkit /*r10*/); /* sets NZ on r0:
+  nonzero = trail fully completed or sub_8090308 partial result, zero = not applicable / early-out */'
+details: "Operates as a tick inside the weather-component system. Key fields on the object at r5:\n  +6 (u16) –\
+  \ countdown timer; >=0xFA triggers the reset path.\n  +8 (u8)  – trail state / remaining-frame counter; set to\
+  \ 1 on activation, decremented each\n             frame the A-button is held, reset to 5 on completion.\n\nFlow:\n\
+  \  1. Bail if event flag BE4 (bank 0xB off 0xE4) is not set, or if sub_808FF8C (object-field-20\n     zero gate)\
+  \ returns zero.\n  2. If the timer has expired (>=250) or A is not pressed: mark state byte 8 = 1, and if the\n\
+  \     timer was nonzero, clear it (offset 6), clear flags BE5, PET_DISABLED (bank 0x17 off 7),\n     and 0x1739\
+  \ (bank 0x17 off 0x39), then call clearWorkArea_808FE64.  Return 0.\n  3. Otherwise (A held while timer active):\
+  \ call sub_8090308 (orb-trail particle spawner /\n     visual update).  If that call returns zero-flag, bail with\
+  \ 0.  Decrement the frame counter\n     at +8.  When the counter hits 0, reset it to 5 and return 1 to signal\
+  \ the trail sequence\n     is complete; otherwise return sub_8090308's r4 value.\nRegister r4 is saved/restored;\
+  \ r10 (toolkit) provides the joypad state via\noToolkit_JoypadPtr for the A-button check."
 evidence:
-- method: assembly-reading
-  date: '2026-10-16'
-  detail: Read in full for this entry.
-  reproduce: awk 'index($0,"sub_809005C:")==1{p=1} p{print} p&&/thumb_func_end/{exit}' bn6f/asm/asm25.s
-- method: runtime
-  date: '2026-10-16'
-  detail: With the path's keys (A released for single frames at 435843, 435854-855, 435863, 435869) the
-    orb count +6 falls to 0 on each of those frames (435842 orbs 1 -> 435843 orbs 0; 435853 orbs 2 ->
-    435854 orbs 0); with A held there (FILL_A=2) it rises 1 every 5 moving frames to 17 at 435928.
-  reproduce: 'FILL_A=0 bash tools/vidsync/remote/py.sh probes/tornfit.py data/auto/run7x.0/loss_435876.json
-    data/auto/run7x.0/w_435758.state 435800 436010 build/repro/fit.json   # on 192.168.1.175 (vidsync
-    data); its JSON lines carry key, orbs (+6), c8 (+8), f (flag bytes 0xBE0-0xBEF) ; then FILL_A=2'
-  result: 'FILL_A=0: 435842 3ee orbs 1 c8 5 | 435843 3ef orbs 0 c8 1 | 435853 3ee orbs 2 c8 1 | 435854
-    3ef orbs 0 c8 1. FILL_A=2: 435900 orbs 11 ... 435928 orbs 17 c8 5, flags cc00 -> 435930 cc80'
-related:
-- eWeatherCompState
-- weatherComp_pickScript_8090104
-- sub_80A9658
-open_questions: []
-sources:
-- 'Claude session_01MV9x1XXyanCy3FkvpEo7b7 (vidsync loss 435876: the Mr. Weather comp 2 tornado captures)'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm25.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c weatherComp_layOrbTrail_809005C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function weatherComp_layOrbTrail_809005C
+
+    ./wf verify --function weatherComp_layOrbTrail_809005C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function weatherComp_layOrbTrail_809005C
+
+    ./wf verify --function weatherComp_layOrbTrail_809005C --snapshots build-snapshots'
+  result: 94 compared, 0 differed, 0 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function weatherComp_layOrbTrail_809005C
+
+    ./wf verify --function weatherComp_layOrbTrail_809005C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0809005c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-16'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm25.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f e61054c2
+  where: bn6f 487cf9c6
   tool: tools/symdoc.py
-- date: '2026-10-16'
-  what: rename sub_809005C -> weatherComp_layOrbTrail_809005C
-  where: bn6f 0b2a8a49
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm25.c
+coverage:
+- beastsp
+open_questions:
+- What visual effect does sub_8090308 actually render (orb sprites, glow, path shape)?
+- Which in-game event or NPC interaction sets flag BE4 to arm this weather component?
+- Does the reset of PET_DISABLED / 1739 imply this trail accompanies a PET-companion unlock or disabled-state transition?
+- Is the 5-frame trail count a constant or configurable elsewhere?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

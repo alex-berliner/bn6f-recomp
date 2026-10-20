@@ -1748,7 +1748,7 @@ Next gameState_getProtectedBugfrags_803D0F4(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_803D138 ── */
+/* ── npc_checkKeyItemTrampoline_803D138 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2, r4, r5, r6, r7; } call_sub_803D148_result;
 /* register form: generated wrapper: sub_803D148 has no typed C interface yet */
@@ -1774,7 +1774,7 @@ typedef struct {
     u32 r2;
 } sub_803D138_out;
 
-/* sub_803D138 trampoline: calls sub_803D148(r0, r1) then CheckKeyItem(r0).
+/* npc_checkKeyItemTrampoline_803D138 trampoline: calls sub_803D148(r0, r1) then CheckKeyItem(r0).
  * R4 has been pre-set to the original R2 by the adapter before entering. */
 static sub_803D138_out do_key_item_sequence(u32 r0, u32 r1) {
     call_sub_803D148_result s148 = call_sub_803D148(r0, r1);
@@ -1786,9 +1786,9 @@ static sub_803D138_out do_key_item_sequence(u32 r0, u32 r1) {
     return out;
 }
 
-/* sub_803D138(r0 = id, r1 = ?, r2 = pointer, r10 = toolkit, lr)
+/* npc_checkKeyItemTrampoline_803D138(r0 = id, r1 = ?, r2 = pointer, r10 = toolkit, lr)
  * -> r0, r2  (r3–r7 preserved via pop {r4} and callee behaviour) */
-Next sub_803D138(void) {
+Next npc_checkKeyItemTrampoline_803D138(void) {
     u32 saved_r4 = R4;
     R4 = R2;  /* original: mov r4, r2 – stash pointer for callee sequence */
     sub_803D138_out out = do_key_item_sequence(R0, R1);

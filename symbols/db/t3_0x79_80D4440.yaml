@@ -1,0 +1,74 @@
+name: t3_0x79_80D4440
+address: '0x080D4440'
+kind: function
+status: confirmed
+summary: 'State-79 dispatcher for t3 battle objects: selects one of three sub-state handlers via jump table, then
+  updates sprite-pause bookkeeping'
+interface: void battle_t3_state79Dispatch(u32 r4, BattleObject* r5, u32 r6, u32 r7, u32 r8, u32 r10) -> r5, r8-r12
+  modified; NZCV clobbered
+details: 'Reads the t3 battle object''s CurState byte (oBattleObject_CurState at offset from r5) and indexes a 3-entry
+  jump table at off_80D4458 (entries at +0, +4, +8 are pre-scaled byte offsets into a word array, matching CurState
+  values 0/4/8 or indices 0/1/2 after shift). Dispatches to the selected handler through a computed call (mov lr,
+  pc / bx r1): entry 0 calls battleObject_initActorStateT4_80D4472 (initialises the actor for tile-type-4 state),
+  entry 1 calls battleObject_handleDestroyByInvincibility_80D44D2 (destroys the object when an invincibility timer
+  expires), entry 2 calls battle_destroyObjectClearExtraVars_80D4464 (tears down the object and zeroes extra vars).
+  After the handler returns, calls object_updateSpritePaused to refresh the sprite''s pause-frame bookkeeping. The
+  jump-table pointers carry the Thumb bit (+1). r4-r10 flow into the handler via the guest register file; r5 is
+  the object pointer (potentially swapped by the handler), r8-r12 and r10 are written back to the caller.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c t3_0x79_80D4440
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x79_80D4440
+
+    ./wf verify --function t3_0x79_80D4440 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x79_80D4440
+
+    ./wf verify --function t3_0x79_80D4440 --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 46 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x79_80D4440
+
+    ./wf verify --function t3_0x79_80D4440 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d4440 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Are the CurState values that select the three entries exactly 0, 4, 8 (byte offsets) or 0, 1, 2 (word indices)?
+  The load uses LD32(table + state) so state must be 0/4/8 or the caller shifts.
+- What specific t3 objects (tile-type 3) actually reach state 0x79 and cycle through these three sub-states?
+- Does object_updateSpritePaused modify r5 or only r10-side bookkeeping?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

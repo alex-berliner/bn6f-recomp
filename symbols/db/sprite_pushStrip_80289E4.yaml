@@ -1,0 +1,76 @@
+name: sprite_pushStrip_80289E4
+address: '0x080289E4'
+kind: function
+status: confirmed
+summary: Pushes an 18-sprite OAM strip (one animation frame) for the object pointed to by r5, computing
+  XY origin from the object's column byte and selecting a tile bank from a flag bit.
+interface: void sprite_pushStrip_80289E4(uint32_t objPtr); /* r5 in; writes OAM FIFO, clobbers r0-r6 */
+details: r5 points to an object/actor state struct. Reads byte at offset 0x1B as a column index; base
+  X = 8 + col*16 - 3, base Y = 5. Reads 32-bit flags at offset 0x40, extracts bit 3 to choose tile-bank
+  base 0xE792 or 0xE794. Packs XY into a 32-bit value (Y in high half, X in low half). Iterates 18 entries
+  (stride 4 bytes, table byte_8028A30 at off_8028A2C) of pre-packed sprite attribute words (X/Y sub-offsets
+  + shape/size). Each attribute is combined with the base XY and pushed to the OAM FIFO via fifo_pushRecord16_8009FF8
+  with r2=1, r3=0. After the 5th entry (i==0x10) the tile index is incremented by one row, giving two
+  tile rows for the latter sprites. r4-r6 are saved on entry and restored, so only the FIFO side-effects
+  and the caller-clobbered r0/r1 persist.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80289E4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80289E4
+
+    ./wf verify --function sub_80289E4 --snapshots build-snapshots'
+  result: 'captured calls: 5 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80289E4
+
+    ./wf verify --function sub_80289E4 --snapshots build-snapshots'
+  result: 42 compared, 0 differed, 53 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80289E4
+
+    ./wf verify --function sub_80289E4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080289e4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80289E4 -> sprite_pushStrip_80289E4
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- beastsp
+open_questions:
+- What object type has its animation frame drawn by this fixed 18-sprite table? (battle chip effect, NavCust,
+  or a specific enemy class?)
+- The table entries at byte_8028A30 appear to encode OAM attr pairs (X+shape/size); confirm whether r0
+  is a single packed attr or two 16-bit records per iteration.
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80289E4

@@ -1,70 +1,77 @@
 name: snakearm_headStateHandler
 address: '0x080CD3B0'
 kind: function
-status: probable
-summary: 'Per-frame state handler for the snake-arm head battle object: removes collision data, checks
-  flags, and either transitions to destroyed or dispatches the current action and refreshes collision.'
-interface: (r5 = battle object pointer) -> r0 = CUR_STATE_DESTROY stored to oBattleObject_CurStateActionPhaseAndPhaseInitialized;
-  no return value
-details: 'Removes the object''s collision data, then checks oBattleObject_ExtraVars and its CollisionDataPtr''s
-  FlagsFromCollision; if both clean, also checks ExtraVars+4 (a byte flag). Calls battle_isBattleOver
-  and, if over, zeroes the byte at ExtraVars+4. Otherwise it dispatches oBattleObject_CurAction through
-  the jump table at off_80CD410 (single entry sub_80CD414) and refreshes collision via object_presentCollisionData.
-  The destroy path clears the collision region, clears bit 2 of oObjectHeader_Flags (present/active),
-  and stores CUR_STATE_DESTROY into the state word. Quirk: the state table has only one action entry,
-  so the destroyed state runs one fixed action handler each frame.'
+status: confirmed
+summary: 'Per-frame tick for the Snake Arm head enemy: destroys it on hit/death/battle-end, otherwise steps it forward
+  and re-presents its hitbox.'
+interface: void Next snakearm_headStateHandler(void) // in r4 r5 r7 r8 r10 -> out r5 r8 r9 r10 r11 r12; clobbers
+  nzcv r0-r3 r6 r7 lr
+details: "Called each frame as the head's state handler (r5 = head BattleObject).\n\n1. Calls object_removeCollisionData\
+  \ to detach the head's current hitbox.\n\n2. Evaluates three destroy conditions in order:\n   a) oBattleObject_ExtraVars\
+  \ points to a CollisionData block whose\n      oCollisionData_FlagsFromCollision is nonzero (head was struck).\n\
+  \   b) ExtraVars+4 points to a health struct whose first byte is 0\n      (head health depleted by another means).\n\
+  \   c) battle_isBattleOver returns nonzero; in this case the health\n      byte at ExtraVars+4 is zeroed before\
+  \ destruction.\n\n3. If destroying: calls object_clearCollisionRegion, clears bit 1\n   of oObjectHeader_Flags\
+  \ (active flag), and writes\n   CUR_STATE_DESTROY into oBattleObject_CurStateActionPhaseAndPhaseInitialized,\n\
+  \   then returns.\n\n4. If alive: dispatches the head's movement through a single-entry\n   jump table at off_80CD410\
+  \ indexed by oBattleObject_CurAction;\n   the only target is object_stepXAndDestroyIfBlocked (which may\n   itself\
+  \ set CUR_STATE_DESTROY if the head is blocked). After the\n   dispatch, oBattleObject_Param1 is shifted left\
+  \ by 25 bits into r1\n   and passed to object_presentCollisionData to re-attach the hitbox.\n\nQuirks: the jump\
+  \ table currently holds exactly one entry (+1 for\nThumb bit), so the action dispatch is effectively a direct\
+  \ call.\nobject_stepXAndDestroyIfBlocked can clobber r5/r8 (the C wrapper\nmodels this via head_dispatch_result).\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: tail-jumped from battleObject_initSnakeArmHead_80CD310, the snake-arm head init/state handler;
-    bl object_removeCollisionData at entry tears down collision first; bl battle_isBattleOver then strb
-    r0,[r1] zeroes the ExtraVars+4 byte when the battle ends; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
-    sets the destroyed state; ldr r1,[r1,r0] off off_80CD410 (only sub_80CD414) dispatches by oBattleObject_CurAction,
-    then bl object_presentCollisionData
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:45905
-  - 0x080CD310 battleObject_initSnakeArmHead_80CD310
-  - 0x0800A18E battle_isBattleOver
-  - 0x0801A074 object_clearCollisionRegion
-  - 0x0801A018 object_presentCollisionData
-  reproduce: python3 tools/asmcat.py 0x080CD3B0
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The function is the per-frame state/update handler for the snake-arm head, not exclusively a ''destroyed
-    state.'' The code has two distinct exit paths: loc_80CD3E2 clears collision region, clears bit 2 of
-    oObjectHeader_Flags, and stores CUR_STATE_DESTROY, while loc_80CD3F4 dispatches through the jump table
-    at off_80CD410 and calls object_presentCollisionData to refresh the object. The proposal''s interface
-    line claiming CUR_STATE_DESTROY is always stored contradicts loc_80CD3F4, which never writes that
-    word. The caller battleObject_initSnakeArmHead_80CD310 jumps here as its per-frame handler, not as
-    a dedicated destroy-state routine. The logic in details is otherwise accurate (removeCollisionData,
-    ExtraVars checks, battle_isBattleOver gating the zeroing of the byte flag).; run wf investigate investigate-20261018-155607;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c snakearm_headStateHandler
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function snakearm_headStateHandler
+
+    ./wf verify --function snakearm_headStateHandler --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function snakearm_headStateHandler
+
+    ./wf verify --function snakearm_headStateHandler --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 92 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function snakearm_headStateHandler
+
+    ./wf verify --function snakearm_headStateHandler --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080cd3b0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 - chips
 open_questions:
-- Exact meaning of the ExtraVars+4 byte (possibly a death-animation or custom-var flag)
-- What sub_80CD414 does for the action phase
-- Whether other snake-arm states install this handler besides the init function
-- 'The function is the per-frame state/update handler for the snake-arm head, not exclusively a ''destroyed
-  state.'' The code has two distinct exit paths: loc_80CD3E2 clears collision region, clears bit 2 of
-  oObjectHeader_Flags, and stores CUR_STATE_DESTROY, while loc_80CD3F4 dispatches through the jump table
-  at off_80CD410 and calls object_presentCollisionData to refresh the object. The proposal''s interface
-  line claiming CUR_STATE_DESTROY is always stored contradicts loc_80CD3F4, which never writes that word.
-  The caller battleObject_initSnakeArmHead_80CD310 jumps here as its per-frame handler, not as a dedicated
-  destroy-state routine. The logic in details is otherwise accurate (removeCollisionData, ExtraVars checks,
-  battle_isBattleOver gating the zeroing of the byte flag).'
+- What does the Param1<<25 slot selector control in presentCollisionData for the head specifically?
+- Is the single-entry jump table vestigial from a multi-action design (e.g. a retract/extend cycle) that was trimmed
+  in Falzar?
+- Does oBattleObject_ExtraVars layout match the standard 'extra enemy data' struct used by other MegaMan BN6 enemies?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-19'
-  what: doc comment (symdb block) at the definition
-  where: bn6f a6021b31
-  tool: tools/symdoc.py
-- date: '2026-10-19'
-  what: rename sub_80CD3B0 -> snakearm_headStateHandler
-  where: bn6f 0086088f
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80CD3B0
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

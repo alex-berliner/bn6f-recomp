@@ -1,0 +1,75 @@
+name: npc_checkKeyItemTrampoline_803D138
+address: '0x0803D138'
+kind: function
+status: confirmed
+summary: Thin trampoline that stashes a pointer in r4, then sequences sub_803D148 followed by CheckKeyItem
+  to test whether the player holds a given key item.
+interface: u32 r0 = keyItemId, u32 r1 = param, u32 r2 = ptrStashedToR4, r10 = toolkit; -> u32 r0 = checkResult,
+  u32 r2 = data; clobbers r1, condition flags
+details: push {r4,lr}; mov r4, r2 saves the caller's pointer argument into r4 so the two callees (sub_803D148,
+  CheckKeyItem) can read it via the r4 register. sub_803D148 receives (r0, r1) unchanged and returns a
+  value in r0 that is then fed as the sole input to CheckKeyItem. CheckKeyItem's r0 and r2 are the final
+  outputs. All of r3–r7 pass through unmodified (sub_803D148 and CheckKeyItem preserve them, and pop {r4,pc}
+  restores r4). The function contains no logic of its own beyond the register shuffling.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_803D138
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_803D138
+
+    ./wf verify --function sub_803D138 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_803D138
+
+    ./wf verify --function sub_803D138 --snapshots build-snapshots'
+  result: 44 compared, 0 differed, 51 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_803D138
+
+    ./wf verify --function sub_803D138 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0803d138 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_1_1.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_803D138 -> npc_checkKeyItemTrampoline_803D138
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_1_1.c
+coverage:
+- beastsp
+open_questions:
+- What does sub_803D148 do before CheckKeyItem is called—does it resolve the ID into a pointer or set
+  up r4-dependent state?
+- Is the r2 pointer a save-state context or a specific key-item record?
+- Why is r10 (toolkit) listed as an input but never read or forwarded here; do the callees access it through
+  the stack or a global?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_803D138

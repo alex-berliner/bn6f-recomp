@@ -1,0 +1,82 @@
+name: battle_checkPanelPlacement_813BB00
+address: '0x0813BB00'
+kind: function
+status: confirmed
+summary: Tests whether a 7×7 panel shape from a Custom Program or AI-selected attack can legally occupy
+  its target tiles on the 15×15 battle grid.
+interface: "int battle_checkPanelPlacement(unsigned panel_id /*r0*/, uint8_t *grid /*r1*/,\n         \
+  \                      unsigned row /*r2*/, unsigned col /*r3*/);\n/* returns 1 = blocked or fully clear,\
+  \ 0 = overlaps non-passable cells;\n   NZ flags reflect the return; r8–r12 are passed through from\n\
+  \   ai_dispatchFromGlobalByte */\n"
+details: "Calls ai_dispatchFromGlobalByte(panel_id) to retrieve a 7-row × 7-byte\noccupancy table describing\
+  \ the panel's shape (non-zero bytes mark tiles the\npanel occupies).  Computes the centre offset for\
+  \ the 7×7 window into the\n15×15 grid: ptr + (row+2) + (col+2)*0xF.\n\nIterates every table byte:\n\
+  \  • zero  → skip (not part of the panel).\n  • non-zero grid byte == 0 → void tile; break out immediately,\
+  \ return 1\n    (\"blocked\").\n  • non-zero grid byte == 3 → normal floor; acceptable, continue.\n\
+  \  • any other non-zero grid byte (walls, objects, holes) → clear the\n    all-clear flag.\n\nAfter\
+  \ the scan, r0 = 1 if blocked OR all-clear (every occupied cell is\nfloor), r0 = 0 if some cells overlap\
+  \ non-floor terrain.  The stack slot at\n[sp+0x10] is the all-clear accumulator (initialised to 1, set\
+  \ to 0 on the\nfirst mismatch).  r10 is listed as an input in the contract but the body\nnever reads\
+  \ it; the caller's r10 is preserved by the push/pop.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_813BB00
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_813BB00
+
+    ./wf verify --function sub_813BB00 --snapshots build-snapshots'
+  result: 'captured calls: 3 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_813BB00
+
+    ./wf verify --function sub_813BB00 --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 82 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_813BB00
+
+    ./wf verify --function sub_813BB00 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0813bb00 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_0.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_813BB00 -> battle_checkPanelPlacement_813BB00
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm37_0.c
+coverage:
+- beastsp
+open_questions:
+- Is value 3 the only passable tile type, or can other low values also be acceptable?
+- What does returning 0 actually prevent—the AI reselecting a target cell, or a hard abort of the Custom
+  Program?
+- r10 is in the register contract inputs but unused here; is it a vestigial carry-over from an earlier
+  variant?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_813BB00

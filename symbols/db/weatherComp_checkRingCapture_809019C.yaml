@@ -1,40 +1,71 @@
 name: weatherComp_checkRingCapture_809019C
 address: '0x0809019C'
 kind: function
-previous_names:
-- sub_809019C
-status: probable
-summary: 'Mr. Weather comp: while flag 0xBE8 (the ring closed) is set, each tornado i < +0xA inside the
-  ring (weatherComp_isTornadoInRing_809022C) whose caught flag 0xBE9+i is clear gets flag 0xBEC+i, and
-  +0xB (tornadoes left) drops by one; returns 1 when one was caught.'
-interface: r5 = eWeatherCompState -> r0 = 1 / 0, Z
+status: confirmed
+summary: Scans all rings of the weather component for uncaptured tornadoes, sets the captured event flag, and decrements
+  the remaining-capture counter.
+interface: 'u32 weatherComp_checkRingCapture_809019C(u32 r5 = weatherCompPtr); /* r10 = context (unused) */ /* returns
+  nz: nonzero if at least one ring was captured; r5 preserved */'
+details: 'Gate: requires event flag 0xBE8 to be set (returns 0 if clear). Loops ring index from 0 to weatherCompPtr+0xA
+  (ring count, u8). For each ring: (1) calls weatherComp_isTornadoInRing_809022C(ring, r5) and skips if no tornado
+  (zf set); (2) reads a 16-bit ''processed'' event flag ID from a lookup table at byte_8090226[ring*2] and skips
+  if TestEventFlag already has it set; (3) sets the ''captured'' event flag whose ID is in table byte_8090220[ring*2]
+  via SetEventFlag; (4) sets local found=1; (5) decrements the remaining-capture u8 counter at weatherCompPtr+0xB
+  and breaks the loop if it reaches zero. Returns 1 (nz) if any ring was captured, 0 otherwise. Two static u16 arrays
+  (byte_8090220, byte_8090226) map ring indices to event-flag IDs; the exact flag IDs and their narrative meaning
+  (tornado-capture side-effects) are in the event-flag table.'
 evidence:
-- method: assembly-reading
-  date: '2026-10-16'
-  detail: Read in full for this entry.
-  reproduce: awk 'index($0,"sub_809019C:")==1{p=1} p{print} p&&/thumb_func_end/{exit}' bn6f/asm/asm25.s
-- method: runtime
-  date: '2026-10-16'
-  detail: 'Flags byte 0x2001e05 (0xBE8-0xBEF) goes 0x80 (ring closed) -> 0x85 (0xBED: tornado 1 inside,
-    and 0xBEF) at 435932, then 0xA5 (0xBEA: tornado 1 caught) at 435942; tornado 1''s map object is freed
-    by 435994.'
-  reproduce: 'FILL_A=2 bash tools/vidsync/remote/py.sh probes/tornfit.py data/auto/run7x.0/loss_435876.json
-    data/auto/run7x.0/w_435758.state 435800 436010 build/repro/fit.json   # on 192.168.1.175 (vidsync
-    data); its JSON lines carry key, orbs (+6), c8 (+8), f (flag bytes 0xBE0-0xBEF)'
-  result: '435930 f cc80 | 435932 f cc85 | 435942 f cca5 | 435994: no slot-1 tornado any more'
-related:
-- eWeatherCompState
-- weatherComp_pickScript_8090104
-- sub_80A9658
-open_questions: []
-sources:
-- 'Claude session_01MV9x1XXyanCy3FkvpEo7b7 (vidsync loss 435876: the Mr. Weather comp 2 tornado captures)'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm25.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c weatherComp_checkRingCapture_809019C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function weatherComp_checkRingCapture_809019C
+
+    ./wf verify --function weatherComp_checkRingCapture_809019C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function weatherComp_checkRingCapture_809019C
+
+    ./wf verify --function weatherComp_checkRingCapture_809019C --snapshots build-snapshots'
+  result: 95 compared, 0 differed, 0 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function weatherComp_checkRingCapture_809019C
+
+    ./wf verify --function weatherComp_checkRingCapture_809019C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^0809019c ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-16'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm25.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f e61054c2
+  where: bn6f 487cf9c6
   tool: tools/symdoc.py
-- date: '2026-10-16'
-  what: rename sub_809019C -> weatherComp_checkRingCapture_809019C
-  where: bn6f 0b2a8a49
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm25.c
+coverage:
+- beastsp
+open_questions:
+- What does event flag 0xBE8 represent (which story/combat milestone enables ring capture)?
+- Are byte_8090220 and byte_8090226 arrays of the same length as the max ring count, and how are their indices assigned
+  in the level script?
+- Does weatherComp_isTornadoInRing_809022C check a per-ring state or the global weather-tornado pool?
+- What game effect (HP loss, gauge change, NPC trigger) does setting the captured event flag ultimately invoke?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

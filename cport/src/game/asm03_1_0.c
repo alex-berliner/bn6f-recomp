@@ -1648,7 +1648,7 @@ Next sub_8034E3C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8034E88 ── */
+/* ── story_checkEntryAlliance_8034E88 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r3; bool z, n; } call_TestEventFlagFromImmediate_result_sub_8034E88;
 /* register form: generated wrapper: TestEventFlagFromImmediate has no typed C interface yet */
@@ -1697,8 +1697,8 @@ static EntryCheckResult check_entry_selectable(u32 entry, u32 category, u32 alli
     return (EntryCheckResult){ 0, byte_table, 0 };
 }
 
-/* sub_8034E88(r0 = entry, r1 = category, r4 = alliance) -> r1 = result, r2 = table ptr */
-Next sub_8034E88(void) {
+/* story_checkEntryAlliance_8034E88(r0 = entry, r1 = category, r4 = alliance) -> r1 = result, r2 = table ptr */
+Next story_checkEntryAlliance_8034E88(void) {
     EntryCheckResult res = check_entry_selectable(R0, R1, R4);
     R1 = res.r1;
     R2 = res.r2;

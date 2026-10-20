@@ -545,7 +545,7 @@ Next object_runFrameUpdate_8026A6C(void) {
  * battle_updateObjectByKind_8026E98, battle_runTutorialDialog_8026FC0, battleObject_chipSelectStateTick, sub_80271F8,
  * sub_802728C, sub_80273A4, chatbox_resetTextStateIfHidden_80273EC,
  * sub_8027406, sub_802753E, battleObject_chipSelectUpdate, battleObjectStep, battleObject_chipSelectAnimTick_802770C,
- * sub_8027834, battle_customScreenChipUseAnimStep, sub_802794A, battleObject_chipSelectTick, sub_8027A58) outside
+ * sub_8027834, battle_customScreenChipUseAnimStep, sub_802794A, battleObject_chipSelectTick, battleObject_tickPhaseDispatch_8027A58) outside
  * this file; they have no typed C interface yet */
 static void run_state_handler(u32 state_offset, u32 self) {
     u32 handler = LD32(A_off_8026AA4 + state_offset);
@@ -581,7 +581,7 @@ static void run_state_handler(u32 state_offset, u32 self) {
     case 0x50: GUEST_CALL(battle_customScreenChipUseAnimStep); break;
     case 0x54: GUEST_CALL(sub_802794A); break;
     case 0x58: GUEST_CALL(battleObject_chipSelectTick); break;
-    case 0x5C: GUEST_CALL(sub_8027A58); break;
+    case 0x5C: GUEST_CALL(battleObject_tickPhaseDispatch_8027A58); break;
     default: break; /* unreachable: the state byte is always a table offset */
     }
 }
@@ -1911,7 +1911,7 @@ Next initBackgroundTilemap(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8027A58 ── */
+/* ── battleObject_tickPhaseDispatch_8027A58 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r2, r3, r4, r5, r6, r7; } call_sub_8029C08_result;
 /* register form: generated wrapper: battleObject_chipSelectAnimTick_8029C08 has no typed C interface yet */
@@ -1969,8 +1969,8 @@ static Sub8027A58Result sub_8027A58_body(u32 self) {
     return res;
 }
 
-/* sub_8027A58(r4, r5 = self, r6, r10) -> r2 r3 r4 r5 r6 r8 r9 r10 r11 r12 */
-Next sub_8027A58(void) {
+/* battleObject_tickPhaseDispatch_8027A58(r4, r5 = self, r6, r10) -> r2 r3 r4 r5 r6 r8 r9 r10 r11 r12 */
+Next battleObject_tickPhaseDispatch_8027A58(void) {
     Sub8027A58Result res = sub_8027A58_body(R5);
     R2 = res.r2;
     R3 = res.r3;
@@ -3434,7 +3434,7 @@ Next sub_802899C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80289E4 ── */
+/* ── sprite_pushStrip_80289E4 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r4, r6, r7; } call_fifo_pushRecord16_8009FF8_result;
 /* register form: generated wrapper: fifo_pushRecord16_8009FF8 has no typed C interface yet */
@@ -3474,9 +3474,9 @@ static void push_sprite_strip(u32 r5) {
     }
 }
 
-/* sub_80289E4(r5 = object state ptr) -> r2 r3 r4 r5 r6
+/* sprite_pushStrip_80289E4(r5 = object state ptr) -> r2 r3 r4 r5 r6
  * r4-r6 are preserved via push/pop; only r2=1, r3=0 are real outputs. */
-Next sub_80289E4(void) {
+Next sprite_pushStrip_80289E4(void) {
     push_sprite_strip(R5);
     R2 = 1;
     R3 = 0;

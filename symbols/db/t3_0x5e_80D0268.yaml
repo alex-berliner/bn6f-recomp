@@ -1,0 +1,73 @@
+name: t3_0x5e_80D0268
+address: '0x080D0268'
+kind: function
+status: confirmed
+summary: Dispatches a battle object to its per-state virtual handler (initialize, step-on-parent, or destroy/release-panel)
+  via a 3-entry jump table indexed by oBattleObject_CurState, then calls object_updateSpritePaused on the (possibly
+  re-pointed) object.
+interface: void battle_dispatchStateAndSpriteUpdate(u32 r5 /*battleObj*/, u32 r2, u32 r10) -> modified r5, r8, r9,
+  r10, r11, r12
+details: 'Loads oBattleObject_CurState (byte) from the battle object in R5, uses it as an index into the 3-entry
+  Thumb jump table at off_80D0280. The table entries are: [0] battleObject_initializeFromStateUpdate_80D028C, [1]
+  object_stepDependentOnParent, [2] battle_destroyObjectReleasePanel_80D035C. Dispatch is performed with bx r1 (mov
+  lr, pc trick to give the callee a valid return address). R0 holds the raw state byte for the callee; R2 and R10
+  are passed through from the caller. The handler may swap R5 to a different object and mutate R8–R12. After the
+  handler returns, object_updateSpritePaused is called with the (possibly updated) R5, which writes back to R5.
+  R10 is effectively preserved across both calls. Clobbers r0-r4, r6, r7, lr and all condition flags. This is a
+  tilemap (t3) dispatch slot, likely used as a vtable entry in a battle-object update loop.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c t3_0x5e_80D0268
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t3_0x5e_80D0268
+
+    ./wf verify --function t3_0x5e_80D0268 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 299 out
+    of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t3_0x5e_80D0268
+
+    ./wf verify --function t3_0x5e_80D0268 --snapshots build-snapshots'
+  result: 8 compared, 0 differed, 29 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t3_0x5e_80D0268
+
+    ./wf verify --function t3_0x5e_80D0268 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d0268 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What game-loop context calls this tilemap slot and supplies R2/R10?
+- Does object_updateSpritePaused read R10 (or other preserved registers) beyond R5?
+- Is oBattleObject_CurState always 0..2 in practice, or can it exceed the table and jump out of bounds?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

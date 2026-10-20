@@ -164,7 +164,7 @@ Next sound_dispatchSoundRequest_8000642(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sound_8000672 ── */
+/* ── sound_dispatchSmashHandler_8000672 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { bool z, n, c, v; } call_sound_8000808_result_sound_8000672;
 /* register form: generated wrapper: sound_8000808 has no typed C interface yet */
@@ -190,9 +190,9 @@ static void sound_8000672_impl(u32 r0, u32 r1, u32 r2) {
      * mov r10,r3 in the original do not update flags. */
 }
 
-/* sound_8000672(r0 = sound-table index, r1 = param1, r2 = param2)
+/* sound_dispatchSmashHandler_8000672(r0 = sound-table index, r1 = param1, r2 = param2)
  * -> c, v, r3 (= entry r10), r4-r7/r10/lr preserved */
-Next sound_8000672(void) {
+Next sound_dispatchSmashHandler_8000672(void) {
     sound_8000672_impl(R0, R1, R2);
     R3 = R10;
     RETURN_TO_CALLER();

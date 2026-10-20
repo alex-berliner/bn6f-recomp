@@ -1,0 +1,79 @@
+name: battle_aiAttackCycle_810A648
+address: '0x0810A648'
+kind: function
+status: confirmed
+summary: Cycles a NetNavis AI attack-pattern counter and decides whether to arm the next attack or skip
+  the turn.
+interface: void battle_aiAttackCycle(u32 r5 obj, AIState *r6 ai, AIAttackVars *r7 vars) -> incidental
+  r1; clobbers r0 r2 r3 lr and NZCV
+details: 'Calls object_getFlag(r5) to read the owning object''s status flags. If bit 15 (0x8000) is set
+  the function cycles AIState.AttackCounter modulo 3 and indexes a 6-byte pattern table (byte_810A6BA);
+  if bit 13 (0x2000) is set instead it cycles AIState.TurnCounter modulo 2 and indexes a 2-byte table
+  (byte_810A6B8). The table value selects an action: 0 = arm attack, 1 = skip, >1 = 33 % RNG gate (GetPositiveSignedRNG
+  mod 3 == 0 forces skip). Arming writes 100 to AIAttackVars.StepTimer, calls object_setAttack0(9, obj),
+  and clears AIState.ScriptId to 0. Skipping sets AIState.ScriptId to 8. If neither flag is set the function
+  skips immediately.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_810A648
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810A648
+
+    ./wf verify --function sub_810A648 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810A648
+
+    ./wf verify --function sub_810A648 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 95 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810A648
+
+    ./wf verify --function sub_810A648 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810a648 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810A648 -> battle_aiAttackCycle_810A648
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What game-state conditions set flag bit 15 vs bit 13 (different Navi types, phases, or difficulty tiers)?
+- Is attack ID 9 in object_setAttack0(9) a fixed generic attack or specific to one Navi?
+- What does ScriptId value 8 represent in the AI script dispatcher (idle / waiting / pass-turn)?
+- Are the two lookup tables ever extended or modified at runtime, or are they truly static per-Navi?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_810A648

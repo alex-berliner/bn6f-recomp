@@ -1,0 +1,74 @@
+name: reqBBS_renderRankStars
+address: '0x0814024C'
+kind: function
+status: confirmed
+summary: Draws rank-star tile indicators beside each completed request on the BBS screen.
+interface: void reqBBS_renderRankStars(reqBBS_Gui *gui /* r5 */) -> r5 unchanged
+details: "Iterates over 8 request slots on the currently visible BBS page (page position read from oReqBBSGui_PagePos).\
+  \ For each slot, resolves the request entry ID via reqBBS_eRequestEntriesIDs[page_pos + slot], builds an event-flag\
+  \ address from reqBBS_textualPointers+8 plus that ID, and tests the flag. If the flag is set (request completed/active),\
+  \ it: (1) calls sub_3005EBA to prepare a 32×32 tile block at screen column 0x16,\n    row (2*slot+3), block 2,\
+  \ size 5×2;\n(2) reads the earned rank count from byte_813F380[entry_id] (rank 0 = one star,\n    so star count\
+  \ = value+1, minimum 1);\n(3) loops j = 0..stars-1, calling CopyBackgroundTiles with column (0x1a - j),\n    row\
+  \ (2*slot+3), block 2, tile-id pointer dword_81402C8 = {0x60896088},\n    1×2 tile size — stamping a single 4×4-pixel\
+  \ star tile (8×8 bg tile ×2 rows)\n    from right to left so the first star is closest to the text.\nThe tile\
+  \ ID 0x60896088 encodes two copies of background tile 0x88/0x89 (the rank-star glyph) for the two vertical rows\
+  \ of the 32×32 block. r4–r7 are saved/restored around the two callee wrappers because the ABI marks them as preserved\
+  \ but the wrappers route arguments through them.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/reqBBS.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c reqBBS_renderRankStars
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function reqBBS_renderRankStars
+
+    ./wf verify --function reqBBS_renderRankStars --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function reqBBS_renderRankStars
+
+    ./wf verify --function reqBBS_renderRankStars --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 92 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function reqBBS_renderRankStars
+
+    ./wf verify --function reqBBS_renderRankStars --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp, maps.'
+  reproduce: grep -l '^0814024c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/reqBBS.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+readable_c: cport/src/game/reqBBS.c
+coverage:
+- beastsp
+- maps
+open_questions:
+- Confirm byte_813F380 is indexed by the numeric entry ID (not a slot offset) and represents the Net-Battle rank
+  awarded for that request.
+- What exactly does sub_3005EBA (0x3005EBA) do — is it the 'allocate 32×32 tile-block cell' helper for bg layer
+  2?
+- Are tile IDs 0x88/0x89 the filled-star and empty-star sprites, or is only the filled star drawn here with blanks
+  handled elsewhere?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

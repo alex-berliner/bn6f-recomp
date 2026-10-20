@@ -380,8 +380,8 @@ Next sub_810DCCE(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_810F040 ── */
-/* sub_810F040: snapshots the object's HP, counts allied slot objects of a
+/* ── battle_calcPredecessorSlotBonus_810F040 ── */
+/* battle_calcPredecessorSlotBonus_810F040: snapshots the object's HP, counts allied slot objects of a
  * certain kind range whose list index is below ours, and writes a bonus
  * (0x14 per match) into the object. Caller gives object in r5, toolkit in r10. */
 typedef struct { u32 bonus; u32 count; u32 list_index; } TargetCount;
@@ -423,8 +423,8 @@ static TargetCount count_battle_targets(u32 object_ptr, u32 toolkit_ptr) {
     return result;
 }
 
-/* sub_810F040(r5 = battle object, r10 = toolkit) -> r0..r3, nzcv */
-Next sub_810F040(void) {
+/* battle_calcPredecessorSlotBonus_810F040(r5 = battle object, r10 = toolkit) -> r0..r3, nzcv */
+Next battle_calcPredecessorSlotBonus_810F040(void) {
     TargetCount res = count_battle_targets(R5, R10);
     R0 = res.bonus;
     R1 = 0x6C;
@@ -488,7 +488,7 @@ Next ai_attackStateDispatch_810F2EC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_810F44C ── */
+/* ── battle_setupAIAttack0_810F44C ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: object_getFlag has no typed C interface yet */
 static inline u32 call_object_getFlag_sub_810F44C(u32 r5) {
@@ -506,7 +506,7 @@ static inline call_object_setAttack0_result_sub_810F44C call_object_setAttack0_s
     return (call_object_setAttack0_result_sub_810F44C){ R0, R1, R2, ZERO_FLAG(), NEGATIVE_FLAG(), CARRY_FLAG(), OVERFLOW_FLAG() };
 }
 
-/* sub_810F44C: Set up the attack-0 AI context for a battle object.
+/* battle_setupAIAttack0_810F44C: Set up the attack-0 AI context for a battle object.
  * Only proceeds when ExtraVars[0] is 0 and below the per-version cap
  * from the table at 0x0810F3EC. Copies animation/damage/flag fields from
  * per-version tables, rotates the panel-choice counter, adjusts delay
@@ -560,7 +560,7 @@ static u32 setup_attack0_ai(u32 aidata, u32 obj, u32 aivars) {
     return result.r1;
 }
 
-Next sub_810F44C(void) {
+Next battle_setupAIAttack0_810F44C(void) {
     R1 = setup_attack0_ai(R4, R5, R7);
     RETURN_TO_CALLER();
 }
@@ -2188,11 +2188,11 @@ static inline void call_object_setFlag1_ai_commitMoveAttack(u32 r0, u32 r5) {
     GUEST_CALL(object_setFlag1);
 }
 
-/* register form: generated wrapper: sub_8111B06 has no typed C interface yet */
+/* register form: generated wrapper: battle_setAIAttackVelocity_8111B06 has no typed C interface yet */
 static inline void call_sub_8111B06(u32 r5, u32 r7) {
     R5 = r5;
     R7 = r7;
-    GUEST_CALL(sub_8111B06);
+    GUEST_CALL(battle_setAIAttackVelocity_8111B06);
 }
 
 typedef struct { u32 r1, r5; } call_sub_8111A72_result;
@@ -2492,7 +2492,7 @@ Next ai_animEndResetAttack(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8111B06 ── */
+/* ── battle_setAIAttackVelocity_8111B06 ── */
 /* Set the AI attack movement: zero velocities, write step timer and charge cycles,
  * then compute per-axis velocity as (fixed_speed / 16) * panel_delta when the
  * target panel differs from the current one on that axis. */
@@ -2522,8 +2522,8 @@ static void set_attack_velocity(u32 battle_obj, u32 attack_vars) {
     }
 }
 
-/* sub_8111B06(r5 = battle object, r7 = AI attack vars) -> void */
-Next sub_8111B06(void) {
+/* battle_setAIAttackVelocity_8111B06(r5 = battle object, r7 = AI attack vars) -> void */
+Next battle_setAIAttackVelocity_8111B06(void) {
     set_attack_velocity(R5, R7);
     RETURN_TO_CALLER();
 }
@@ -5463,7 +5463,7 @@ Next ai_restartAttackAnimOnLoop(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8113626 ── */
+/* ── battle_spawnAndStoreLinkedObj3_8113626 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r4, r5, r6, r7; bool v; } call_battle_spawnLinkedType1Obj3_result;
 /* register form: generated wrapper: battle_spawnLinkedType1Obj3 has no typed C interface yet */
@@ -5494,8 +5494,8 @@ static struct spawn_store_result spawn_and_store(u32 r1, u32 r2, u32 r4, u32 r5)
     return out;
 }
 
-/* sub_8113626(r1 r2 r4 r5 lr) -> r0 r1 r2 r3 r4 r5 r6 r7 lr nz c v */
-Next sub_8113626(void) {
+/* battle_spawnAndStoreLinkedObj3_8113626(r1 r2 r4 r5 lr) -> r0 r1 r2 r3 r4 r5 r6 r7 lr nz c v */
+Next battle_spawnAndStoreLinkedObj3_8113626(void) {
     struct spawn_store_result res = spawn_and_store(R1, R2, R4, R5);
     R0 = 0;
     SET_FLAGS_NZ(R0);
@@ -5861,7 +5861,7 @@ Next ai_hopStepUpdate(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8115404 ── */
+/* ── battle_advanceAttackAnimStep_8115404 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2, r3; } call_sprite_getFrameParameters_result_sub_8115404;
 /* register form: generated wrapper: sprite_getFrameParameters has no typed C interface yet */
@@ -5922,8 +5922,8 @@ static u32 update_attack_animation(u32 battle_obj, u32 attack_vars, u32 r1_in) {
     return result;
 }
 
-/* sub_8115404(r5=battle_obj, r6, r7=attack_vars, r10, lr) -> r1 */
-Next sub_8115404(void) {
+/* battle_advanceAttackAnimStep_8115404(r5=battle_obj, r6, r7=attack_vars, r10, lr) -> r1 */
+Next battle_advanceAttackAnimStep_8115404(void) {
     R1 = update_attack_animation(R5, R7, R1);
     RETURN_TO_CALLER();
 }
@@ -6050,7 +6050,7 @@ Next ai_spawnHopRearEffect(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8115466 ── */
+/* ── battle_attackSubstepSlashTick_8115466 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0; } call_object_getFrontDirection_result_sub_8115466;
 /* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
@@ -6117,8 +6117,8 @@ static void ai_attack_substep_tick(u32 attack_vars, u32 attacker) {
     R4 = saved_r4;
 }
 
-/* sub_8115466(r5 = acting object, r7 = AI attack vars) -> r5 r7 */
-Next sub_8115466(void) {
+/* battle_attackSubstepSlashTick_8115466(r5 = acting object, r7 = AI attack vars) -> r5 r7 */
+Next battle_attackSubstepSlashTick_8115466(void) {
     ai_attack_substep_tick(R7, R5);
     RETURN_TO_CALLER();
 }
@@ -6273,7 +6273,7 @@ Next ai_negateExtraVars(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81159B0 ── */
+/* ── battle_aiDispatchByVersion_81159B0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r5, r7; bool z, n, c, v; } call_sub_80B8786_result;
 /* register form: generated wrapper: battle_spawnType2LinkedChild has no typed C interface yet */
@@ -6309,8 +6309,8 @@ static call_sub_80B8786_result run_battle_ai(u32 r2, u32 r3, u32 battle_obj) {
     return result;
 }
 
-/* sub_81159B0(r5 = battle object, r2 r3 pass-through to AI handler) -> r0..r3, flags */
-Next sub_81159B0(void) {
+/* battle_aiDispatchByVersion_81159B0(r5 = battle object, r2 r3 pass-through to AI handler) -> r0..r3, flags */
+Next battle_aiDispatchByVersion_81159B0(void) {
     u32 s4 = R4, sl = LR;
     call_sub_80B8786_result res = run_battle_ai(R2, R3, R5);
     R0 = res.r0, R1 = res.r1, R2 = res.r2, R3 = res.r3;
@@ -6449,7 +6449,7 @@ Next battle_deleteBattleObject(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811677A ── */
+/* ── battle_slot_spawnNavPic_811677A ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r7; } call_sub_81167D2_result;
 /* register form: generated wrapper: battle_randTierFromParam1Table_81167D2 has no typed C interface yet */
@@ -6484,7 +6484,7 @@ static inline call_object_spawnObj79FromSource_result call_object_spawnObj79From
     return (call_object_spawnObj79FromSource_result){ R5 };
 }
 
-/* sub_811677A: Scan the 8-entry battle-slot table for an empty slot,
+/* battle_slot_spawnNavPic_811677A: Scan the 8-entry battle-slot table for an empty slot,
  * look up its object type, configure parameters, and spawn object 79.
  * Preserved (pass-through): r4, r6, r7.  Output: r5 (new slot ptr from spawn). */
 
@@ -6547,8 +6547,8 @@ static struct sub_811677A_result battle_slot_spawn_obj79(u32 r5, u32 r6) {
     return (struct sub_811677A_result){ new_r5, r6 };
 }
 
-/* sub_811677A(r5 = battle slot base pointer) -> r5 (new), r6 (unchanged) */
-Next sub_811677A(void) {
+/* battle_slot_spawnNavPic_811677A(r5 = battle slot base pointer) -> r5 (new), r6 (unchanged) */
+Next battle_slot_spawnNavPic_811677A(void) {
     struct sub_811677A_result res = battle_slot_spawn_obj79(R5, R6);
     R5 = res.r5;
     R6 = res.r6;

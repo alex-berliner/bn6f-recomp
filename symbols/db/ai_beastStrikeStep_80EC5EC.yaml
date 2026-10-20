@@ -1,0 +1,82 @@
+name: ai_beastStrikeStep_80EC5EC
+address: '0x080EC5EC'
+kind: function
+status: confirmed
+summary: 'Advance the Beast Strike (Soul Cross) AI attack one frame: init, hit/effect placement, charge-cycle
+  sub-stepping, and timeout.'
+interface: "void ai_beastStrikeStep(int soundParam /*r2*/, BattleObject *obj /*r5*/,\n               \
+  \         AIAttackVars *av /*r7*/, void *aiExtra /*r10*/);\n"
+details: 'Per-frame step handler for the Beast Strike (Soul Cross) special attack. Dispatches on av->AttackElement:
+  0 means first-frame init, otherwise continues. Init path: sets animation 0xE on obj, zeroes RelatedObject2Ptr''s
+  CurAnimCopy, clears RelatedObject1Ptr, resets the TempAttackObject via battle_resetObjectPhaseCounter,
+  nulls that pointer, calls ai_clearAttackVar, sets object flag bit 22, stamps av->AttackElement = 4 and
+  zeroes av->StepTimer. Hit path (StepTimer == 1): plays SFX 0xB3, computes an OAM layer byte from a pool
+  table (dword_80EC70C) shifted <<16; if obj->Z != 0 switches effect type to 0x10003 and adds Z for depth-sorting.
+  Computes total damage = av->Damage + av->AttackBoost and calls ai_placeBeastStrikeEffects. Then cycles
+  av->SubStepIndex through 0,1,2 (mod 3) and stores ChargeCycles = 2. Always: increments av->StepTimer;
+  once it exceeds 4, sets av->HitElement = 4 (marks the attack as finished). Touches AIAttackVars, BattleObject,
+  AIData, and the object flag system.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80EC5EC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80EC5EC
+
+    ./wf verify --function sub_80EC5EC --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    172 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80EC5EC
+
+    ./wf verify --function sub_80EC5EC --snapshots build-snapshots'
+  result: 14 compared, 0 differed, 82 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80EC5EC
+
+    ./wf verify --function sub_80EC5EC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080ec5ec ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80EC5EC -> ai_beastStrikeStep_80EC5EC
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- beastsp
+open_questions:
+- r2 is forwarded as the sound-channel param to PlaySoundEffect 0xB3; confirm its meaning.
+- r10 is passed through to ai_clearAttackVar but never used locally; what does that callee expect?
+- The pool_base byte at dword_80EC70C is loaded with index 0; is the table ever indexed with a non-zero
+  offset in other callers?
+- ChargeCycles is always set to 2 here; is it read elsewhere to control multi-hit repetition?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80EC5EC

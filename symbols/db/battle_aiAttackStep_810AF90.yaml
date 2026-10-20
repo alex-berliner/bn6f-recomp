@@ -1,0 +1,91 @@
+name: battle_aiAttackStep_810AF90
+address: '0x0810AF90'
+kind: function
+status: confirmed
+summary: 'Advances one tick of an AI-controlled enemy''s attack sub-sequence: periodically highlights
+  the panel ahead of the object, decrements the step timer, and on expiry advances the animation, plays
+  the impact sound, and resets the timer.'
+interface: void battle_aiAttackStep(u16* stepTimer /*[r7+oAIAttackVars_StepTimer]*/, BattleObject* obj
+  /*r5*/, AIAttackVars* ai /*r7*/, u32 soundR2 /*r2*/)
+details: 'Reads the 16-bit AIAttackVars_StepTimer at [r7]. Shifts it right by 3 and tests the carry flag
+  (bit 3 of the timer); if set, the highlight branch is skipped (branch if carry clear to the decrement
+  path). When bit 3 IS clear the highlight code does not run either — so the highlight fires on the opposite
+  parity, i.e. every other tick where bit 3 is set. Inside the highlight branch: gets the object''s front-facing
+  direction via object_getFrontDirection (r5), adds the object''s PanelX to produce a target column, XORs
+  DirectionFlip with Alliance for a side flag, and selects a highlight range of 4 or 2 depending on AIAttackVars_AiDifficultyTier
+  (0 → 4, nonzero → 2). Calls highlightPanelIfSomeCondition_8109660 with those four values. The r2 result
+  from that call (or the original r2 input) is forwarded to PlaySoundEffect as a secondary parameter.
+  After the conditional block the step timer is re-read, decremented, and stored back. If it reaches zero:
+  CurAnim on the BattleObject is incremented by 1, sound effect 0xB0 is played via PlaySoundEffect(r0=0xB0,
+  r2=saved), StepTimer is reloaded from AIAttackVars_AttackDuration, and AIAttackVars_SubStepIndex is
+  set to 8 (signalling the next AI phase). Fields touched: oAIAttackVars_StepTimer, oAIAttackVars_AiDifficultyTier,
+  oAIAttackVars_AttackDuration, oAIAttackVars_SubStepIndex, oBattleObject_PanelX, oBattleObject_PanelY,
+  oBattleObject_Alliance, oBattleObject_DirectionFlip, oBattleObject_CurAnim. Quirk: the timer is re-loaded
+  from [r7] after the highlight call rather than using the cached r0, guarding against a callee that might
+  have modified it.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_810AF90
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810AF90
+
+    ./wf verify --function sub_810AF90 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    204 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810AF90
+
+    ./wf verify --function sub_810AF90 --snapshots build-snapshots'
+  result: 26 compared, 0 differed, 67 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810AF90
+
+    ./wf verify --function sub_810AF90 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810af90 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810AF90 -> battle_aiAttackStep_810AF90
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Why is the highlight gated on bit 3 of the step timer specifically rather than a simple modulo count?
+- What does SubStepIndex = 8 signify in the surrounding AI state machine (is it a 'landed-hit' or 'post-attack'
+  phase)?
+- Sound 0xB0 — is it a fixed 'attack impact' foley or an attack-type-dependent cue selected earlier?
+- highlightPanelIfSomeCondition_8109660 is called with a range derived from difficulty; does the difficulty
+  tier also affect the attack's tile damage or pattern elsewhere?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_810AF90

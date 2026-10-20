@@ -1,55 +1,76 @@
 name: t1_0x55_updateFromRelatedObject_80C4146
 address: '0x080C4146'
 kind: function
-previous_names:
-- sub_80C4146
-status: probable
-summary: 'UPDATE handler of the t1_0x55 follower object type: the sibling of t1_0x54_updateFromRelatedObject_80C3F52
-  with the same follow-the-parent behaviour and a slightly different field set.'
-interface: 'void t1_0x55_updateFromRelatedObject(u32 r5 /* battle object */) : r5 -> [r5 r10]'
-details: 'UPDATE (state-4) handler of the t1_0x55 object type''s jumptable, structurally parallel to t1_0x54_updateFromRelatedObject_80C3F52:
-  reads oBattleObject_RelatedObject1Ptr, copies the parent''s position/animation state onto itself, updates
-  collision panels and re-presents collision data, frees itself when the parent is gone. Only jumptable
-  dispatch (no direct bl caller), and the captured routes show it in fewer scenes than its sibling.
+status: confirmed
+summary: Mirrors visual and render state (sprite data, palette, shader, flip, alpha, Z-depth) from the battle object's
+  RelatedObject1 onto itself each frame, then updates the sprite unless the battle is paused or in time-stop.
+interface: 'u32 battle_syncSpriteStateFromRelated_80C4146(u32 r5 /* battle object ptr */);
+
+  // r5 in/out (possibly advanced by object_updateSprite); r4, r7 preserved; flags clobbered
+
+  '
+details: 'Reads r5->RelatedObject1Ptr as the source object. Copies the 12-byte sprite-data block at struct offset
+  0x34 (3 dwords) verbatim. Merges bit-1 (active) of oObjectHeader_Flags from the source while preserving the destination''s
+  other flag bits. Then delegates to sprite helper pairs to mirror: palette (sprite_get/setPalette), color shader
+  (sprite_get/setColorShader), final palette (sprite_get/setFinalPalette), sprite flag-10 / render-info-high (via
+  the local 0x8002F02 helper), DirectionFlip byte, horizontal flip (object_getFlip → sprite_setFlip), and mosaic/scaling
+  → alpha (sprite_getMosaicScalingParameters → sprite_setAlpha). If oBattleObject_ExtraVars is zero, derives oBattleObject_Z16
+  from the source''s CurAnim (0 if idle, 0xFF otherwise). Finally calls object_updateSprite on r5 only when battle_isTimeStop
+  and battle_isPaused both return Z-flag set (not active); otherwise skips the sprite update entirely.
 
   '
 evidence:
-- method: assembly-reading
-  date: '2026-10-14'
-  detail: 'Body read line by line: the same parent-copy shape as the t1_0x54 handler with its differing
-    field offsets.'
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s
-  reproduce: 'awk ''/t1_0x55_updateFromRelatedObject_80C4146:/{f=1} f{print} f&&/thumb_func_end/{exit}'' bn6f/asm/asm31.s
+  - cport/src/game/asm31.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c t1_0x55_updateFromRelatedObject_80C4146
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function t1_0x55_updateFromRelatedObject_80C4146
 
-    '
-  result: the body read as described above
-- method: caller-analysis
-  date: '2026-10-14'
-  detail: One .word entry (+1) in the type's state jumptable (bn6f/asm/asm31.s:26313); no direct bl callers.
-  reproduce: 'grep -n ''t1_0x55_updateFromRelatedObject_80C4146+1'' bn6f/asm/asm31.s
+    ./wf verify --function t1_0x55_updateFromRelatedObject_80C4146 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function t1_0x55_updateFromRelatedObject_80C4146
 
-    '
-  result: bn6f/asm/asm31.s:26313 (state jumptable entry)
+    ./wf verify --function t1_0x55_updateFromRelatedObject_80C4146 --snapshots build-snapshots'
+  result: 5 compared, 0 differed, 85 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function t1_0x55_updateFromRelatedObject_80C4146
+
+    ./wf verify --function t1_0x55_updateFromRelatedObject_80C4146 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
 - method: coverage
-  date: '2026-10-14'
-  detail: 'Executed by: battlesweep, beastsp, chips'
-  reproduce: 'grep -l ''^080c4146 '' tools/traces/coverage/*.prof
-
-    '
-  result: battlesweep, beastsp, chips
-related:
-- t1_0x54_updateFromRelatedObject_80C3F52
-open_questions:
-- Which in-game entity uses object type t1_0x55, and why it lacks the direct-bl re-entry its sibling has.
-sources:
-- discovery session 2026-10-14 (outside model hyper/glm-5.3-flash, build/repro/discover)
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080c4146 ' tools/traces/coverage/*.prof
 changes:
-- date: '2026-10-14'
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
   what: doc comment (symdb block) at the definition
-  where: bn6f b29fc142
+  where: bn6f 487cf9c6
   tool: tools/symdoc.py
-- date: '2026-10-14'
-  what: rename sub_80C4146 -> t1_0x55_updateFromRelatedObject_80C4146
-  where: bn6f 6ea2baf9
-  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- What gameplay entity is typically set as RelatedObject1 (player avatar, chip sprite, enemy mirror)?
+- Why is Z16 derived from CurAnim only when ExtraVars is zero—does ExtraVars carry an override?
+- Confirm that sprite_setAlpha is the correct callee for the mosaic parameters (naming suggests a mismatch).
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

@@ -1,0 +1,88 @@
+name: battle_slot_spawnNavPic_811677A
+address: '0x0811677A'
+kind: function
+status: confirmed
+summary: Finds the first empty slot in the battle NavPic table (up to 8), selects a NavPic type via a
+  tier/param table, computes its HP and level from lookup arrays, and spawns object 79 (a NavPic) in that
+  slot.
+interface: u32 r5 = battleSlotBase; outputs r5 (post-spawn base), r6 unchanged; preserves r4, r7
+details: 'Scans 8 u32 entries at (r5+0x60) for the first zero (empty slot).
+
+  Calls battle_randTierFromParam1Table_81167D2 with the slot pointer in r7 to pick a NavPic type index
+  (0-4) in r0.
+
+  Looks up HP from byte_81167C8 = {0x78,0x64,0x5A,0x3C,0x5A} and level from byte_81167CD = {0x1E,0x32,0x46,0x5A,0x0}.
+
+  Builds r4 = (hp<<8)|typeID, sets r6 = level, then calls sub_8015C94 (r2=0x10000, r3=0xF880080, r5=slotBase)
+  which presumably initialises the NavPic data structure.
+
+  On success (r0 != 0) calls object_spawnObj79FromSource with the computed parameters to actually place
+  the NavPic.
+
+  Returns the possibly-advanced slot-base pointer in r5. If no empty slot is found or sub_8015C94 fails,
+  r5 is returned unchanged.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_811677A
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_811677A
+
+    ./wf verify --function sub_811677A --snapshots build-snapshots'
+  result: 'captured calls: 32 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    184 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_811677A
+
+    ./wf verify --function sub_811677A --snapshots build-snapshots'
+  result: 22 compared, 0 differed, 74 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_811677A
+
+    ./wf verify --function sub_811677A --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0811677a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_811677A -> battle_slot_spawnNavPic_811677A
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Confirm that object 79 is indeed a NavPic in the BN6 object table.
+- What exactly does sub_8015C94 do with the 0x10000 / 0xF880080 magic constants (likely a memory-block
+  alloc or palette init)?
+- Does battle_randTierFromParam1Table_81167D2 use the current battle tier to bias the NavPic type selection?
+- Are the HP/level tables indexed by NavPic ID or by a tier-dependent offset?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_811677A

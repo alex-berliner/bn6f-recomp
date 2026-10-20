@@ -1,0 +1,79 @@
+name: battle_resolveMapTileAddr_8142CB0
+address: '0x08142CB0'
+kind: function
+status: confirmed
+summary: Resolves the absolute memory address of the current battle-map tile by combining a tile offset
+  with the tile-table base inside MapTilesState.
+interface: u32 battle_resolveMapTileAddr_8142CB0(/* r10 = battle context */) -> r0 (absolute tile data
+  address); r5-r7 preserved
+details: 'Loads the global eMapTilesState200be70 pointer (0x200BE70) into r5, calls sub_8142D58 to perform
+  a guard/validation pass that may update r0 and r5, then passes r0 to sub_8142DA0 which returns a per-tile
+  byte offset in r0 while carrying the (possibly battle-relative) tiles-state pointer in r5. From that
+  state struct it reads the tile-table pointer at offset 0xC (dword_200BE7C), reads a stride/base value
+  at tile-table+8, adds that to the tile-table pointer to form the tile-array base, and finally adds the
+  tile offset to produce the absolute tile address in r0. The function touches the MapTilesState structure
+  layout: +0xC tile-table pointer, tile-table +8 stride/array-base. All callee-saved registers r4-r7 are
+  pushed/popped; the caller''s r5 is restored before return.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_8142CB0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8142CB0
+
+    ./wf verify --function sub_8142CB0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8142CB0
+
+    ./wf verify --function sub_8142CB0 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8142CB0
+
+    ./wf verify --function sub_8142CB0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08142cb0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_1.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8142CB0 -> battle_resolveMapTileAddr_8142CB0
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm37_1.c
+coverage:
+- beastsp
+related:
+- sub_8142D58
+- sub_8142DA0
+open_questions:
+- What exactly does sub_8142D58 validate or initialise before tile resolution?
+- What does sub_8142DA0 compute for the tile offset (e.g. grid coordinate to linear index)?
+- Is the field at tile-table+8 a per-tile stride or an array-base offset?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_8142CB0

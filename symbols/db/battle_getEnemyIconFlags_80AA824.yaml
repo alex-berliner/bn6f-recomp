@@ -1,0 +1,89 @@
+name: battle_getEnemyIconFlags_80AA824
+address: '0x080AA824'
+kind: function
+status: confirmed
+summary: Walk the battle object's per-enemy state-entry list and accumulate a bitmask of which enemy icons
+  to display in the battle HUD.
+interface: u32 battle_getEnemyIconFlags_80AA824(u32 battleObj /* r0 */) -> r0 = iconFlags, r2 = lastShiftVal;
+  clobbers r1,r3,lr,flags; preserves r4,r6,r7
+details: 'Reads a pointer from battleObj+0xC (the active-enemy entry list) and a state byte at battleObj+7.
+  If that byte equals 2 the seed flags are 0x40 (boss-encounter bit). Each 4-byte entry''s first byte
+  is masked to its high nibble: 0xF0 terminates the walk and returns accumulated flags; 0x10 denotes an
+  enemy-reference entry whose bytes[2] plus nibble of bytes[3] form an index passed to enemy_getStruct2.
+  The returned enemy struct''s halfword bits 12-15 give an icon-slot shift; the accumulator ORs (1 <<
+  shift) into the flag word (also left in r2). If that struct''s byte[2] is >= 4 the function short-circuits
+  and returns 0x20 instead, suppressing all other icon bits (a death/defeat or special-state icon). Unrecognised
+  entry types advance the pointer by 4 and continue scanning. r4, r6, r7 are only used as locals and are
+  push/pop-restored.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm29.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80AA824
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80AA824
+
+    ./wf verify --function sub_80AA824 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80AA824
+
+    ./wf verify --function sub_80AA824 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 21 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80AA824
+
+    ./wf verify --function sub_80AA824 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battles1, battles2, beastsp, fuzz, maps, menus3, story2, story4, story5, story6,
+    story8, story9.'
+  reproduce: grep -l '^080aa824 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm29.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80AA824 -> battle_getEnemyIconFlags_80AA824
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm29.c
+coverage:
+- battles1
+- battles2
+- beastsp
+- fuzz
+- maps
+- menus3
+- story2
+- story4
+- story5
+- story6
+- story8
+- story9
+open_questions:
+- What does byte[2] >= 4 in the enemy struct mean (specific defeat status, hidden boss transition?)
+- What encounter sets byte at obj+7 to 2 to trigger the 0x40 seed?
+- Are entries other than 0x10/0xF0 ever populated, or is the +=4 advance effectively dead code?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80AA824

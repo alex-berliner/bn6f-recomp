@@ -1,0 +1,78 @@
+name: map_resolveTileAddress_8142DA0
+address: '0x08142DA0'
+kind: function
+status: confirmed
+summary: Resolves a map tile's RAM address by offsetting a base pointer up or down by a row/column delta
+  derived from the current tile index.
+interface: u32 resolve(u32 baseAddr /*r0*/) -> r0 = adjusted tile address; preserves r5 = tile-state ptr
+details: 'Reads the 1-byte map width from *(eMapTilesState200be70). Reads the tile index byte from *(unk_2000B40
+  + 0x9). If the index >= 0x80 the tile is "forward" in the scroll buffer; otherwise it is "backward."  The
+  delta is |index - 0x80|.  The byte offset is computed as ((delta * 2 * width + delta * 4) << 1), i.e.
+  each delta unit advances by (2*width+4)*2 bytes, consistent with a 2-byte-per-tile row stride of width*2
+  plus a 4-byte per-tile header, doubled for a second tile-plane. The result is added to (forward) or
+  subtracted from (backward) the caller-supplied base address in r0.  r5 (the tile-state pointer) is deliberately
+  preserved in r5 for the caller''s subsequent use.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_8142DA0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8142DA0
+
+    ./wf verify --function sub_8142DA0 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    0 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8142DA0
+
+    ./wf verify --function sub_8142DA0 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8142DA0
+
+    ./wf verify --function sub_8142DA0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08142da0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_1.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8142DA0 -> map_resolveTileAddress_8142DA0
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm37_1.c
+coverage:
+- beastsp
+related:
+- sub_8142CB0
+open_questions:
+- Why is each delta unit multiplied by 2 (<<1 at the end)? Is there a second tile layer stored interleaved?
+- What does the 4-byte-per-tile term at +9 represent (animation frame? event flag?)?
+- Is unk_2000B40+0x9 a single global tile index, or is the pointer bumped per draw call?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_8142DA0

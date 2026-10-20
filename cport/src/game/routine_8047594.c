@@ -18,7 +18,7 @@
  *   anything else: 16 blank tiles over the name area, and no strip
  * Kinds 2 and 3 are first dimmed (dimUnownedChipStrip_8047CFA) when the player owns
  * none: kind 2 counts the pack (GetChipCountOfCode of chip and code),
- * kind 3 the chip+0x90 collection (sub_803D138).  Kinds 1-3 then get
+ * kind 3 the chip+0x90 collection (npc_checkKeyItemTrampoline_803D138).  Kinds 1-3 then get
  * their strip (sub_8047790): the entry's value halfword (+6) goes
  * through sub_8047CDC, which leaves it times 100 (unchanged in view 1),
  * and that result is stored at the toolkit's 200A220 struct (+8) — what
@@ -201,7 +201,7 @@ static void draw_chip_row_strip(u32 slot, u32 value, u32 has_code, u32 chip,
 }
 
 /* dimUnownedChipStrip_8047CFA: dim a chip the player has none of.  `secret` rows count
- * through the chip+0x90 collection (sub_803D138), the others through the
+ * through the chip+0x90 collection (npc_checkKeyItemTrampoline_803D138), the others through the
  * pack (GetChipCountOfCode); owning one leaves the strip alone.  The
  * dimming repaints byte_202F800's strip tilemap for the row (0x48 bytes:
  * ten u16 at +0 and ten at +0x24): the low 12 bits of each entry stay,
@@ -217,7 +217,7 @@ static void dim_unowned_chip_strip(u32 slot, u32 entry, u32 chip, u32 code,
     R5 = palette << 13; R6 = slot; R7 = entry;
     if (secret) {
         R0 = chip + 0x90; R1 = code;
-        GUEST_CALL(sub_803D138);
+        GUEST_CALL(npc_checkKeyItemTrampoline_803D138);
     } else {
         R0 = chip; R1 = code;
         GUEST_CALL(GetChipCountOfCode);

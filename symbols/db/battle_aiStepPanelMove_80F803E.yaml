@@ -1,0 +1,83 @@
+name: battle_aiStepPanelMove_80F803E
+address: '0x080F803E'
+kind: function
+status: confirmed
+summary: 'Per-frame step handler for an AI enemy''s panel-move attack: on first call it initiates the
+  panel traversal animation, on subsequent calls it ticks a cooldown timer and transitions to the hit
+  state when it expires.'
+interface: u32 battle_aiStepPanelMove_80F803E(/* r5 */ BattleObject *obj, /* r7 */ AIAttackVars *ai, /*
+  r1 */ u32 r1_in); // returns r1_out; clobbers r0 r2 r3, flags; preserves r4 r6
+details: 'Two-phase state machine keyed on ai->AttackElement. Phase 1 (AttackElement==0, first entry):
+  sets AttackElement to 4, switches obj->CurAnim to 3 (the walk/step animation), releases the panel reservation
+  at the current (PanelX, PanelY), copies FuturePanelX/Y into the active panel fields, releases the reservation
+  at the destination panel, recomputes screen coordinates and collision boxes, clears flag bit 0x40 (movement-pending),
+  sets OBJECT_FLAGS_CURRENTLY_MOVING_1, clears bit 0x16, then seeds ai->StepTimer to 8 so the move animates
+  for 8 frames. Phase 2 (AttackElement!=0, subsequent entries): decrements the 16-bit StepTimer; when
+  it reaches 0 the function writes 0x1C into ai->HitElement, advancing the AI attack chain to the next
+  (hit) element. The r1 register passes through the last object_clearFlag return value on the kickoff
+  path or is returned unchanged on the tick path. Structs touched: BattleObject (PanelX, PanelY, FuturePanelX,
+  FuturePanelY, CurAnim, object flags), AIAttackVars (AttackElement, StepTimer, HitElement).'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80F803E
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F803E
+
+    ./wf verify --function sub_80F803E --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    183 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F803E
+
+    ./wf verify --function sub_80F803E --snapshots build-snapshots'
+  result: 17 compared, 0 differed, 77 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F803E
+
+    ./wf verify --function sub_80F803E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080f803e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F803E -> battle_aiStepPanelMove_80F803E
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What does element 0x1C (HitElement) represent in the AI attack table — is it a specific hitbox or damage
+  event?
+- Is flag bit 0x40 confirmed as 'movement-pending' or could it be a different state flag?
+- Does the timer value of 8 correspond to a fixed 8-frame walk cycle, and what happens if the panel move
+  is longer than 8 frames?
+- The 0x16 bit cleared on the kickoff path — what state does that bit represent?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80F803E

@@ -1,0 +1,84 @@
+name: menu_tickInput_81255F8
+address: '0x081255F8'
+kind: function
+status: confirmed
+summary: 'Ticks joypad input each frame for an open menu: handles Start/B exit confirmation, L/R page-turn,
+  and a pending list-navigation operation by temporarily swapping the cursor index before dispatching
+  submenu_moveListCursor.'
+interface: void menu_tickInput_81255F8(u32 r0_in, u32 r2, MenuState* r5, Toolkit* r10); /* modifies *r5
+  in-place; returns via r8=r0_in, r9/r12 set by callees */
+details: 'Loads the joypad pointer from the toolkit via off oToolkit_JoypadPtr, then reads the 16-bit
+  pressed word (oJoypad_Pressed) and held word (+4). Three early-return branches: (1) Start|B freshly
+  pressed → calls menu_confirmExitAndFade_812580C with kind 0x38; (2) L held → writes 0x10 to state+0x02
+  (MenuState_Kind) and plays sound 0x7A; (3) R held → writes 0x08 to state+0x02 and plays sound 0x7A.
+  If none of those fire and state+0x5C (PendingOp) is non-zero, the routine saves the u16 cursor at state+0x1C,
+  overwrites it with PendingOp so that submenu_moveListCursor interprets it as the target layout index,
+  checks whether L/R (mask 0x300) are held or whether Select/Start (mask 0xC0) are held with no fresh
+  L/R press, calls submenu_moveListCursor with arg1=7 arg2=0, stores the joypad pointer at state+0x70,
+  then restores the original cursor. The u16 cursor save/restore is done via a push/pop of the stack.
+  r0_in is copied to r8 in the prologue and preserved as the only "output" the caller reads back; r5 and
+  r10 are callee-saved and returned unchanged.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm33.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_81255F8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81255F8
+
+    ./wf verify --function sub_81255F8 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81255F8
+
+    ./wf verify --function sub_81255F8 --snapshots build-snapshots'
+  result: 39 compared, 0 differed, 54 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81255F8
+
+    ./wf verify --function sub_81255F8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: story2.'
+  reproduce: grep -l '^081255f8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm33.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81255F8 -> menu_tickInput_81255F8
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm33.c
+coverage:
+- story2
+open_questions:
+- What does MenuState_Kind value 0x38 (passed to menu_confirmExitAndFade) select versus 0x10/0x08? Likely
+  a confirmation-prompt type but unconfirmed.
+- 'The PendingOp field at +0x5C: which code writes it and what layout indices it encodes?'
+- sub_8125820 (called in the C wrapper as the layout-switch helper) is not the same address as submenu_moveListCursor
+  in the asm; confirm whether these are the same routine or the wrapper mislabels.
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_81255F8

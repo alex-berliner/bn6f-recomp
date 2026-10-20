@@ -1,0 +1,78 @@
+name: spawn_allyWithRandomDir_810B30C
+address: '0x0810B30C'
+kind: function
+status: confirmed
+summary: Spawns a generic type-1 battle ally (descriptor 0x7000404), stores its handle in ExtraVars, picks
+  a random −1/+1 movement direction, and clears a halfword status at object offset 0x6C.
+interface: void spawn_allyWithRandomDir_810B30C(u32 r1 /*caller_arg*/, u32 r5 /*battle_object_ptr*/);
+  /* clobbers r0-r4, r6-r7, flags; preserves r5-r7 */
+details: Loads descriptor 0x7000404 into r4, zeroes r2 and sets r3=0xFF, then calls spawn_t1_0x47_probablyGeneric_80C468C
+  to create a generic type-1 entity (likely a Navu or companion). The returned entity handle is stored
+  at [r5 + oBattleObject_ExtraVars]. battle_setObjectExtraFlagC_80C46C6 is then invoked with that handle
+  (likely a post-spawn initialization hook). GetPositiveSignedRNG produces a random number; bit 0 is extracted,
+  shifted left by 1, and decremented by 1 to yield either −1 or +1, stored at [r5 + oBattleObject_ExtraVars
+  + 8] as the horizontal movement direction. Finally, a halfword at r5+0x6C is zeroed (a per-object status
+  or flag field). Registers r5, r6, r7 are preserved; on exit r0=0x6C and r1=0, with flags reflecting
+  the SUBS r0,#1 from the direction calculation and the zero from MOV r1,#0.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_810B30C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810B30C
+
+    ./wf verify --function sub_810B30C --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810B30C
+
+    ./wf verify --function sub_810B30C --snapshots build-snapshots'
+  result: 27 compared, 0 differed, 67 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810B30C
+
+    ./wf verify --function sub_810B30C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810b30c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810B30C -> spawn_allyWithRandomDir_810B30C
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What entity does descriptor 0x7000404 specifically identify (which Navu/ally)?
+- What is the field at object offset 0x6C that gets cleared?
+- What does battle_setObjectExtraFlagC_80C46C6 actually set or check?
+- Is r1 (caller_arg) passed through to the spawn function meaningfully, or is it incidental register state?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_810B30C

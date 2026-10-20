@@ -1,0 +1,97 @@
+name: battleObject_advanceEnemyTargetList_80D1F0E
+address: '0x080D1F0E'
+kind: function
+status: confirmed
+summary: Advance a battle object's preset enemy-target list and return the current target's grid coordinates
+  (or packed coordinates), falling back to the closest-enemy search when the list is exhausted or unused.
+interface: 'r5: BattleObject*; returns r0, r1: u32 (two coordinate/id bytes from the target); r4, r6,
+  r7 preserved'
+details: 'Reads oBattleObject_Param2 (a mode selector: 0 = no list, 1 = single target, 2 = packed-coord
+  mode).
+
+  When Param2 != 0, walks a linked array of target pointers stored at oBattleObject_ExtraVars+0xc
+
+  (current cursor) and oBattleObject_ExtraVars+0x10 (advance counter, set to 1 after first advance
+
+  so the list only moves once per call). Each 4-byte entry is dereferenced to get the next target.
+
+  If the cursor reaches a null sentinel the pointer field is zeroed.
+
+  If no valid entry is found (Param2==0, list exhausted, or entry null), XORs oBattleObject_Alliance
+
+  with 1 to get the opposing side and calls battleObject_findClosestEnemyBattleObject_80103F8 with
+
+  that alliance and r5, using the returned target pointer.
+
+  On exit, if Param2==2 AND the advance counter (ExtraVars+0x10) is still 0, the target''s word at
+
+  +0x78 is split into r0 = low nibble and r1 = word>>4 (packed coordinates).
+
+  Otherwise r0 = byte at target+0x12 and r1 = byte at target+0x13 (grid x,y).
+
+  The caller uses the two returned values as the coordinates of the enemy to face or attack.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80D1F0E
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D1F0E
+
+    ./wf verify --function sub_80D1F0E --snapshots build-snapshots'
+  result: 'captured calls: 2 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D1F0E
+
+    ./wf verify --function sub_80D1F0E --snapshots build-snapshots'
+  result: 16 compared, 0 differed, 79 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D1F0E
+
+    ./wf verify --function sub_80D1F0E --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080d1f0e ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D1F0E -> battleObject_advanceEnemyTargetList_80D1F0E
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- r10 is listed as an input in the register contract but is never referenced in the body—is it a caller-side
+  artifact or does a calling convention variant pass it?
+- Confirm that +0x12/+0x13 are indeed grid column/row and +0x78 is a packed coord word.
+- Does the linked-array at ExtraVars+0xc terminate with a null sentinel or is it length-limited by a field
+  elsewhere?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80D1F0E

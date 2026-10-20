@@ -1,0 +1,78 @@
+name: battle_configureAiAttack_810B6F0
+address: '0x0810B6F0'
+kind: function
+status: confirmed
+summary: Selects AI attack difficulty tier (fixed or random coin-flip) and populates the AIAttackVars
+  damage/timing fields from version-indexed tables, then signals readiness on the BattleObject.
+interface: r0 = mode (0 random, 1 tier-0, 2 tier-1), r4 = AIData*, r5 = BattleObject*, r7 = AIAttackVars*;
+  outputs r3 (RNG residue or passthrough), r7 preserved; clobbers r0-r2, flags, lr.
+details: If mode==1 sets tier 0 and uses byte_810B740; if mode==2 sets tier 1 and uses byte_810B746 (both
+  tables are identical six-byte damage arrays indexed by AIData_Version_16). Otherwise calls GetPositiveSignedRNG
+  and tests bit 0 of r0 for a 50/50 coin-flip, selecting tier 0 or 1. Writes tier byte to AIAttackVars_AiDifficultyTier,
+  sets ExtraDamage to 0x0A, loads Damage/StepTimer/AttackDuration from the version-indexed byte tables
+  (byte_810B740/746 for damage, byte_810B74C for step timer, byte_810B752 for duration), and zeroes SubStepIndex.
+  Finally writes 1 to BattleObject_ExtraVars+4 to mark attack configuration complete. The tier-0 and tier-1
+  damage tables happen to be byte-identical, so difficulty only affects the stored tier value (used elsewhere)
+  and not the raw damage number; timing tables also do not branch on tier in this function.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_810B6F0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810B6F0
+
+    ./wf verify --function sub_810B6F0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    285 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810B6F0
+
+    ./wf verify --function sub_810B6F0 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 90 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810B6F0
+
+    ./wf verify --function sub_810B6F0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810b6f0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810B6F0 -> battle_configureAiAttack_810B6F0
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Why are byte_810B740 and byte_810B746 identical—was a second difficulty table planned but never differentiated?
+- What does BattleObject_ExtraVars+4=1 trigger downstream (which AI step machine reads it)?
+- r3 is an output only on the random path; is the RNG generator state in r3 used by the caller or just
+  an ABI artifact of GetPositiveSignedRNG?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_810B6F0

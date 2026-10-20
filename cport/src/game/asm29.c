@@ -4271,10 +4271,10 @@ static inline void call_sub_80A93D8(u32 r5) {
     GUEST_CALL(sprite_setUnk2cToE000000_80A93D8);
 }
 
-/* register form: generated wrapper: sub_80A93E8 has no typed C interface yet */
+/* register form: generated wrapper: battle_animOscillatePos_80A93E8 has no typed C interface yet */
 static inline void call_sub_80A93E8(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_80A93E8);
+    GUEST_CALL(battle_animOscillatePos_80A93E8);
 }
 
 typedef struct { u32 r0, r1, r2, r3; bool z, n, c, v; } call_sprite_update_result_sub_80A931C;
@@ -4405,7 +4405,7 @@ Next sprite_setUnk2cToE000000_80A93D8(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80A93E8 ── */
+/* ── battle_animOscillatePos_80A93E8 ── */
 #define oBattleObject_AnimPhase    6
 #define oBattleObject_AnimCounter  7
 #define oBattleObject_AnimPosition 0x14
@@ -4438,8 +4438,8 @@ static void animate_oscillation(u32 obj) {
     }
 }
 
-/* sub_80A93E8(r5 = battle object pointer) */
-Next sub_80A93E8(void) {
+/* battle_animOscillatePos_80A93E8(r5 = battle object pointer) */
+Next battle_animOscillatePos_80A93E8(void) {
     animate_oscillation(R5);
     RETURN_TO_CALLER();
 }
@@ -6297,7 +6297,7 @@ Next isEventFlag216Set(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80AA824 ── */
+/* ── battle_getEnemyIconFlags_80AA824 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r3; } call_enemy_getStruct2_result;
 /* register form: generated wrapper: enemy_getStruct2 has no typed C interface yet */
@@ -6352,8 +6352,8 @@ static struct enemy_icon_walk_result sub_80AA824_impl(u32 obj, u32 r2_in) {
     }
 }
 
-/* sub_80AA824(r0 = enemy object ptr, r2 = in/out flag word) -> r0, r2 */
-Next sub_80AA824(void) {
+/* battle_getEnemyIconFlags_80AA824(r0 = enemy object ptr, r2 = in/out flag word) -> r0, r2 */
+Next battle_getEnemyIconFlags_80AA824(void) {
     struct enemy_icon_walk_result res = sub_80AA824_impl(R0, R2);
     R0 = res.r0;
     R2 = res.r2;
@@ -6424,9 +6424,9 @@ Next battle_rollRandomItemDrops_80AA88C(void) {
 
 /* ── sub_80AA8E0 ── */
 /* sub_80AA8E0(r0-r5 = setup parameters, r10 = toolkit pointer):
- * Forwards a six-word parameter block to sub_80AA910 (which reads its
+ * Forwards a six-word parameter block to battle_pickChipAttr_80AA910 (which reads its
  * arguments back from the caller's stack at [sp, #n]), then returns
- *   r0 = value returned by sub_80AA910,
+ *   r0 = value returned by battle_pickChipAttr_80AA910,
  *   r1 = the current battle state's oBattleState_Reward2Bonus field.
  * If r1 is 0 on entry, the helper is not called and (0, 0) is returned. */
 Next sub_80AA8E0(void) {
@@ -6436,7 +6436,7 @@ Next sub_80AA8E0(void) {
     if (R1 != 0) {
         u32 savedR7 = R7;
 
-        /* Build the argument block on the stack for sub_80AA910.
+        /* Build the argument block on the stack for battle_pickChipAttr_80AA910.
          * The two trailing words are zeroed, as the original does. */
         u32 args = SP -= 0x2C;
         ST32(args + 0x00, R0);
@@ -6448,10 +6448,10 @@ Next sub_80AA8E0(void) {
         ST32(args + 0x1C, 0);
         ST32(args + 0x20, 0);
 
-        /* sub_80AA910 expects r7 = 0 (r0-r6, r8-r12 keep their incoming
+        /* battle_pickChipAttr_80AA910 expects r7 = 0 (r0-r6, r8-r12 keep their incoming
          * values; it preserves the callee-saved ones itself). */
         R7 = 0;
-        GUEST_CALL(sub_80AA910);
+        GUEST_CALL(battle_pickChipAttr_80AA910);
         SP += 0x2C;
         setupResult = R0;
 
@@ -6468,7 +6468,7 @@ Next sub_80AA8E0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80AA910 ── */
+/* ── battle_pickChipAttr_80AA910 ── */
 /* register form: calls GetBattleNaviStatsByte outside this file, which has no typed C interface yet */
 static u32 call_navi_stats_byte(u32 navi, u32 index) {
     R0 = navi;
@@ -6557,7 +6557,7 @@ typedef struct {
 } ChipAttrResult;
 
 /*
- * sub_80AA910: pick a chip attribute for the active navi based on stats byte 0x26.
+ * battle_pickChipAttr_80AA910: pick a chip attribute for the active navi based on stats byte 0x26.
  *
  * Bit 0 → mode A: apply chip via sub_80AAB04.
  * Bit 1 clear → mode B: read one attribute by computed offset.
@@ -6645,8 +6645,8 @@ static ChipAttrResult pick_chip_attr(u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32
     return res;
 }
 
-/* sub_80AA910(r0=a0, r1=a1, r2=a2, r3=a3, r4=a4, r5=a5) -> r0; outputs c,v; clobbers nz,r1-r3,lr */
-Next sub_80AA910(void) {
+/* battle_pickChipAttr_80AA910(r0=a0, r1=a1, r2=a2, r3=a3, r4=a4, r5=a5) -> r0; outputs c,v; clobbers nz,r1-r3,lr */
+Next battle_pickChipAttr_80AA910(void) {
     ChipAttrResult cr = pick_chip_attr(R0, R1, R2, R3, R4, R5);
     R0 = cr.value;
     SET_FLAGS_ADD(cr.flag_a, cr.flag_b);

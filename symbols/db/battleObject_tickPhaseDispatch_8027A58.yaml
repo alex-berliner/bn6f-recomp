@@ -1,0 +1,95 @@
+name: battleObject_tickPhaseDispatch_8027A58
+address: '0x08027A58'
+kind: function
+status: confirmed
+summary: 'Per-frame update dispatcher for the custom-screen battle object: selects a phase handler from
+  a jump table by the object''s kind byte, then runs chip-select animation tick and a second post-update
+  pass.'
+interface: 'void battleObject_tickPhaseDispatch_8027A58(void* self /*R5 = battle object at S20364C0*/);
+  in: R4 R6 R10 passed through to handlers; out: R2 R3 R4 R5 R6 modified by handler + post-passes, R8-R12
+  pass through; clobbers: R0 R1 R7 LR NZCV'
+details: 'Reads a pre-scaled kind byte (0/4/8/12, already an offset) from self+2 and
+
+  indexes the 4-entry word table at off_8027A74 via BX. The four phase
+
+  handlers are: sub_8027A84 (init/entry step), screenFadeWaitStep (wait for
+
+  a screen transition), battle_customScreenConfirmSelectedChip (player
+
+  confirms chip selection), and battle_tickTutorialCustomScreen (tutorial
+
+  overlay tick on the custom screen). The handler may modify R5, so the
+
+  subsequent two calls receive the updated pointer. After the dispatch,
+
+  battleObject_chipSelectAnimTick_8029C08 advances the chip-select animation
+
+  state, and sub_802899C runs a second standard post-update pass (likely
+
+  object lifetime / cleanup checks). R10 from the caller is visible to
+
+  the inner calls via the register file. The outer code itself modifies
+
+  none of R8-R12 directly; those pass through untouched from the handler.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_8027A58
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8027A58
+
+    ./wf verify --function sub_8027A58 --snapshots build-snapshots'
+  result: 'captured calls: 34 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8027A58
+
+    ./wf verify --function sub_8027A58 --snapshots build-snapshots'
+  result: 26 compared, 0 differed, 13 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8027A58
+
+    ./wf verify --function sub_8027A58 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08027a58 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_0.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8027A58 -> battleObject_tickPhaseDispatch_8027A58
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_0.c
+coverage:
+- beastsp
+open_questions:
+- What exactly does sub_802899C do as a post-update pass (animation cleanup, object removal, timer decrement)?
+- Is sub_8027A84 a one-time init or does it re-enter as phase 0 on every frame until transitioned?
+- Does the kind byte ever cycle back to 0, or is phase 0 strictly a start state?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_8027A58

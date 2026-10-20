@@ -1,0 +1,77 @@
+name: battle_stepToFrontPanel_80D8BBC
+address: '0x080D8BBC'
+kind: function
+status: confirmed
+summary: Advances a battle object one panel in its facing direction, stores the resulting panel and pixel
+  coordinates.
+interface: void battle_stepToFrontPanel_80D8BBC(r5 = object) -> r2 (pixel Y from getCoordinatesForPanels)
+details: 'Reads oBattleObject_FrontDirection via object_getFrontDirection(r5). Computes future panel X
+  as front-direction delta + current oBattleObject_PanelX; future panel Y is unchanged from oBattleObject_PanelY.
+  Stores both into oBattleObject_FuturePanelX/Y (byte-sized). Calls object_getCoordinatesForPanels with
+  (futureX, futureY) to obtain pixel-space coordinates; stores the X pixel result (r0) into oBattleObject_ExtraVars
+  as a 32-bit write. r2 (pixel Y) is left by the callee and is the function''s observable output per the
+  register contract. Quirk: ExtraVars is overwritten wholesale (u32 str), so any prior content there is
+  lost. The front-direction value is treated as an additive delta rather than an index into a direction
+  table, suggesting directions encode panel offsets (e.g. 1=right, -1=left, 0=vertical movement handled
+  by Y).'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80D8BBC
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D8BBC
+
+    ./wf verify --function sub_80D8BBC --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    179 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D8BBC
+
+    ./wf verify --function sub_80D8BBC --snapshots build-snapshots'
+  result: 40 compared, 0 differed, 55 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D8BBC
+
+    ./wf verify --function sub_80D8BBC --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d8bbc ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D8BBC -> battle_stepToFrontPanel_80D8BBC
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- beastsp
+open_questions:
+- Exact meaning of the front-direction integer returned by object_getFrontDirection—is it truly an additive
+  panel delta?
+- What does the caller do with the r2 pixel-Y output and the ExtraVars X pixel?
+- Are there other ExtraVars consumers that expect this single u32 slot or is it a struct that gets clobbered?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80D8BBC

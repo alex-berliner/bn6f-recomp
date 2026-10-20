@@ -1,0 +1,84 @@
+name: battle_setupAIAttack0_810F44C
+address: '0x0810F44C'
+kind: function
+status: confirmed
+summary: Configures the AI attack-vars structure from per-version lookup tables and fires attack ID 0x0A
+  for the battle object.
+interface: u32 battle_setupAIAttack0_810F44C(u32 aidata /*r4*/, u32 obj /*r5*/, u32 aivars /*r7*/); /*
+  returns r1; early-exit returns ExtraVars[0], otherwise returns r1 from object_setAttack0 */
+details: 'Reads the version index (0..N) from aidata[oAIData_Version_16]. Looks up a per-version cap from
+  byte_810F3EC[version]; if obj[oBattleObject_ExtraVars] >= cap or != 0 the function bails early (returns
+  that value in r1). On the happy path: (1) writes (cap - extra0) into aivars[oAIAttackVars_AttackBoost2],
+  overriding to 1 if object flag 0x8000 is set; (2) copies timer, sub-step, damage from byte tables at
+  0x810F3E6/0x810F3F2/0x810F3E0 indexed by version; (3) sets extra damage to 0x0A; (4) loads a 32-bit
+  scratch var from byte_810F3C8 + version*4; (5) points aivars[oAIAttackVars_AiAttackParam] at obj+0x6C
+  and aivars[oAIAttackVars_PanelChooseCallback] at obj+0x60; (6) copies and rotates the panel-choice counter
+  (ExtraVars[4]) mod 4 back into ExtraVars[4] and stores the pre-rotation value in oAIAttackVars_PanelParamFlags2;
+  (7) copies ExtraVars[8] into oAIAttackVars_ScratchPointerOrPanel; (8) sets oAIAttackVars_AttackDuration
+  to 0x78 (or 0xB4 if object flag 0x2000 is set); (9) calls object_setAttack0(0x0A, obj) and returns its
+  r1.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_810F44C
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810F44C
+
+    ./wf verify --function sub_810F44C --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 2 out of domain; random inputs: 300 trials, 0 failures,
+    258 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810F44C
+
+    ./wf verify --function sub_810F44C --snapshots build-snapshots'
+  result: 10 compared, 0 differed, 82 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810F44C
+
+    ./wf verify --function sub_810F44C --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810f44c ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810F44C -> battle_setupAIAttack0_810F44C
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What does flag 0x8000 (AttackBoost override) represent in NPC state? Possibly a 'stagger' or 'vulnerable'
+  modifier.
+- What does flag 0x2000 represent that extends attack duration by 0x3C frames? Possibly a 'slow' or 'charging'
+  state.
+- The panel-choice counter rotates 0-1-2-3; is this used to cycle among 4 different panel-targeting strategies
+  across successive attacks?
+- Attack ID 0x0A is hardcoded; is this always the object's 'primary' or 'default' attack slot?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_810F44C

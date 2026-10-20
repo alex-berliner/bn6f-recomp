@@ -2793,12 +2793,12 @@ static inline call_sub_811983C_result call_sub_811983C(u32 r0, u32 r1) {
 }
 
 typedef struct { u32 r5, r8, r9, r10, r12; } call_sub_81255F8_result;
-/* register form: generated wrapper: sub_81255F8 has no typed C interface yet */
+/* register form: generated wrapper: menu_tickInput_81255F8 has no typed C interface yet */
 static inline call_sub_81255F8_result call_sub_81255F8(u32 r0, u32 r2, u32 r5) {
     R0 = r0;
     R2 = r2;
     R5 = r5;
-    GUEST_CALL(sub_81255F8);
+    GUEST_CALL(menu_tickInput_81255F8);
     return (call_sub_81255F8_result){ R5, R8, R9, R10, R12 };
 }
 
@@ -3577,7 +3577,7 @@ Next sub_81254FC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_81255F8 ── */
+/* ── menu_tickInput_81255F8 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r10; } call_menu_confirmExitAndFade_812580C_result_sub_81255F8;
 /* register form: generated wrapper: menu_confirmExitAndFade_812580C has no typed C interface yet */
@@ -3609,7 +3609,7 @@ static inline call_sub_8125820_result_sub_81255F8 call_sub_8125820_sub_81255F8(u
     return (call_sub_8125820_result_sub_81255F8){ R5, R7, R9, R10, R12 };
 }
 
-/* sub_81255F8 — menu input tick.
+/* menu_tickInput_81255F8 — menu input tick.
  * Checks pressed L/R and held L/R, plus a pending navigation operation stored at
  * state+0x5C.  When the operation is set the cursor word at +0x1C is temporarily
  * overwritten with it so that submenu_moveListCursor can switch the menu layout; afterwards the
@@ -3693,11 +3693,11 @@ static u32 tick_menu_input(u32 r0_in, u32 r2_in, u32 state, u32 toolkit) {
     return r0_in;
 }
 
-/* sub_81255F8(r0=?, r2=?, r5=menu-state, r10=toolkit, lr=return)
+/* menu_tickInput_81255F8(r0=?, r2=?, r5=menu-state, r10=toolkit, lr=return)
  *   outputs: r8, r9, r12   (r5, r10 preserved)
  *   clobbers: r0-r3, flags, lr
  */
-Next sub_81255F8(void) {
+Next menu_tickInput_81255F8(void) {
     R8 = tick_menu_input(R0, R2, R5, R10);
     RETURN_TO_CALLER();
 }

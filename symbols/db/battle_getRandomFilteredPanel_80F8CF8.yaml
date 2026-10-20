@@ -1,0 +1,80 @@
+name: battle_getRandomFilteredPanel_80F8CF8
+address: '0x080F8CF8'
+kind: function
+status: confirmed
+summary: Picks a random 3x3 battle-grid panel matching column/row filters, falling back to an except-current
+  list, then to raw battle-state coordinates.
+interface: u32 battle_getRandomFilteredPanel_80F8CF8(u32 col_filter /*r2*/, u32 row_filter /*r3*/, BattleState*
+  bstate /*r5*/); -> r0=panel index (0-7), r1=row/type nibble; r5,r7 preserved; nzcv,r2,r3,lr clobbered.
+details: 'Reads a mode byte from bstate+0x13 and uses it (with col_filter=r2, row_filter=r3) to query
+  object_getPanelsIgnoreColumnFiltered into a 32-byte stack buffer at sp+8. If that returns zero panels,
+  retries via object_getPanelsExceptCurrentFiltered (passing bstate directly). If both lists are empty,
+  outputs the raw row byte (bstate+0x12) and column byte (bstate+0x13) as r1 and r0 respectively. Otherwise,
+  calls GetPositiveSignedRNG, takes the result modulo the panel count via SWI 6 (ARM divide), indexes
+  the buffer, and decodes the selected panel byte: bits 0-2 give the panel index within the column (r0),
+  bits 4-7 give the row/type nibble (r1). The 0x20-byte stack frame holds the filter args and the panel-list
+  buffer.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80F8CF8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F8CF8
+
+    ./wf verify --function sub_80F8CF8 --snapshots build-snapshots'
+  result: 'captured calls: 9 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    177 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F8CF8
+
+    ./wf verify --function sub_80F8CF8 --snapshots build-snapshots'
+  result: 46 compared, 0 differed, 47 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F8CF8
+
+    ./wf verify --function sub_80F8CF8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080f8cf8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F8CF8 -> battle_getRandomFilteredPanel_80F8CF8
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+- chips
+open_questions:
+- Exact meaning of 'mode byte' at bstate+0x13 — is it a chip-activation filter, a movement mode, or a
+  panel-type selector?
+- What does the high nibble (bits 4-7) of a panel byte encode — row index, panel type (e.g. cracked/water/hole),
+  or both?
+- Are col_filter/row_filter 0-2 grid coordinates or bitmask values?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80F8CF8

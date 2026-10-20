@@ -1,0 +1,97 @@
+name: battle_loadBgTileset_801DE82
+address: '0x0801DE82'
+kind: function
+status: confirmed
+summary: Loads the battle background tileset into VRAM and marks it as initialized.
+interface: void battle_loadBgTileset_801DE82(SceneStruct *scene /*r5*/)
+details: 'Reads the tileset page selector (byte at scene+0x18). A value of 0 is remapped
+
+  by subtracting 2 so the subsequent (page-1)*32 arithmetic wraps into a
+
+  negative index into the page table at byte_86E1CD8, effectively selecting a
+
+  special/offset entry. The selected 32-byte row (likely tile-format/VRAM
+
+  metadata) is queued via QueueEightWordAlignedGFXTransfer into the tile
+
+  transfer buffer at unk_3001A80. CopyBackgroundTiles is then called with
+
+  (j=6, i=0, block=3, tileIds=word_801EDB4, jSize=0x12, iSize=2) to blit a
+
+  6×2 grid of 32×32 tile blocks into BG VRAM block 3. Finally, bit 0x11 is
+
+  set in the loaded-flag structure (via flagSetBits_eStruct2035280_801BEB8),
+
+  preventing this tileset from being reloaded. The function preserves r4, r5,
+
+  r6, r7 (pushed/popped) but leaves r0–r3 and flag bits in the clobbered
+
+  state from its callees.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_801B9E6.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_801DE82
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_801DE82
+
+    ./wf verify --function sub_801DE82 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_801DE82
+
+    ./wf verify --function sub_801DE82 --snapshots build-snapshots'
+  result: 50 compared, 0 differed, 44 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_801DE82
+
+    ./wf verify --function sub_801DE82 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0801de82 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2_801B9E6.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_801DE82 -> battle_loadBgTileset_801DE82
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_801B9E6.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What does scene+0x18 represent exactly – a per-battle tileset ID or a page index into a multi-page ROM
+  table?
+- What is the significance of the 0→-2 remap (page 0)? Does it select a 'no tileset' or shared/default
+  entry?
+- r10 is listed as a caller-passed input but is not read in the disassembly – likely an artifact or an
+  ABI convention the callee ignores.
+- What is the relationship between the 32-byte row transfer (metadata/character set) and the 6×2 tile
+  blit (map data)?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_801DE82

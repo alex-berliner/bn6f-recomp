@@ -1,0 +1,78 @@
+name: battle_dispatchAttackByHitElement_810B06A
+address: '0x0810B06A'
+kind: function
+status: confirmed
+summary: Jump-table dispatch that selects and executes the AI attack behaviour matching the hit-element
+  byte of the current attack vars.
+interface: void battle_dispatchAttackByHitElement(u32 aiAttackVars /*r7*/) -> void
+details: "Reads oAIAttackVars_HitElement (byte) from the structure pointed to by r7,\nindexes the 5-entry\
+  \ jump table at off_810B07C, and branches (bx r1) into the\nselected handler.  The push {r6,lr} / pop\
+  \ {r6,pc} frame preserves r6 and the\noriginal caller return address so each handler can simply tail-pop\
+  \ back to\nthe dispatch caller.  The five table entries are:\n  0 -> ai_slideLungeAttackStart  (default\
+  \ / no-element fallback)\n  1 -> ai_lungeTowardTargetPanel (lunge toward target)\n  2 -> ai_setAttackTargetPanel\
+  \   (set / lock target panel)\n  3 -> ai_lungeTowardTargetPanel (same handler as element 1)\n  4 ->\
+  \ ai_endAttackIntoMove      (finish attack and transition to movement)\nThe dispatcher itself only touches\
+  \ r0, r1, r6, lr, and NZCV; every other\nregister (r2-r5, r7-r12) passes through unchanged, though the\
+  \ handlers may\nfreely overwrite them.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_810B06A
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_810B06A
+
+    ./wf verify --function sub_810B06A --snapshots build-snapshots'
+  result: 'captured calls: 12 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_810B06A
+
+    ./wf verify --function sub_810B06A --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 18 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_810B06A
+
+    ./wf verify --function sub_810B06A --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^0810b06a ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_810B06A -> battle_dispatchAttackByHitElement_810B06A
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Why does element 3 map to ai_lungeTowardTargetPanel instead of a distinct handler—was there a planned
+  variant that was collapsed?
+- Does element 0 truly mean 'no element' or is it a sentinel for 'slide/lunge attack start' specifically?
+- Are elements beyond 4 possible, or is the table the complete domain of HitElement?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_810B06A

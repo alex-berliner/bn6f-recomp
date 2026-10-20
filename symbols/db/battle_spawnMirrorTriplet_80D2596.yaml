@@ -1,0 +1,76 @@
+name: battle_spawnMirrorTriplet_80D2596
+address: '0x080D2596'
+kind: function
+status: confirmed
+summary: Spawns three Type 6F battle objects as a mirrored triplet, with a slot base derived from the
+  parent object's alliance XOR direction-flip.
+interface: battle_spawnMirrorTriplet(BattleObject *r5, u32 r2, u32 r3, u32 *r4, BattleObject **r5, BattleObject
+  **r6) -> r1=lastResult, r5=accumPtr5, r6=accumPtr6; preserves r2, r3, r4
+details: Reads oBattleObject_Alliance and oBattleObject_DirectionFlip from r5, computes XOR, negates,
+  multiplies by 5, adds 6 to get a slot base (effectively 6 when alliance==flip, 5 when they differ).
+  Calls battle_spawnType6FAndInitObject_80D2580 three times with slot indices 1, 2, 3, chaining r4/r5/r6
+  forward so each successive call initialises the next object in the triplet. r2 and r3 are saved/restored
+  around every call because the callee may clobber them. The embedded data table (0x4040401, then byte
+  pairs 8,0 / C,0 / 10,0 / 18,0) sits just past the function and likely indexes into sprite/animation
+  parameters consumed by the callee.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80D2596
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80D2596
+
+    ./wf verify --function sub_80D2596 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80D2596
+
+    ./wf verify --function sub_80D2596 --snapshots build-snapshots'
+  result: 25 compared, 0 differed, 66 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80D2596
+
+    ./wf verify --function sub_80D2596 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^080d2596 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80D2596 -> battle_spawnMirrorTriplet_80D2596
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80C6CE4.c
+coverage:
+- beastsp
+open_questions:
+- What visual or gameplay role does a Type 6F triplet serve (afterimage, ghost-net, mirror NetCave effect)?
+- Are the three slots always contiguous in the object pool or does the callee allocate them dynamically?
+- What are r2 and r3 at the call site (coordinates? palette?) that the callee consumes but this function
+  merely forwards?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80D2596

@@ -1,0 +1,80 @@
+name: initBattleNaviData_8013554
+address: '0x08013554'
+kind: function
+status: confirmed
+summary: Initialize a 100-byte battle NetNavi struct with default fields, sentinel ranges, and a stat
+  value pulled from the Navi stats table.
+interface: void initBattleNaviData_8013554(BattleNaviData *navi /* r0 */); r10 provides the Navi stats
+  table base; returns with the struct pointer preserved in r4.
+details: "Zero-fills 0x64 (100) bytes at r0 via ZeroFillByWord, then writes fixed default byte fields:\n\
+  \  +0x04 = 0x46 (navi type/identity marker),\n  +0x08/+0x09/+0x0A/+0x0B = 0x00/0x04/0x05/0x05 (action-state\
+  \ defaults),\n  +0x0C = 0x01 (active flag),\n  +0x0E = 0x99 (state/sub-state sentinel),\n  +0x27 = 0x1F\
+  \ (timer or animation counter default).\nCalls GetNaviStatsHword(1, 0x42) — argument 0 likely selects\
+  \ the \"current player Navi\" slot,\n0x42 is the stat index (possibly attack power or max HP). The returned\
+  \ hword is stored at\noffsets 0x3E, 0x40, and 0x42 (three adjacent hword slots, probably cur-HP / max-HP\
+  \ / attack).\nByte ranges 0x2E–0x30 and 0x56–0x5B are filled with 0xFF as \"unset/invalid\" sentinels\
+  \ so\nlater logic can detect uninitialized sub-fields.\nr10 is read implicitly by GetNaviStatsHword\
+  \ (global Navi-stats table pointer). r2 is preserved.\n"
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2_8012BA2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_8013554
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8013554
+
+    ./wf verify --function sub_8013554 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8013554
+
+    ./wf verify --function sub_8013554 --snapshots build-snapshots'
+  result: 9 compared, 0 differed, 85 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8013554
+
+    ./wf verify --function sub_8013554 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^08013554 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2_8012BA2.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8013554 -> initBattleNaviData_8013554
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2_8012BA2.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What exactly does stat index 0x42 represent—attack, max-HP, or a combined slot?
+- Is the first argument to GetNaviStatsHword (value 1) a Navi index, a 'player-side' flag, or an enum?
+- Does 0x46 at +0x04 encode a specific Navi model, or is it a generic 'battle Navi' type tag?
+- Why does the stat hword get written to three adjacent offsets (0x3E/0x40/0x42)? Duplicate init for HP
+  and attack that later diverge?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_8013554

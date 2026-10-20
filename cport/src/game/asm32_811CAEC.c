@@ -204,7 +204,7 @@ Next battleObject_getUnk_0cPtr_811CC68(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811DF1C ── */
+/* ── battle_dispatchWeatherCompHandler_811DF1C ── */
 /* Jump-table offsets (selector byte at object+8 is a direct byte offset into this table) */
 #define WEATHER_TABLE_ENTRY_COUNT 3
 
@@ -227,8 +227,8 @@ static void sub_811DF1C_run(u32 object) {
     call_weather_handler(handler, selector);
 }
 
-/* sub_811DF1C(r5 = battle object) -> r2,r3,r5,r10,r11 set by handler */
-Next sub_811DF1C(void) {
+/* battle_dispatchWeatherCompHandler_811DF1C(r5 = battle object) -> r2,r3,r5,r10,r11 set by handler */
+Next battle_dispatchWeatherCompHandler_811DF1C(void) {
     sub_811DF1C_run(R5);
     RETURN_TO_CALLER();
 }
@@ -304,19 +304,19 @@ static inline void call_sprite_setCoordinates(u32 r0, u32 r1, u32 r5) {
 }
 
 typedef struct { u32 r2, r3, r5; } call_sub_811DF94_result;
-/* register form: generated wrapper: sub_811DF94 has no typed C interface yet */
+/* register form: generated wrapper: battle_rosterIconUpdate_811DF94 has no typed C interface yet */
 static inline call_sub_811DF94_result call_sub_811DF94(u32 r5, u32 r6) {
     R5 = r5;
     R6 = r6;
-    GUEST_CALL(sub_811DF94);
+    GUEST_CALL(battle_rosterIconUpdate_811DF94);
     return (call_sub_811DF94_result){ R2, R3, R5 };
 }
 
 /* battleObject_initNaviRosterEntry_811DF40 — set up one navi battle object.
  * r5 points at the battle object being initialized, r1 is forwarded to the
  * shared sprite helper at loc_8002774, and r6 selects the roster entry that
- * the final sub_811DF94 step fills in. The r2/r3/r5 triple that
- * sub_811DF94 leaves behind is this function's result. */
+ * the final battle_rosterIconUpdate_811DF94 step fills in. The r2/r3/r5 triple that
+ * battle_rosterIconUpdate_811DF94 leaves behind is this function's result. */
 
 /* Helper for the one call without a generated wrapper: the shared sprite
  * setup routine at loc_8002774, called here as (0x3B, r1). */
@@ -356,7 +356,7 @@ Next battleObject_initNaviRosterEntry_811DF40(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_811DF94 ── */
+/* ── battle_rosterIconUpdate_811DF94 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: sprite_setAnimation has no typed C interface yet */
 static inline void call_sprite_setAnimation(u32 r0, u32 r5) {
@@ -455,8 +455,8 @@ static call_sprite_update_result update_roster_icon(u32 sprite, u32 state) {
     return call_sprite_update(sprite);
 }
 
-/* sub_811DF94(r5 = sprite ptr, r6 = roster-entry ptr) -> r2, r3, r5 */
-Next sub_811DF94(void) {
+/* battle_rosterIconUpdate_811DF94(r5 = sprite ptr, r6 = roster-entry ptr) -> r2, r3, r5 */
+Next battle_rosterIconUpdate_811DF94(void) {
     call_sprite_update_result result = update_roster_icon(R5, R6);
     R2 = result.r2;
     R3 = result.r3;
@@ -3397,7 +3397,7 @@ Next sub_8120B54(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8120BE4 ── */
+/* ── pet_copyNaviStatsToCurrent_8120BE4 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r3; bool c, v; } call_GetCurPETNaviStatsByte_result;
 /* register form: generated wrapper: GetCurPETNaviStatsByte has no typed C interface yet */
@@ -3462,8 +3462,8 @@ static void copy_pet_navi_stats(void) {
     call_SetCurPETNaviStatsByte(target);
 }
 
-/* sub_8120BE4() -> r2, r3 (from last SetCurPETNaviStatsByte callee) */
-Next sub_8120BE4(void) {
+/* pet_copyNaviStatsToCurrent_8120BE4() -> r2, r3 (from last SetCurPETNaviStatsByte callee) */
+Next pet_copyNaviStatsToCurrent_8120BE4(void) {
     copy_pet_navi_stats();
     RETURN_TO_CALLER();
 }

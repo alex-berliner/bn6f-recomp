@@ -1,0 +1,75 @@
+name: story_checkEntryAlliance_8034E88
+address: '0x08034E88'
+kind: function
+status: confirmed
+summary: Determines whether a menu/story entry is accessible given the player's current alliance and relevant
+  event flags.
+interface: u32 story_checkEntryAlliance_8034E88(u32 r0=entry, u32 r1=category, u32 r4=alliance) -> r1=result(1=selectable,
+  0=not, or mismatched byte), r2=byte-table pointer; nz flags reflect cmp of r1 against alliance
+details: 'Looks up a category-specific byte table (off_8034EDC has three entries: byte_8034EE8 for cat
+  0, byte_8034EEE for cat 1, byte_8034EEF for cat 2). For category 0, special shortcuts apply: entry 6
+  is selectable iff event flag 0xE00 is not set; entry 10 is always selectable. Otherwise reads table_byte
+  = *(table + (entry>>1)) and compares to r4 (current alliance). On mismatch the raw table_byte is returned
+  in r1 with nz flags reflecting the inequality. On match, entry 8 is selectable only if flag 0x0084 is
+  clear; all other matched entries return r1=0 (caller must handle). r7 is saved/restored; r10 is accepted
+  per caller contract but unused here.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm03_1_0.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_8034E88
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8034E88
+
+    ./wf verify --function sub_8034E88 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    295 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8034E88
+
+    ./wf verify --function sub_8034E88 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 90 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8034E88
+
+    ./wf verify --function sub_8034E88 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08034e88 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm03_1_0.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8034E88 -> story_checkEntryAlliance_8034E88
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm03_1_0.c
+coverage:
+- beastsp
+open_questions:
+- What are the semantic meanings of alliance codes 0xF7,0xF8,0xF9,0xFB,0xF4?
+- Does r1=0 on alliance-match (non-entry-8) mean 'not selectable' or 'defer to caller for further checks'?
+- What menu or battle-selection system calls this (r10 usage by callers not shown)?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_8034E88

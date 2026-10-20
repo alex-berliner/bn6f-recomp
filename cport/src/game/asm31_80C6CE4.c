@@ -615,7 +615,7 @@ Next battleObject_panelShaker_init_80C7C3C(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C7D08 ── */
+/* ── battle_tickCollisionHighlight_80C7D08 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1; } call_object_clearCollisionRegion_result_sub_80C7D08;
 /* register form: generated wrapper: object_clearCollisionRegion has no typed C interface yet */
@@ -678,8 +678,8 @@ static u32 object_tick_collision_highlight(u32 obj) {
     return r1;
 }
 
-/* sub_80C7D08(r5 = battle object pointer) -> r1 */
-Next sub_80C7D08(void) {
+/* battle_tickCollisionHighlight_80C7D08(r5 = battle object pointer) -> r1 */
+Next battle_tickCollisionHighlight_80C7D08(void) {
     R1 = object_tick_collision_highlight(R5);
     RETURN_TO_CALLER();
 }
@@ -1523,7 +1523,7 @@ Next battle_runObjects_80C8368(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80C85F4 ── */
+/* ── battle_flyToPanelPhase4_80C85F4 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0; } call_object_getFrontDirection_result_sub_80C85F4;
 /* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
@@ -1608,8 +1608,8 @@ static void sub_80C85F4_logic(u32 obj) {
     }
 }
 
-/* sub_80C85F4(r5 = battle-object pointer) -> r5 (preserved) */
-Next sub_80C85F4(void) {
+/* battle_flyToPanelPhase4_80C85F4(r5 = battle-object pointer) -> r5 (preserved) */
+Next battle_flyToPanelPhase4_80C85F4(void) {
     sub_80C85F4_logic(R5);
     RETURN_TO_CALLER();
 }
@@ -8344,10 +8344,10 @@ Next sub_80D1EE8(void) {
 /* ── object_stepUpdateByVelocity ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r5; } call_sub_80D1F0E_result;
-/* register form: generated wrapper: sub_80D1F0E has no typed C interface yet */
+/* register form: generated wrapper: battleObject_advanceEnemyTargetList_80D1F0E has no typed C interface yet */
 static inline call_sub_80D1F0E_result call_sub_80D1F0E(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_80D1F0E);
+    GUEST_CALL(battleObject_advanceEnemyTargetList_80D1F0E);
     return (call_sub_80D1F0E_result){ R0, R1, R5 };
 }
 
@@ -8377,7 +8377,7 @@ static inline call_sub_80D1FD8_result call_sub_80D1FD8(u32 r5) {
 
 /* Advance one battle object by its velocity.
  *
- * r5 is the object. sub_80D1F0E does the common pre-step work and may return
+ * r5 is the object. battleObject_advanceEnemyTargetList_80D1F0E does the common pre-step work and may return
  * an updated object pointer in r5 alongside two values in r0/r1 that the
  * movement helpers below consume. If the object has no X velocity it bounces
  * at its target column, otherwise it steers toward the target panel. Finally
@@ -8404,7 +8404,7 @@ Next object_stepUpdateByVelocity(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D1F0E ── */
+/* ── battleObject_advanceEnemyTargetList_80D1F0E ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r4, r5, r6, r7; } call_battleObject_findClosestEnemyBattleObject_80103F8_result_sub_80D1F0E;
 /* register form: generated wrapper: battleObject_findClosestEnemyBattleObject_80103F8 has no typed C interface yet */
@@ -8415,7 +8415,7 @@ static inline call_battleObject_findClosestEnemyBattleObject_80103F8_result_sub_
     return (call_battleObject_findClosestEnemyBattleObject_80103F8_result_sub_80D1F0E){ R0, R4, R5, R6, R7 };
 }
 
-/* sub_80D1F0E: Advance the extra-var enemy list for a battle object, or
+/* battleObject_advanceEnemyTargetList_80D1F0E: Advance the extra-var enemy list for a battle object, or
  * find the closest enemy when the list is exhausted. Returns two values
  * (r0, r1) read from the target object. */
 
@@ -8482,8 +8482,8 @@ static struct EnemyInfo get_enemy_info(u32 battle_obj) {
                                .r1 = LD8(target_obj + 0x13) };
 }
 
-/* sub_80D1F0E(r5 = battle object) -> r0, r1 (r5 preserved) */
-Next sub_80D1F0E(void) {
+/* battleObject_advanceEnemyTargetList_80D1F0E(r5 = battle object) -> r0, r1 (r5 preserved) */
+Next battleObject_advanceEnemyTargetList_80D1F0E(void) {
     struct EnemyInfo info = get_enemy_info(R5);
     R0 = info.r0;
     R1 = info.r1;
@@ -9112,7 +9112,7 @@ Next battleObject_initAppearOrEntryFromSide_80D2480(void) {
  * The jump table at off_80D250C is indexed by the raw CurAction byte,
  * exactly as the original's `ldr r1, [r1, r0]` does: the entries are 4
  * bytes apart and the action values step by 4, so action 0 selects
- * sub_80D2514 and action 4 selects object_updateTimerState.
+ * battleObj_stepAdvance_80D2514 and action 4 selects object_updateTimerState.
  *
  * Handlers are entered through the table with the original's
  * `mov lr, pc; bx rN` sequence, so they are reached with GUEST_CALL_ADDR.
@@ -9156,7 +9156,7 @@ Next battle_runObjectAction_80D24F0(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D2514 ── */
+/* ── battleObj_stepAdvance_80D2514 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r1, r2, r3, r5, r6; } call_convertXYToPanelXY_800E258_result;
 /* register form: generated wrapper: convertXYToPanelXY_800E258 has no typed C interface yet */
@@ -9233,8 +9233,8 @@ static void battle_object_advance(u32 obj) {
     }
 }
 
-/* sub_80D2514(r5 = battle object pointer) -> r5 (unchanged) */
-Next sub_80D2514(void) {
+/* battleObj_stepAdvance_80D2514(r5 = battle object pointer) -> r5 (unchanged) */
+Next battleObj_stepAdvance_80D2514(void) {
     battle_object_advance(R5);
     RETURN_TO_CALLER();
 }
@@ -9315,7 +9315,7 @@ Next battle_spawnType6FAndInitObject_80D2580(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D2596 ── */
+/* ── battle_spawnMirrorTriplet_80D2596 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r1, r4, r5, r6; } call_sub_80D2580_result;
 /* register form: generated wrapper: battle_spawnType6FAndInitObject_80D2580 has no typed C interface yet */
@@ -9359,8 +9359,8 @@ static sub_80D2596_result process_battle_object_slots(u32 obj, u32 r2, u32 r3,
     return (sub_80D2596_result){ .r1 = s3.r1, .r5 = s3.r5, .r6 = s3.r6 };
 }
 
-/* sub_80D2596(r2, r3, r4, r5=battle_obj, r6) -> r1, r5, r6; preserves r2, r3, r4 */
-Next sub_80D2596(void) {
+/* battle_spawnMirrorTriplet_80D2596(r2, r3, r4, r5=battle_obj, r6) -> r1, r5, r6; preserves r2, r3, r4 */
+Next battle_spawnMirrorTriplet_80D2596(void) {
     /* register form: the three call_sub_80D2580 wrappers write R2/R3 as arguments
      * and battle_spawnType6FAndInitObject_80D2580 may clobber them; the original uses push/pop {r0,r2,r3}
      * around each call to guarantee R2/R3 survive the sequence. */
@@ -10179,7 +10179,7 @@ Next battle_killObjectByHpDrain_80D45EC(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D4604 ── */
+/* ── battleObject_runThunderboltPhase_80D4604 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 /* register form: generated wrapper: object_clearCollisionRegion has no typed C interface yet */
 static inline void call_object_clearCollisionRegion_sub_80D4604(u32 r5) {
@@ -10272,7 +10272,7 @@ static sub_80D4604_result process_thunderbolt_object(u32 object, u32 in_r1) {
     return (sub_80D4604_result){ spawn_res.r1, spawn_res.r5 };
 }
 
-Next sub_80D4604(void) {
+Next battleObject_runThunderboltPhase_80D4604(void) {
     u32 saved_r4 = R4;
     u32 saved_r6 = R6;
     sub_80D4604_result res = process_thunderbolt_object(R5, R1);
@@ -11160,10 +11160,10 @@ static inline call_IsR2BetweenR0AndR1_result_object_updateSlideMovement call_IsR
     return (call_IsR2BetweenR0AndR1_result_object_updateSlideMovement){ R0, R3 };
 }
 
-/* register form: generated wrapper: sub_80D8BBC has no typed C interface yet */
+/* register form: generated wrapper: battle_stepToFrontPanel_80D8BBC has no typed C interface yet */
 static inline void call_sub_80D8BBC(u32 r5) {
     R5 = r5;
-    GUEST_CALL(sub_80D8BBC);
+    GUEST_CALL(battle_stepToFrontPanel_80D8BBC);
 }
 
 /* register form: generated wrapper: object_setCoordinatesFromPanels has no typed C interface yet */
@@ -11424,7 +11424,7 @@ Next battle_timedSelfDestructState(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_80D8BBC ── */
+/* ── battle_stepToFrontPanel_80D8BBC ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0; } call_object_getFrontDirection_result_sub_80D8BBC;
 /* register form: generated wrapper: object_getFrontDirection has no typed C interface yet */
@@ -11461,8 +11461,8 @@ static void step_to_front_panel(u32 object) {
     ST32(object + oBattleObject_ExtraVars, coords.r0);
 }
 
-/* sub_80D8BBC(r5 = object) -> r2 (pixel X from getCoordinatesForPanels) */
-Next sub_80D8BBC(void) {
+/* battle_stepToFrontPanel_80D8BBC(r5 = object) -> r2 (pixel X from getCoordinatesForPanels) */
+Next battle_stepToFrontPanel_80D8BBC(void) {
     step_to_front_panel(R5);
     RETURN_TO_CALLER();
 }

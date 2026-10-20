@@ -2421,7 +2421,7 @@ Next ai_clearAttackVars(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_8011AF2 ── */
+/* ── battle_setupAIAttackVars_8011AF2 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r0, r2, r3, r4, r5, r6; } call_computeBeastDamageCap_801265A_result;
 /* register form: generated wrapper: computeBeastDamageCap_801265A has no typed C interface yet */
@@ -2455,7 +2455,7 @@ static inline call_battle_getAllianceEntryStatus_802E4B8_result call_battle_getA
     return (call_battle_getAllianceEntryStatus_802E4B8_result){ R0, R7 };
 }
 
-/* sub_8011AF2: Set up AI attack variables for the current enemy.
+/* battle_setupAIAttackVars_8011AF2: Set up AI attack variables for the current enemy.
  * Clamps beast damage to 5, zeroes auxiliary fields, queries navi stats,
  * and determines whether this is a special sub-step (status 0xD or
  * navi-ID 0x18) with timer 8 versus the normal timer 0.
@@ -2544,8 +2544,8 @@ static struct sub_8011AF2_ret setup_ai_attack_vars(u32 battle_obj, u32 ai_vars) 
     return ret;
 }
 
-/* sub_8011AF2(r5 = battle object, r7 = AI attack vars, r10 = alliance ctx) -> r0=0x1E, r1=timer */
-Next sub_8011AF2(void) {
+/* battle_setupAIAttackVars_8011AF2(r5 = battle object, r7 = AI attack vars, r10 = alliance ctx) -> r0=0x1E, r1=timer */
+Next battle_setupAIAttackVars_8011AF2(void) {
     struct sub_8011AF2_ret result = setup_ai_attack_vars(R5, R7);
     R0 = result.r0;
     R1 = result.r1;

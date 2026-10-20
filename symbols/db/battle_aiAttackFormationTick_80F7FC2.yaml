@@ -1,0 +1,83 @@
+name: battle_aiAttackFormationTick_80F7FC2
+address: '0x080F7FC2'
+kind: function
+status: confirmed
+summary: 'One tick of the AI attack formation-to-hit timer: first call sets up the attack formation and
+  computes a step-count duration; subsequent calls decrement that counter and, once it expires, transition
+  the attack into its hit phase.'
+interface: battle_aiAttackFormationTick_80F7FC2(r5 /*battleObject*/, r7 /*aiAttackVars*/, r1 /*pass-through*/)
+  -> r1, r5; r4 r5 r6 r7 preserved; clobbers r0 r2 r3 lr NZCV
+details: 'Branches on aiAttackVars.AttackElement (u8). If 0 (initialization pass): writes AttackElement
+  = 4 to mark the attack active, reads battleObject.PanelX/PanelY and aiAttackVars.InitFlag, looks up
+  aiAttackVars.AiDifficultyTier in a 32-bit table at 0x080F8010 (entry byte at offset tier), packs tier|lookup<<16|boost2<<8
+  into r4 and boost2<<8 into r3, passes damage (aiAttackVars.Damage, u32) in r6, then calls sub_80C92CC
+  to place/scale the attack formation. Computes StepTimer (u16) as 4*lookup[tier]*AttackBoost2 + lookup[tier]
+  and stores it. Returns without touching r1. If AttackElement is already non-zero (timer pass): decrements
+  StepTimer (u16) using 32-bit arithmetic with sign compare; when the result is <= 0, writes HitElement
+  (u16) = 0x14 to signal the hit phase. r1 is passed through untouched in both branches. The table at
+  0x080F8010 is read byte-per-tier-index and currently holds the dword 0x0C0E1012 (tiers 0–3 map to 0x12,
+  0x10, 0x0E, 0x0C).
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80F7FC2
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F7FC2
+
+    ./wf verify --function sub_80F7FC2 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    171 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F7FC2
+
+    ./wf verify --function sub_80F7FC2 --snapshots build-snapshots'
+  result: 15 compared, 0 differed, 73 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F7FC2
+
+    ./wf verify --function sub_80F7FC2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080f7fc2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F7FC2 -> battle_aiAttackFormationTick_80F7FC2
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- 'Exact role of sub_80C92CC: what formation/damage geometry does it apply to the battle object?'
+- Meaning of element value 4 for AttackElement and 0x14 for HitElement (which specific attacks/sprites).
+- What the InitFlag byte controls inside sub_80C92CC.
+- Whether HitElement=0x14 triggers a separate hit-state handler or is polled by the main AI loop.
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80F7FC2

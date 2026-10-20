@@ -1,0 +1,81 @@
+name: ow_calcMapTileOffset_8142D58
+address: '0x08142D58'
+kind: function
+status: confirmed
+summary: Computes a byte offset within the area map tile array by adjusting the current camera offset
+  by the signed distance from the tile-grid center.
+interface: u32 ow_calcMapTileOffset_8142D58(void) /* reads [eMapTilesState200be70], [unk_2000B40+8]; clobbers
+  r0-r2, n, c, v; returns offset in r0; r4-r7, r5, r10, lr preserved */
+details: Reads the tile-count byte from the global pointer eMapTilesState200be70 (= 0x200BE70) and the
+  camera position byte from unk_2000B40+8 (= 0x2000B48). The position is treated as a signed offset centred
+  at 0x80 (128). The magnitude delta is computed, then multiplied by 4*(tileCount−2) to yield a row-stride-scaled
+  byte offset. ow_getAreaMapTilesOffset() supplies the current base offset; the result is added to it
+  (camera left of centre) or subtracted from it (camera right of centre). All arithmetic wraps in unsigned
+  32-bit as the ARM code implies; the subtraction of tileCount by 2 can underflow when tileCount is 0
+  or 1, producing a large unsigned multiplier.
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm37_1.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_8142D58
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8142D58
+
+    ./wf verify --function sub_8142D58 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    299 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8142D58
+
+    ./wf verify --function sub_8142D58 --snapshots build-snapshots'
+  result: 96 compared, 0 differed, 0 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8142D58
+
+    ./wf verify --function sub_8142D58 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08142d58 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm37_1.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8142D58 -> ow_calcMapTileOffset_8142D58
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm37_1.c
+coverage:
+- beastsp
+related:
+- sub_8142CB0
+open_questions:
+- What does tileCount−2 represent—number of tile rows excluding first and last?
+- Why does ow_getAreaMapTilesOffset() take no parameters; does it read a global camera state that this
+  function also depends on?
+- The contract lists r5 as both output and preserved; is the loaded tile-state pointer expected to be
+  visible to callers after the pop?
+- Confirm that the unsigned wrap-around behaviour for small tileCount values is intentional or a latent
+  bug.
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_8142D58

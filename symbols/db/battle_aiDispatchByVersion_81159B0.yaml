@@ -1,0 +1,88 @@
+name: battle_aiDispatchByVersion_81159B0
+address: '0x081159B0'
+kind: function
+status: confirmed
+summary: Selects a battle-AI handler from a version-indexed jump table and invokes it for the given battle
+  object, storing the return value in the object's extra-vars slot.
+interface: battle_aiDispatchByVersion_81159B0(BattleObject *obj /*r5*/, u32 r2, u32 r3) -> (r0-r3, NZCV)
+  /* r4-r7 preserved */
+details: 'Reads obj->AIDataPtr (oBattleObject_AIDataPtr), then the single-byte version field at
+
+  oAIData_Version_16 (0–3 in practice). Multiplies by 4 to index the word-sized jump table
+
+  at byte_8115980 (label off_8115BB8) and loads the chosen handler address into r6.
+
+  Calls battle_spawnType2LinkedChild / sub_80B8786 which acts as the actual AI dispatch
+
+  trampoline (it uses r6 as the handler pointer). The u32 result in r0 is stored back into
+
+  obj->ExtraVars (oBattleObject_ExtraVars). r2 and r3 are pass-through parameters to the
+
+  selected AI routine (context values such as a target index or action id). Flags r0-r3
+
+  and NZCV propagate from the handler call; r4-r7 are saved/restored via the push/pop
+
+  {r4,r6,lr} prologue.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm32.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_81159B0
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81159B0
+
+    ./wf verify --function sub_81159B0 --snapshots build-snapshots'
+  result: 'captured calls: 1 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81159B0
+
+    ./wf verify --function sub_81159B0 --snapshots build-snapshots'
+  result: 2 compared, 0 differed, 90 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81159B0
+
+    ./wf verify --function sub_81159B0 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^081159b0 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm32.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_81159B0 -> battle_aiDispatchByVersion_81159B0
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm32.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What does the value returned in r0 (stored in ExtraVars) represent in the AI state machine?
+- What is the exact semantics of the r2 and r3 pass-through parameters for each version handler?
+- Are there more than 4 entries in the byte_8115980 table, or is oAIData_Version_16 strictly 0-3?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_81159B0

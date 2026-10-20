@@ -2697,7 +2697,7 @@ Next setupBattleBackground_801DDF6(void) {
     RETURN_TO_CALLER();
 }
 
-/* ── sub_801DE82 ── */
+/* ── battle_loadBgTileset_801DE82 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
 typedef struct { u32 r6, r7; } call_QueueEightWordAlignedGFXTransfer_result;
 /* register form: generated wrapper: QueueEightWordAlignedGFXTransfer has no typed C interface yet */
@@ -2751,8 +2751,8 @@ static void load_background_tileset(u32 scene) {
     call_flagSetBits_eStruct2035280_801BEB8_sub_801DE82(1u << 0x11);
 }
 
-/* sub_801DE82(r5 = scene struct pointer) -> preserves r4, r5; sets r0-r3, r6, r7 via callees */
-Next sub_801DE82(void) {
+/* battle_loadBgTileset_801DE82(r5 = scene struct pointer) -> preserves r4, r5; sets r0-r3, r6, r7 via callees */
+Next battle_loadBgTileset_801DE82(void) {
     u32 saved_r4 = R4, saved_r5 = R5;
     load_background_tileset(R5);
     R4 = saved_r4;

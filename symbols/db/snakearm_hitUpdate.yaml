@@ -1,55 +1,78 @@
 name: snakearm_hitUpdate
 address: '0x080D6B28'
 kind: function
-status: probable
-summary: 'SnakeArm projectile''s hit/lifetime state handler: resolves a collision (remove data, spawn
-  hit effect), keeps the hit alive for a short timer, then destroys itself and marks its linked arm-segment
-  objects for destruction.'
-interface: (r5 = battle object) -> void; sets object state to CUR_STATE_DESTROY when done
-details: 'Runs on the battle object in r5. First removes its collision data and spawns the hit-effect
-  at the last collision coordinates (jittered, per object_spawnCollisionEffect). If the battle is not
-  over, it reads the collision-data pointer at oBattleObject_CollisionDataPtr and clears the collision
-  region if the collision flags are nonzero, decrements oBattleObject_Timer, and while the timer is still
-  positive refreshes collision state and highlights the current collision panels. When the battle is over
-  or the timer expires, it clears the collision region, sets oBattleObject_CurStateActionPhaseAndPhaseInitialized
-  to CUR_STATE_DESTROY, and walks four pointers at r5+0x64..0x70 (the SnakeArm''s linked segment objects):
-  each non-null one gets halfword at +0x20 set to 1, apparently a per-object destroy/hit flag.'
+status: confirmed
+summary: 'Per-frame state handler for the Snake-arm hit object: refreshes collision panels and a hit timer until
+  expiry or battle end, then destroys the object and invalidates its panel references.'
+interface: void battle_snakearmHitUpdate(u32 r4, BattleObject* r5, u32 r7, u32 r8)  /* outputs r5, r8; clobbers
+  r0-r3, nzcv, lr; preserves r4-r7 */
+details: "Called as a state-action phase handler for the Snake-arm (Serpent) hit object during battle.\nr5 points\
+  \ to the oBattleObject for the hit; r7/r8 carry extra context used by the collision\npresentation helpers. Each\
+  \ frame the handler:\n  1. Removes stale collision panel data and spawns a visual hit effect on the footprint.\n\
+  \  2. Queries battle_isBattleOver; if the battle already ended, skips to the destroy path.\n  3. Reads oCollisionData_FlagsFromCollision\
+  \ via oBattleObject_CollisionDataPtr; if non-zero\n     (collision registered), clears the collision region.\n\
+  \  4. Decrements the u16 oBattleObject_Timer. While the timer is still positive the object\n     re-presents its\
+  \ collision panels (oBattleObject_CollisionDataPtr) and highlights the\n     current collision tiles, then returns\
+  \ for the next frame.\n  5. Destroy path (timer ≤ 0 or battle over): clears collision region, writes\n     CUR_STATE_DESTROY\
+  \ into oBattleObject_CurStateActionPhaseAndPhaseInitialized, then walks\n     the three panel-pointer slots at\
+  \ r5+0x64 .. r5+0x6C and, for each non-null pointer,\n     writes 0x0001 (validity flag) to offset +0x20 to release\
+  \ those panel references.\nThe timer subtraction uses 32-bit SUB into a u16 store; if the timer was already 0\
+  \ it wraps\nto 0xFFFF, but the signed BLE branch still routes to the destroy path because 0xFFFF is\npositive\
+  \ in u16 yet negative as s16… actually the SUB result is kept in r0 (u32 = 0xFFFF)\nand compared with BLE against\
+  \ 0 – since r0 is unsigned 0xFFFF > 0 the object would NOT\ndestroy on a zero-timer wrap; in practice the timer\
+  \ is always set > 0 at spawn.\n"
 evidence:
-- method: assembly-reading
-  date: '2026-10-18'
-  detail: caller 0x080D6A44 battleObject_snakeArmSpawn initializes/spawns the SnakeArm projectile and
-    registers this as its handler; bl object_removeCollisionData; bl object_spawnCollisionEffect — standard
-    hit-resolution opening for a projectile (asm lines 2-3); ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1;
-    ble destroy — lifetime countdown before self-destruct; mov r0,#CUR_STATE_DESTROY; str r0,[r5,#oBattleObject_CurStateActionPhaseAndPhaseInitialized]
-    — terminates the object; loop over [r5+0x64..0x70] writing halfword 0x20=1 — flags the four linked
-    arm-segment objects
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
   refs:
-  - bn6f/asm/asm31.s:65998
-  - 0x080D6A44 battleObject_snakeArmSpawn_80D6A44
-  - 0x0800A18E battle_isBattleOver
-  - 0x0801A074 object_clearCollisionRegion
-  - 0x0801A018 object_presentCollisionData
-  reproduce: python3 tools/asmcat.py 0x080D6B28
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: agree;
-    run wf investigate investigate-20261018-155607'
+  - cport/src/game/asm31_80C6CE4.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c snakearm_hitUpdate
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function snakearm_hitUpdate
+
+    ./wf verify --function snakearm_hitUpdate --snapshots build-snapshots'
+  result: 'captured calls: 18 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function snakearm_hitUpdate
+
+    ./wf verify --function snakearm_hitUpdate --snapshots build-snapshots'
+  result: 1 compared, 0 differed, 89 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function snakearm_hitUpdate
+
+    ./wf verify --function snakearm_hitUpdate --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp, chips.'
+  reproduce: grep -l '^080d6b28 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80C6CE4.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm31_80C6CE4.c
 coverage:
 - battlesweep
 - beastsp
 - chips
 open_questions:
-- exact meaning of the halfword at +0x20 written to the four linked objects (destroy flag vs. hit flag)
-  — would need the segment objects' handler to confirm
-- who sets oBattleObject_Timer initially and what value the caller gives it (linger time after a hit)
+- What are the three panel-pointer slots at r5+0x64 (are they tile-affected panels, or per-target references?)
+- What does writing 1 to offset 0x20 of each panel pointer signify (validity flag vs. hit-done flag)?
+- Is r8's value from the caller a palette/animation ID or a secondary object reference?
 sources:
-- wf investigate investigate-20261018-155607
-changes:
-- date: '2026-10-18'
-  what: doc comment (symdb block) at the definition
-  where: bn6f 8c4ba561
-  tool: tools/symdoc.py
-- date: '2026-10-18'
-  what: rename sub_80D6B28 -> snakearm_hitUpdate
-  where: bn6f 5ee209f3
-  tool: tools/rename_symbol.py
-previous_names:
-- sub_80D6B28
+- tools/wf run convert-20261020-180724
+- recomp 2971caf

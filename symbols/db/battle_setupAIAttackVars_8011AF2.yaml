@@ -1,0 +1,79 @@
+name: battle_setupAIAttackVars_8011AF2
+address: '0x08011AF2'
+kind: function
+status: confirmed
+summary: 'Initialises the AI enemy''s attack-variables block for the current turn: clamps beast damage
+  to 5, clears auxiliary fields, reads navi-stat-based boosts, and selects a special sub-step/timer for
+  high-status or navi-ID-0x18 allies.'
+interface: void battle_setupAIAttackVars(u32 r5 battle_obj, u32 r7 ai_attack_vars, u32 r10 alliance_ctx)
+  → r0=0x1E, r1=timer, flags from final cmp; preserves r4–r7.
+details: 'Calls computeBeastDamageCap_801265A(r5) and stores min(result,5) as u16 into oAIAttackVars_Damage
+  (r7). Zeroes oAIAttackVars_ExtraDamage(u16), _InitFlag(u8), _ChargeReadyFlag(u8), _AttackBoost(u16),
+  _ChipUseDelay(u8), _AiDifficultyTier(u8), and _ScratchVar(u32). Fetches navi-stat byte 0x4D via GetBattleNaviStatsByte_AllianceFromBattleObject
+  and stores as oAIAttackVars_AttackBoost2(u32). Branches on battle_testFlag0x40_800A8F8: if flag absent
+  → reads navi-stat 0x2C and compares to 0x18; if flag present → reads battle_getAllianceEntryStatus_802E4B8
+  and compares to 0x0xD (also falls through to the 0x2C check). On match sets oAIAttackVars_SubStepIndex=1
+  and timer=8; otherwise timer=0. Stores timer to oAIAttackVars_TimerOrCycles(u8). Clears oAIData_TempAttackObjectPtr
+  via LD32(r5+oBattleObject_AIDataPtr). Returns 0x1E in r0 and timer in r1; flags reflect the last cmp.'
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm00_2.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_8011AF2
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_8011AF2
+
+    ./wf verify --function sub_8011AF2 --snapshots build-snapshots'
+  result: 'captured calls: 4 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    300 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_8011AF2
+
+    ./wf verify --function sub_8011AF2 --snapshots build-snapshots'
+  result: 0 compared, 0 differed, 95 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_8011AF2
+
+    ./wf verify --function sub_8011AF2 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^08011af2 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm00_2.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_8011AF2 -> battle_setupAIAttackVars_8011AF2
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm00_2.c
+coverage:
+- beastsp
+open_questions:
+- What does battle state 0x1E represent downstream (which handler consumes it)?
+- Is navi-stat 0x4D a specific power/level metric, and 0x2C a navi-ID field?
+- What alliance entry status 0x0D signifies (a particular ally behaviour tier?).
+- r10 (alliance_ctx) is listed as input in the register contract but is never used in this function body—does
+  a callee rely on it?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_8011AF2

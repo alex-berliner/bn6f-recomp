@@ -1,0 +1,80 @@
+name: battle_aiAttackStep_80FEF60
+address: '0x080FEF60'
+kind: function
+status: confirmed
+summary: 'Per-frame AI attack tick: initializes a fire-element attack on first call, then counts charge
+  cycles while highlighting panels until the step timer expires and the hit resolves.'
+interface: 'void battle_aiAttackStep(/*r5=battleObject, r7=aiAttackVars*/); /* in: r5,r7,lr; out: r1;
+  clobbers: r0,r2,r3,nzcv,lr; preserves: r4 */'
+details: Operates on an AIAttackVars struct (r7) and a BattleObject (r5). If oAIAttackVars_AttackElement
+  is 0 (first tick), sets element to 4 (Fire), animation 7 on the battle object, copies oAIAttackVars_AttackBoost2
+  (a byte) into oAIAttackVars_StepTimer (u16), zeroes oAIAttackVars_ChargeCycles, and seeds oAIAttackVars_AttackStepIndex
+  from byte 0x12 of the target object at oAIAttackVars_TargetObjectPtr. On subsequent ticks, increments
+  oAIAttackVars_ChargeCycles; when bit 2 of the counter is clear (charge cycles mod 8 != 4..7), calls
+  object_highlightPanelRegion(stepIndex, 2, 4, allianceAndDirFlip) to flash the relevant panel. Decrements
+  oAIAttackVars_StepTimer (signed compare); once it reaches zero or below, writes 0x10 to oAIAttackVars_HitElement
+  to trigger the impact phase. r1 is passed through (or overwritten by highlightPanelRegion's return in
+  r1).
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80FEF60
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80FEF60
+
+    ./wf verify --function sub_80FEF60 --snapshots build-snapshots'
+  result: 'captured calls: 28 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    226 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80FEF60
+
+    ./wf verify --function sub_80FEF60 --snapshots build-snapshots'
+  result: 7 compared, 0 differed, 84 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80FEF60
+
+    ./wf verify --function sub_80FEF60 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080fef60 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80FEF60 -> battle_aiAttackStep_80FEF60
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- Element 4 = Fire and HitElement 0x10 = what exactly? Need element ID table to confirm.
+- What is byte 0x12 of the target object (used as AttackStepIndex)? Likely a panel-region or grid index
+  field.
+- 'AttackBoost2 as a u8 stored into a u16 timer: is the value always small, or could it be a signed/unsigned
+  confusion?'
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80FEF60

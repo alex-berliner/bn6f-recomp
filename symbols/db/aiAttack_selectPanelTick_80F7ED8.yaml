@@ -1,0 +1,85 @@
+name: aiAttack_selectPanelTick_80F7ED8
+address: '0x080F7ED8'
+kind: function
+status: confirmed
+summary: 'Advances the AI panel-selection highlight state machine one frame: arms the sequence, repaints
+  the target tile, and drives the step timer toward release/hit transitions.'
+interface: u32 aiAttack_selectPanelTick(BattleObject *obj /*r5*/, AIAttackVars *vars /*r7*/, u32 r1) /*returns
+  r1; clobbers r0 r2 r3, flags*/
+details: 'Called each frame during the AI''s "select target panel" phase of an attack sequence. r5 points
+  to the owning BattleObject, r7 to the AIAttackVars block.
+
+  First entry (AttackElement == 0): writes AttackElement = 4, sets obj->CurAnim to 0x11 (selection-start
+  animation), initialises StepTimer to 0x23 (35 ticks) and zeroes ChargeCycles, then returns immediately.
+
+  Subsequent entries: increments ChargeCycles; when bit-2 of the new count is clear (checked via lsr #3
+  + bcs, i.e. every 8th frame the highlight is skipped) it loads TargetPanelX/TargetPanelY and calls object_highlightPanel
+  to repaint the cursor. Decrements StepTimer; at 0x1E (30) it switches obj->CurAnim to 0x12 (release/confirm
+  animation); at 0 or below it writes HitElement = 4 (marking the attack as landing). Values in 1..0x1D
+  cause no state change—just continued waiting.
+
+  r1 is passed through from the caller to object_highlightPanel and returned unchanged when highlight
+  is skipped.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm31_80EBE00.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c
+    sub_80F7ED8
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_80F7ED8
+
+    ./wf verify --function sub_80F7ED8 --snapshots build-snapshots'
+  result: 'captured calls: 36 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures,
+    191 out of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_80F7ED8
+
+    ./wf verify --function sub_80F7ED8 --snapshots build-snapshots'
+  result: 12 compared, 0 differed, 80 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_80F7ED8
+
+    ./wf verify --function sub_80F7ED8 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: battlesweep, beastsp.'
+  reproduce: grep -l '^080f7ed8 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm31_80EBE00.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename sub_80F7ED8 -> aiAttack_selectPanelTick_80F7ED8
+  where: bn6f 74910594
+  tool: tools/rename_symbol.py
+readable_c: cport/src/game/asm31_80EBE00.c
+coverage:
+- battlesweep
+- beastsp
+open_questions:
+- What animations 0x11 / 0x12 correspond to on the NetBattle sprite sheet (selection start vs. confirm/release)?
+- Is the every-8-frame skip of the highlight repaint intentional flicker or a throttle?
+- 'Why does the ChargeCycles wrap check use lsr #3 (bit 2) rather than a modulo on the full counter?'
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
+previous_names:
+- sub_80F7ED8

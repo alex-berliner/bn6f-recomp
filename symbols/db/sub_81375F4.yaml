@@ -1,0 +1,77 @@
+name: sub_81375F4
+address: '0x081375F4'
+kind: function
+status: hypothesis
+summary: Selects one of two u32 values (0x40000000 or 0x50000000) by index and passes them, plus fixed constants
+  0x2E40/1/2, to the common handler at loc_8001048.
+interface: void dispatchSelectedParam_81375F4(u32 arg0, u32 arg1, u32 tableIndex /*0|1*/); /* r0,r1 passed through
+  to callee; r10 preserved */
+details: 'r2 is used as a 0-based index into a 2-entry u32 array at byte_813760C
+
+  (entry 0 = 0x40000000, entry 1 = 0x50000000). The selected value becomes
+
+  the new r2 for the callee. r3 is set to 0x2E40, r4 to 1, r5 to 2 before
+
+  branching to loc_8001048 (a generic parameterized routine with no
+
+  generated wrapper). r4/r5 are saved and restored around the call so the
+
+  original caller''s values are unchanged. r0, r1, r10 are transparently
+
+  passed through. The nzcv/v flags are clobbered by the callee.
+
+  '
+evidence:
+- method: readable-c
+  date: '2026-10-20'
+  detail: Written by hyper/qwen3.8-flash through the convert workflow (3 attempt(s), run convert-20261020-180724);
+    reviewed by Claude before the commit.
+  refs:
+  - cport/src/game/asm36.c
+  reproduce: ./wf convert --subsystem 'small functions from the model farm, set 112' --file leaves_farm_112.c sub_81375F4
+- method: difftest
+  date: '2026-10-20'
+  detail: Readable vs lifted on the original's captured calls and on random inputs.
+  reproduce: './wf capture --function sub_81375F4
+
+    ./wf verify --function sub_81375F4 --snapshots build-snapshots'
+  result: 'captured calls: 40 runs, 0 failures, 0 out of domain; random inputs: 300 trials, 0 failures, 300 out
+    of domain (verify run convert-20261020-180724-verify-3)'
+- method: cpu-oracle
+  date: '2026-10-20'
+  detail: The original (mGBA, real BIOS) and the readable version from the same real states.
+  reproduce: './wf capture --function sub_81375F4
+
+    ./wf verify --function sub_81375F4 --snapshots build-snapshots'
+  result: 57 compared, 0 differed, 35 out of domain (verify run convert-20261020-180724-verify-3)
+- method: lockstep
+  date: '2026-10-20'
+  detail: Palette, VRAM and OAM identical to the original at every checkpoint.
+  reproduce: './wf capture --function sub_81375F4
+
+    ./wf verify --function sub_81375F4 --snapshots build-snapshots'
+  result: 16/16 routes identical (verify run convert-20261020-180724-verify-3)
+- method: coverage
+  date: '2026-10-20'
+  detail: 'Executed by: beastsp.'
+  reproduce: grep -l '^081375f4 ' tools/traces/coverage/*.prof
+changes:
+- date: '2026-10-20'
+  what: readable C replacement in cport/src/game/asm36.c
+  where: recomp 2971caf
+  tool: tools/wf convert (hyper/qwen3.8-flash)
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 487cf9c6
+  tool: tools/symdoc.py
+readable_c: cport/src/game/asm36.c
+coverage:
+- beastsp
+open_questions:
+- What does loc_8001048 actually do with the (0x40000000|0x50000000, 0x2E40, 1, 2) tuple – is it a DMA setup, OAM
+  copy, or scene-effect trigger?
+- Are the two source addresses in byte_813760C pointers into ROM data, or are they literal flag/mask values?
+- Is this wrapper duplicated elsewhere with a different pair of constants?
+sources:
+- tools/wf run convert-20261020-180724
+- recomp 2971caf
