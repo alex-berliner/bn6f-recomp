@@ -25,6 +25,7 @@ The output of `run_original` is a `Probe` per (function, state), which `summaris
 under build/runtime/RUN_ID/ and only then `wf record` lands them."""
 from __future__ import annotations
 
+import bisect
 import json
 import os
 import random
@@ -554,6 +555,10 @@ def _ram_symbols() -> list[tuple[int, int, str]]:
         return RAM_SYMBOLS_CACHE
     syms: dict[str, int] = symdb.elf_symbols(symdb.Cache())
     sections = _ram_sections()
+    # Every symbol's address, sorted: a symbol's end is the next one above it, and looking
+    # that up by walking all 22,000 addresses once per symbol cost 80 s of the run's budget
+    # (it is O(n^2)); `wf facts` folds 8,000 functions through this table.
+    ordered = sorted(syms.values())
     out: list[tuple[int, int, str]] = []
     for name, address in syms.items():
         section = _which_section(address, sections)
@@ -561,7 +566,7 @@ def _ram_symbols() -> list[tuple[int, int, str]]:
             continue
         if name.startswith(("sub_", "asm", "nullsub_", "dead_", "unused_")):
             continue
-        end = _symbol_end(name, address, syms)
+        end = _symbol_end(name, address, ordered)
         if end is None or end <= address:
             continue
         out.append((address, end, name))
@@ -587,16 +592,18 @@ def _which_section(address: int, sections: Sequence[tuple[int, int]]) -> tuple[i
     return None
 
 
-def _symbol_end(name: str, address: int, syms: dict[str, int]) -> int | None:
+def _symbol_end(name: str, address: int, ordered: Sequence[int]) -> int | None:
     """End of the RAM symbol: next symbol at or above ADDRESS plus something small, or the
     section's end (a symbol's bytes can spill to the next named one's start). IWRAM/EWRAM
     entries are typically small (a struct field or a buffer), so an arbitrary 0x100 cap fits
-    the common case without overlapping into adjacent objects."""
+    the common case without overlapping into adjacent objects. `ordered` is every symbol
+    address in the ELF, ascending (`_ram_symbols` builds it once)."""
     section_end = _which_section(address, _ram_sections())
     if section_end is None:
         return None
     section_start, section_high = section_end
-    next_address = min((other for other in syms.values() if other > address), default=section_high)
+    index = bisect.bisect_right(ordered, address)
+    next_address = ordered[index] if index < len(ordered) else section_high
     return min(section_high, next_address)
 
 
@@ -817,21 +824,24 @@ def summarise(function: FunctionName, address: GuestAddress, probes: Sequence[Pr
                 byte_writes[(region_of(change.address), change.address)] += change.size
     memory_writes: list[MemoryRegionWrite] = []
     byte_by_symbol: dict[str, int] = {}
+    # The distinct values written into each RAM symbol, in one pass over the probes'
+    # changes. It used to re-scan every probe's whole change list once per symbol written,
+    # which is quadratic: a map loader changes 26,000 words per call and wrote 15,000
+    # distinct addresses, so one function took eleven minutes (`wf facts` folds thousands
+    # of them). The sets are the same either way.
     distinct_by_symbol: dict[str, set[int]] = {}
+    for probe in probes:
+        if not (probe.returned and probe.exit and probe.entry):
+            continue
+        for change in probe.memory_changes:
+            if _is_io(change.address):
+                continue       # I/O writes are IOWrites, not RAM symbols
+            distinct_by_symbol.setdefault(region_of(change.address), set()).add(change.after)
     for (symbol, _address), count in byte_writes.items():
         byte_by_symbol[symbol] = byte_by_symbol.get(symbol, 0) + count
-        distinct_by_symbol.setdefault(symbol, set())
-        for probe in probes:
-            if probe.returned and probe.exit and probe.entry:
-                for change in probe.memory_changes:
-                    if _is_io(change.address):
-                        # Skip volatile I/O -- they are not real function writes.
-                        continue
-                    if region_of(change.address) == symbol:
-                        distinct_by_symbol[symbol].add(change.after)
     for symbol, total_bytes in sorted(byte_by_symbol.items(), key=lambda kv: -kv[1]):
         memory_writes.append(MemoryRegionWrite(symbol=symbol, address=0, bytes=total_bytes,
-                                               distinct_values=len(distinct_by_symbol[symbol])))
+                                               distinct_values=len(distinct_by_symbol.get(symbol, ()))))
     io: list[IOWrite] = []
     for (name, addr, size, value), count in sorted(io_writes.items(), key=lambda kv: (kv[0][1], -kv[1])):
         io.append(IOWrite(name=name, address=addr, size=size, value=value, matched=count))

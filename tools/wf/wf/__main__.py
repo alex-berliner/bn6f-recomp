@@ -26,6 +26,12 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
                        # summarise memory/I/O, judge against the current name. Output to
                        # build/runtime/RUN_ID (per-function NAME.yaml + report.tsv + contradictions.tsv).
                        # Nothing under symbols/db is touched; `wf record` applies the evidence after review.
+  python -m wf facts [--only NAME]... [--states K=8] [--jobs J=6] [--limit N]
+                       # the runtime-facts layer, for every lifted function: what the ORIGINAL game did
+                       # at runtime, from the recordings alone (route coverage, runtime callers, and
+                       # K captured calls replayed in mGBA). No model is called. Output to
+                       # build/facts (by_address/0x08XXXXXX.json per function + coverage.tsv +
+                       # progress.txt); regenerable, never committed, and cached per function.
   python -m wf record  [--symbol NAME]... [--rename OLD NEW]... [--pending] --message-file FILE
   python -m wf vidsync-run [--start CHECKPOINT|RUN] [--run NAME] [--no-deploy] [--replay PATH] [--watch-hours H]
                        [--stall-minutes 30] [--pathcheck-minutes 60] [--no-repair]   # docs/vidsync/README.md
@@ -69,6 +75,11 @@ from wf.graphs.verify import VerifyReport, VerifyState, all_readable, run_verify
 from wf.graphs.investigate import InvestigateState, run_investigate
 from wf.graphs.investigate_data import InvestigateDataState, run_investigate_data
 from wf.graphs.runtime_evidence import RuntimeEvidenceState, run_runtime_evidence, JUDGE_MODE_DEFAULT
+from wf.graphs.facts import FactsState, run_facts, summarise_report
+from wf.tools.facts import DEFAULT_STATES as DEFAULT_FACTS_STATES
+from wf.tools.facts import DEFAULT_JOBS as DEFAULT_FACTS_JOBS
+from wf.tools.facts import DEFAULT_LIMIT as DEFAULT_FACTS_LIMIT
+from wf.tools.facts import FACTS
 from wf.tools.runtime_evidence import DEFAULT_COUNT as DEFAULT_RE_COUNT
 from wf.tools.runtime_evidence import DEFAULT_MODEL as DEFAULT_RE_MODEL
 from wf.tools.runtime_evidence import DEFAULT_STATES as DEFAULT_RE_STATES
@@ -177,6 +188,14 @@ class RuntimeEvidenceCommand(BaseModel):
     contrastive: bool = False                # opt into the contrastive judge
 
 
+class FactsCommand(BaseModel):
+    command: Literal["facts"]
+    only: tuple[FunctionName, ...] = Field(alias="only")
+    states: int
+    jobs: int
+    limit: int
+
+
 class ConvertCommand(BaseModel):
     command: Literal["convert"]
     subsystem: str
@@ -282,7 +301,7 @@ class DocsCommand(BaseModel):
 
 
 Command = (VerifyCommand | CaptureCommand | FarmCommand | QueueCommand | DraftsCommand
-           | InvestigateCommand | InvestigateDataCommand | RuntimeEvidenceCommand
+           | InvestigateCommand | InvestigateDataCommand | RuntimeEvidenceCommand | FactsCommand
            | ConvertCommand | RecordCommand
            | VidsyncRunCommand | VidsyncRepairCommand | VidsyncReadyCommand | VidsyncTickCommand | VidsyncStatusCommand | WaitingCommand | AnswerCommand | RetryCommand | StatusCommand | FreezeCommand | ThawCommand
            | ArchiveCommand | DocsCommand)
@@ -307,6 +326,8 @@ def main() -> None:
             start_investigate_data(command)
         case RuntimeEvidenceCommand():
             start_runtime_evidence(command)
+        case FactsCommand():
+            start_facts(command)
         case ConvertCommand():
             start_convert(command)
         case RecordCommand():
@@ -454,6 +475,22 @@ def start_runtime_evidence(command: RuntimeEvidenceCommand) -> None:
              if contradictions.exists() else ""))
     print(f"per-function yaml: {run_dir}/NAME.yaml  (one per selected function)")
     print(f"report: {run_dir / 'report.tsv'}")
+
+
+def start_facts(command: FactsCommand) -> None:
+    """The runtime-facts layer over every lifted function (build/facts; no model is called)."""
+    run_id = time.strftime("facts-%Y%m%d-%H%M%S")
+    facts_dir = FACTS
+    facts_dir.mkdir(parents=True, exist_ok=True)
+    print("recording what the original game did at runtime for every lifted function")
+    print(f"  output: {facts_dir} (by_address/0x08XXXXXX.json, coverage.tsv, progress.txt)")
+    print(f"  states={command.states}, jobs={command.jobs}, limit={command.limit or 'all'}"
+          + (f", only={', '.join(command.only)}" if command.only else ""))
+    start = FactsState(facts_dir=facts_dir, only=command.only, states=command.states,
+                       jobs=command.jobs, limit=command.limit)
+    report = run_facts(start, run_id)
+    print()
+    print(summarise_report(report, report.seconds))
 
 
 def start_convert(command: ConvertCommand) -> None:
@@ -712,6 +749,19 @@ def parse_command() -> Command:
                               "accuracy (95% CI [22.7%, 45.9%]) and (b) 40.0% false-positive rate "
                               "(95% CI [28.6%, 52.6%]); the brief requires both bars clearly "
                               "cleared, so the legacy judge remains the default")
+
+    facts_parser = commands.add_parser("facts",
+                                       help="what the original game did at runtime, for every lifted "
+                                            "function, from the recordings alone (build/facts; no model "
+                                            "is called)")
+    facts_parser.add_argument("--only", action="append", default=[],
+                              help="these functions (name or 0x address), whatever else")
+    facts_parser.add_argument("--states", type=int, default=DEFAULT_FACTS_STATES,
+                              help=f"captured entry states replayed per function (default {DEFAULT_FACTS_STATES})")
+    facts_parser.add_argument("--jobs", type=int, default=DEFAULT_FACTS_JOBS,
+                              help=f"functions replayed at once (default {DEFAULT_FACTS_JOBS})")
+    facts_parser.add_argument("--limit", type=int, default=DEFAULT_FACTS_LIMIT,
+                              help=f"the first N functions by address (default {DEFAULT_FACTS_LIMIT}: all)")
 
     convert = commands.add_parser("convert", help="a strong model converts a subsystem; stops for review")
     convert.add_argument("functions", nargs="+")

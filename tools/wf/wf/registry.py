@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from types import ModuleType
 
 from wf.burr_typed import GraphView
-from wf.graphs import (capture, convert, drafts, farm, investigate, investigate_data, queue, record,
+from wf.graphs import (capture, convert, drafts, farm, facts, investigate, investigate_data, queue, record,
                        runtime_evidence, verify, vidsync_ready, vidsync_repair, vidsync_run, vidsync_tick)
 
 
@@ -28,6 +28,7 @@ WORKFLOWS: tuple[WorkflowEntry, ...] = (
                   investigate_data),
     WorkflowEntry("runtime-evidence", runtime_evidence.PROJECT, runtime_evidence.runtime_evidence_graph,
                   runtime_evidence),
+    WorkflowEntry("facts", facts.PROJECT, facts.facts_graph, facts),
     WorkflowEntry("convert", convert.PROJECT, convert.convert_graph, convert),
     WorkflowEntry("record", record.PROJECT, record.record_graph, record),
     WorkflowEntry("vidsync-run", vidsync_run.PROJECT, vidsync_run.vidsync_run_graph, vidsync_run),
