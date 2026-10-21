@@ -1422,6 +1422,10 @@ def try_kill(D, side=1):
         + (f'; first alike at {vD + first - back} (cost {cs[first]:.1f})' if first is not None else ''))
     if first is not None:
         W0 = D + int(round((first - back) / bm.RATE)); cands.append((W0, W0 + 150, 'the deletion and fade'))
+    if side == 0:
+        # (a game over has no result screen: a die lined up with one is ours deleted where the video's battle was won,
+        # run10s 1301652, MegaMan deleted at the start of a battle the video won 600 frames later)
+        cands = [c for c in cands if not c[2].startswith('result')]
     return kill_try(D, back, foes, vD, side, tmpl, cands)
 
 KILL_END = [int(x) for x in os.environ.get('VIDSYNC_KILL_END', '').split(',') if x.strip()]
@@ -1597,12 +1601,22 @@ def kill_through_black(D, W0, gB, kill, vD, side, tmpl=None):
         wD = state_at(D)
         if wD is None: return None
         b.e.load(wD[1]); foes = enemies_alive(side)
+        # (not one that dies within a few frames anyway: held, it lived on and ended the battle another way, run10s
+        # 1302309: three held where the third died at 1302310, our black 4 frames after the deletion)
+        set_emu_pokes()
+        for g in range(D, D + 8): b.e.step(b.key(vD + int(round((g - D) * bm.RATE))))
+        later = set(enemies_alive(side)); foes = [a for a in foes if a in later] or foes
+        b.e.load(wD[1])
         # (MegaMan too, when the stretch is long: run10c 1111700, 5250 frames of the video's keys against held
         # enemies and ours was deleted; his HP at the loss comes back with the deletion)
-        mine = enemies_alive(1 - side) if side == 1 else []
+        # (at HP 0 as well: one being deleted is not "alive" but must be held, run10s 1302309)
+        mine = [a for a in (T1_OBJS + n * T1_SIZE for n in range(16) if b.e.u32(T1_ACTIVE) >> (31 - n) & 1)
+                if int.from_bytes(b.e.read(a + 0x26, 2), 'little') and b.e.read(a + 0x16, 1)[0] == 0] if side == 1 else []
         if foes:
             hold = [D + 1, ','.join(f'{a + 0x24:#x}=0x270f/2' for a in foes + mine)]   # (a poke at D is before D's state)
-            if mine: kill = kill + ',' + ','.join(f'{a + 0x24:#x}={int.from_bytes(b.e.read(a + 0x24, 2), "little"):#x}/2' for a in mine)
+            # (at least 1: at 0 he was being deleted, and given back 0 the battle ended at the deletion, run10s
+            # 1302309, our black 4 frames after it; the hp handler sets the video's HP after)
+            if mine: kill = kill + ',' + ','.join(f'{a + 0x24:#x}={max(1, int.from_bytes(b.e.read(a + 0x24, 2), "little")):#x}/2' for a in mine)
     def play(Wd, to):
         wD = state_at(D)
         if wD is None: return None, None, None
