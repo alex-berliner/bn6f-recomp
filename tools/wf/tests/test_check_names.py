@@ -39,7 +39,9 @@ def fake_record(*, name: str = "foo_08001234", address: GuestAddress = FOO,
                 io: tuple[str, ...] = (), returned: int = 8, probes: int = 8,
                 r0_in: tuple[int, ...] = (1, 2), r0_out: tuple[int, ...] = (0x02000000, 0x02000004),
                 args: tuple[RegisterStats, ...] | None = None,
-                facts_error: str | None = None) -> FunctionFacts:
+                facts_error: str | None = None,
+                field_writes: tuple[ft.FieldWrite, ...] = (),
+                scenes_at_call: tuple[ft.SceneAtCall, ...] = ()) -> FunctionFacts:
     """A `wf facts` record with the shape the checker reads, without any replay."""
     empty: tuple[ToolMessage, ...] = ()
     facts: rt.RuntimeFacts | None
@@ -60,18 +62,39 @@ def fake_record(*, name: str = "foo_08001234", address: GuestAddress = FOO,
         ft.register_stats(register, list(r0_in) if register == "r0" else [0, 0])
         for register in ft.ARGUMENT_REGISTERS)
     returns = (ft.register_stats("r0", list(r0_out)),) if returned else ()
+    scenes = tuple(ToolMessage(f"{call.scene}: {call.state}") for call in scenes_at_call)
     return FunctionFacts(
         address=address, address_hex=f"0x{int(address):08X}", name=FunctionName(name),
         end=GuestAddress(int(address) + 0x20), reached=any(route.executed for route in routes),
         captured=probes > 0, captured_states=probes, states=8, probes=probes, returned=returned,
         routes=routes, arguments=arguments, returns=returns, facts=facts,
-        facts_error=facts_error)
+        facts_error=facts_error, scenes_at_call=scenes_at_call, scenes=scenes,
+        field_writes=field_writes)
 
 
 def route(name: str, *, executed: bool = True, calls: int | None = None, frames: int = 1000,
-          per_1000: float | None = None) -> RouteCoverage:
+          per_1000: float | None = None, entries: int | None = None,
+          entries_per_1000: float | None = None) -> RouteCoverage:
     return RouteCoverage(route=RouteName(name), executed=executed, body_executed=executed,
-                         calls=calls, calls_per_1000_frames=per_1000, frames=frames)
+                         calls=calls, calls_per_1000_frames=per_1000, frames=frames,
+                         entries=entries, entries_per_1000_frames=entries_per_1000)
+
+
+def scene(state: int, name: str = "battle") -> ft.SceneAtCall:
+    """One captured call's scene (the entry snapshot said the game was in `name`)."""
+    return ft.SceneAtCall(state=state, snapshot=f"snap_{state}.bin", main=4, gamestate=12,
+                          scene=name, handler=ToolMessage("main 0x04 game-state handler"))
+
+
+def field_write(base: str = "r5", symbol: str = "eT1BattleObject1_CurAction",
+                offset: int = 0, names: tuple[str, ...] = ("oT1BattleObject_CurAction",),
+                struct_guess: str = "oT1BattleObject", candidates: tuple[str, ...] = ("oT1BattleObject",),
+                attributed: bool = True, in_family: bool = True) -> ft.FieldWrite:
+    """A FieldWrite that maps to the bn6f field-name names + struct family struct_guess."""
+    return ft.FieldWrite(base=base, base_address=GuestAddress(0x02000000), symbol=symbol,
+                         offset=offset, struct_offset=offset, size=4, count=1,
+                         field_names=names, struct_guess=struct_guess, candidates=candidates,
+                         names_at_offset=len(names), attributed=attributed, in_family=in_family)
 
 
 def battle_record() -> FunctionFacts:
@@ -198,6 +221,28 @@ def test_a_route_the_table_cannot_place_is_unknown_not_failed() -> None:
     assert result.status == "unknown" and "cannot name" in str(result.observed)
 
 
+def test_reached_in_scene_prefers_per_call_scenes_over_route_table() -> None:
+    """A function captured on `battles1` (a battle route) is recorded as running inside the
+    battle gamestate for both replayed calls, so a scene(battle) claim passes even though
+    `battles1` is not the route's name -- the per-call scenes say so directly."""
+    record = fake_record(routes=(route("battles1"),), scenes_at_call=(scene(0), scene(1)))
+    assert check_claim(ReachedInScene(scene="battle"), record).status == "pass"
+    assert check_claim(ReachedInScene(scene="menu"), record).status == "fail"
+
+
+def test_reached_in_scene_falls_back_to_route_table_when_no_per_call_scenes() -> None:
+    """Old records have no scenes_at_call: the route->scene table decides the claim."""
+    record = fake_record(routes=(route("beastsp"),))
+    assert check_claim(ReachedInScene(scene="battle"), record).status == "unknown"
+
+
+def test_reached_in_scene_unknown_when_per_call_scenes_are_empty() -> None:
+    """An empty `scenes_at_call` tuple is `unknown`, not `fail` (no per-call evidence)."""
+    record = fake_record(routes=(route("battles1"),), scenes_at_call=())
+    # No captured scenes -> falls back to the route->scene table, which says `battle`.
+    assert check_claim(ReachedInScene(scene="battle"), record).status == "pass"
+
+
 def test_writes_ram_matches_a_symbol_prefix_case_insensitively() -> None:
     record = battle_record()
     assert check_claim(WritesRam(symbol_prefix="oBattleState"), record).status == "pass"
@@ -212,6 +257,77 @@ def test_a_claim_about_a_function_with_no_facts_is_unknown() -> None:
                   ReturnsValue(value="pointer"), HasArgument(n=0)):
         assert check_claim(claim, record).status == "unknown"
     assert check_claim(claim=CalledEveryFrame(yes=True), record=record).status == "fail"
+
+
+def test_writes_ram_matches_a_field_name_in_bn6f_notation() -> None:
+    """A FieldWrite whose `field_names` carry `oAIData_AttackVars` matches the model's claim
+    `writes_ram(oAIData)` even when the RAM symbol was `eAIData1_AttackVars` (the previous
+    check matched only on the absolute RAM symbol, not the disassembly's field name)."""
+    record = fake_record(field_writes=(field_write(symbol="eAIData1_AttackVars",
+                                                   offset=0x00,
+                                                   names=("oAIData_AttackVars",),
+                                                   struct_guess="oAIData"),))
+    assert check_claim(WritesRam(symbol_prefix="oAIData"), record).status == "pass"
+    failed = check_claim(WritesRam(symbol_prefix="oBattleState"), record)
+    assert failed.status == "fail"
+
+
+def test_writes_ram_matches_a_struct_family_even_when_nested() -> None:
+    """A FieldWrite whose `struct_guess` is the table-claim prefix (a struct family, not a
+    full field name) matches `writes_ram(oT3BattleObject)` even when the base register saw a
+    nested struct inside the AIData struct."""
+    record = fake_record(field_writes=(field_write(symbol="eAIData1_AttackVars",
+                                                   offset=0x0,
+                                                   names=("oT3BattleObject_CurAction",),
+                                                   struct_guess="oT3BattleObject"),))
+    assert check_claim(WritesRam(symbol_prefix="oT3BattleObject"), record).status == "pass"
+
+
+def test_writes_ram_ignores_a_field_name_the_base_register_does_not_point_into() -> None:
+    """Offset 0x38 is `oBattleState_Unk_38` and eighty other structs' field at once. When the
+    base register points at `eStruct2035280` and every region the calls changed is elsewhere,
+    none of that says the function wrote to `oBattleState` -- it fails, not passes."""
+    record = fake_record(field_writes=(
+        field_write(symbol="eStruct2035280", offset=0x38,
+                    names=("oAIAttackVars_PanelParamFlags2", "oBattleState_Unk_38", "oCamera_Z"),
+                    struct_guess="", candidates=("oStruct2035280",),
+                    attributed=False, in_family=False),),
+        memory=("unk_2002230",))
+    assert check_claim(WritesRam(symbol_prefix="oBattleState"), record).status == "fail"
+
+
+def test_writes_ram_still_answers_about_the_family_the_base_register_sits_in() -> None:
+    """The base register at `eStruct2035280` says the write landed in that struct even when
+    the offset inside it carries no field name, so a claim about the struct's family stands."""
+    record = fake_record(field_writes=(
+        field_write(symbol="eStruct2035280", offset=0x38, names=("oBattleState_Unk_38",),
+                    struct_guess="oStruct2035280", candidates=("oStruct2035280",),
+                    attributed=False, in_family=True),))
+    assert check_claim(WritesRam(symbol_prefix="oStruct2035280"), record).status == "pass"
+    assert check_claim(WritesRam(symbol_prefix="oBattleState"), record).status == "fail"
+
+
+def test_writes_ram_matches_a_field_name_against_a_ram_symbol_of_another_table() -> None:
+    """The whole point of the struct-relative facts: a claim in the disassembly's vocabulary
+    (`oBattleObject_Timer`, or the family `oBattleState`) names a field or struct FAMILY,
+    while a RAM symbol names a struct INSTANCE with the object index spelled out
+    (`eT3BattleObject1_Timer`, `eBattleState0_HP`). Matching the two as text never worked;
+    going through bn6f's struct tables does."""
+    record = fake_record(memory=("eT3BattleObject1_Timer", "end_file_3007B00"))
+    assert check_claim(WritesRam(symbol_prefix="oBattleObject"), record).status == "pass"
+    assert check_claim(WritesRam(symbol_prefix="oBattleObject_Timer"), record).status == "pass"
+    assert check_claim(WritesRam(symbol_prefix="oT3BattleObject"), record).status == "pass"
+    assert check_claim(WritesRam(symbol_prefix="eT3BattleObject"), record).status == "pass"
+    assert check_claim(WritesRam(symbol_prefix="oCamera"), record).status == "fail"
+
+
+def test_writes_ram_falls_back_to_the_ram_symbol_when_no_field_writes() -> None:
+    """A record with no `field_writes` (nothing replayed into a base register) still answers
+    from the RAM symbols, resolved through the same struct tables."""
+    record = fake_record(memory=("eBattleState0_HP",))
+    assert check_claim(WritesRam(symbol_prefix="eBattle"), record).status == "pass"
+    assert check_claim(WritesRam(symbol_prefix="oBattleState"), record).status == "pass"
+    assert check_claim(WritesRam(symbol_prefix="oCamera"), record).status == "fail"
 
 
 def test_no_record_at_all_is_unknown_for_every_claim() -> None:
@@ -263,6 +379,27 @@ def test_called_every_frame_is_unknown_without_call_counts() -> None:
     record = fake_record(routes=(route("battle", executed=True),))
     result = check_claim(CalledEveryFrame(yes=True), record)
     assert result.status == "unknown" and "call counts" in str(result.observed)
+
+
+def test_called_every_frame_prefers_real_entry_counts_over_call_counts() -> None:
+    """When the per-route entry count exists (`entries_per_1000_frames`), the check uses it
+    -- the CPU entering the function on the route -- instead of the indirect call sites the
+    ABI export instruments (which miss `bl` and direct calls). A function called every frame
+    on real entries but with only 2 indirect call sites reported by the old `.edges` is now
+    a `yes`, not `unknown`."""
+    record = fake_record(routes=(route("battle", calls=2, per_1000=2.0, entries=600,
+                                       entries_per_1000=600.0),))
+    assert check_claim(CalledEveryFrame(yes=True), record).status == "pass"
+    record2 = fake_record(routes=(route("battle", calls=2, per_1000=2.0, entries=10,
+                                        entries_per_1000=10.0),))
+    assert check_claim(CalledEveryFrame(yes=False), record2).status == "pass"
+
+
+def test_called_every_frame_falls_back_to_call_counts_when_no_entries() -> None:
+    """Routes without entry counts (the count step was not run for them) keep using the
+    `.edges` call counts the way the old checker did."""
+    record = fake_record(routes=(route("battle", calls=900, per_1000=900.0),))
+    assert check_claim(CalledEveryFrame(yes=True), record).status == "pass"
 
 
 def test_has_argument_needs_the_caller_to_pass_more_than_one_value() -> None:

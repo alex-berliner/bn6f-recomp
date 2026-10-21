@@ -40,6 +40,7 @@ import threading
 import time
 from array import array
 from bisect import bisect_right
+from collections import Counter
 from collections.abc import Generator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
@@ -48,7 +49,10 @@ from typing import NamedTuple
 
 from wf.repo import REPO, SNAPSHOTS, TRACES   # puts tools/ on sys.path, for funcindex below
 from wf.types import FunctionName, GuestAddress, Result, RouteName, ToolMessage
+from wf.tools import entry_counts as ec
 from wf.tools import runtime_evidence as rt
+from wf.tools import scenes as sc
+from wf.tools import structfields as sf
 
 import funcindex  # noqa: E402  # tools/funcindex.py: the lifted units, the functions recorded here
 from funcindex import Unit   # noqa: E402
@@ -79,8 +83,11 @@ class Caller(Result):
 
 class RouteCoverage(Result):
     """What one recorded route shows about one function. `.prof` holds CYCLES per executed
-    PC halfword (not executions), so `entry_cycles`/`function_cycles` are cycles; the call
-    counts come from `.edges`, which counts executions at the recorded indirect sites."""
+    PC halfword (not executions), so `entry_cycles`/`function_cycles` are cycles. The call
+    counts from `.edges` only cover the indirect call sites the ABI export instruments;
+    `entries` is the real number of times the function's entry address was executed on the
+    route (`entry_counts.py`, mgba_run --count-entries), which is what "called every frame"
+    is about."""
     route: RouteName
     executed: bool = False          # the function's entry address appears in ROUTE.prof
     body_executed: bool = False     # some address of the function's range does
@@ -91,7 +98,57 @@ class RouteCoverage(Result):
     frames_from: ToolMessage = ToolMessage("")   # "wf/routes.py", "prof header" or "unknown"
     calls: int | None = None        # calls through the recorded indirect sites (ROUTE.edges)
     calls_per_1000_frames: float | None = None
+    entries: int | None = None      # real entries: how often the CPU entered the function
+    entries_per_1000_frames: float | None = None
     callers: tuple[Caller, ...] = ()
+
+
+class SceneAtCall(Result):
+    """What one captured call's own entry snapshot says the game was doing: the two mode bytes
+    `main_` dispatches on and the scene they add up to (`scenes.py`). Per call, because a
+    route is an input tape, not a scene -- `story2` runs a battle, opens a menu and comes back
+    to the map."""
+    state: int                      # which of the replayed entry states this was (0-based)
+    snapshot: str                   # the entry snapshot the bytes were read out of
+    main: int | None = None         # *oToolkit_MainJumptableIndexPtr
+    gamestate: int | None = None    # oGameState_SubsystemIndex (only meaningful in main 0x04)
+    scene: str = "other"
+    handler: ToolMessage = ToolMessage("")
+
+
+class FieldWrite(Result):
+    """One RAM write, in the words the disassembly uses: `BASE + OFFSET` where BASE is a
+    register (or a pointer the entry state held) at the call's entry, and the bn6f struct field
+    names `structfields.py` gives that offset.
+
+    `struct_offset` is the offset from the START of the struct, which is not the same as
+    `offset` when the base register points into the middle of one (r5 = &oT3BattleObject_CurAction
+    writes `CurAction + 3` = struct offset 0xB). `field_names` is every name that offset
+    carries; `names_at_offset` is how many that is in total, and `struct_guess` the family the
+    base pointed into ("" when the base symbol says nothing about a struct).
+
+    `attributed` says the base register and the field names agree: at least one name at that
+    offset belongs to a family the base symbol pointed into. Offsets are shared across
+    families (0x8 is `oBattleObject_CurAction` and eighty-five other structs' first field), so
+    when the base says `eStruct2035280` and none of the names at 0x38 is an `oStruct2035280`
+    field, the names are offset coincidences and `attributed` is False -- the write is still
+    real, but nothing says WHICH field it landed in. `in_family` is the weaker, separate fact:
+    the base register pointed into `struct_guess`, read straight off the region the base
+    address is in, so a claim about that struct's family stands even when the offset inside it
+    has no name."""
+    base: str                       # "r5", or "*eStruct200a6a0" for a pointer in RAM
+    base_address: GuestAddress
+    symbol: str                     # the bn6f RAM symbol holding the base ("IWRAM" if none)
+    offset: int                     # written address - base_address
+    struct_offset: int              # offset from the struct's own start
+    size: int                       # how many bytes the store wrote
+    count: int                      # how many of the replayed calls made this write
+    field_names: tuple[str, ...] = ()
+    struct_guess: str = ""
+    candidates: tuple[str, ...] = ()   # the other families the base pointed into
+    names_at_offset: int = 0
+    attributed: bool = False
+    in_family: bool = False
 
 
 class RegisterStats(Result):
@@ -109,12 +166,14 @@ class RegisterStats(Result):
 class Inputs(Result):
     """What a record was made from, as the cache reads it: a function whose inputs are
     unchanged is not rebuilt. `coverage` is a fingerprint over the `.prof`/`.edges` mtimes
-    alone, so a route that grew re-reads the coverage without replaying anything."""
+    alone, so a route that grew re-reads the coverage without replaying anything; `counts` is
+    the same for the entry-count files, which only change coverage."""
     mgba_run: ToolMessage           # "<sha1> <mtime> <size>"
     rom: ToolMessage                # "<sha1> <mtime>"
     snapshots: ToolMessage          # "<newest mtime> <entry snapshots>"
     states: int = DEFAULT_STATES
     coverage: ToolMessage = ToolMessage("")
+    counts: ToolMessage = ToolMessage("")
 
 
 class Target(Result):
@@ -141,10 +200,15 @@ class FunctionFacts(Result):
     routes: tuple[RouteCoverage, ...] = ()
     calls: int = 0                  # calls the recorded indirect sites made, over every route
     calls_per_1000_frames: float = 0.0   # the same, over every route's frames
+    entries: int = 0                # real entries (CPU entered the function), over every route
+    entries_per_1000_frames: float = 0.0  # the same, over every route's frames
     cycles: int = 0                 # cycles the profiles attribute to it, over every route
     routes_reached: int = 0
     arguments: tuple[RegisterStats, ...] = ()    # r0..r3 (and sp) at the replayed entries
     returns: tuple[RegisterStats, ...] = ()       # r0 at the replayed exits
+    scenes_at_call: tuple[SceneAtCall, ...] = ()  # what the game was doing at each call
+    scenes: tuple[ToolMessage, ...] = ()          # the same, counted
+    field_writes: tuple[FieldWrite, ...] = ()      # its RAM writes, in bn6f field names
     facts: rt.RuntimeFacts | None = None
     facts_error: str | None = None
     inputs: Inputs | None = None
@@ -247,6 +311,7 @@ class RouteIndex(NamedTuple):
 class CoverageIndex(NamedTuple):
     """Every recorded route's recordings, folded into per-function lookups."""
     routes: tuple[RouteIndex, ...]
+    counts: ec.Counts = ec.Counts(by_route={})
 
     def for_function(self, address: GuestAddress, end: GuestAddress) -> tuple[RouteCoverage, ...]:
         """This function's row on every recorded route (a route that never executed it is
@@ -257,6 +322,9 @@ class CoverageIndex(NamedTuple):
             calls = route.callers.get(entry)
             total_calls = sum(caller.count for caller in calls) if calls else None
             per_1000 = (total_calls * 1000.0 / route.frames) if (total_calls and route.frames) else None
+            entries = self.counts.for_route(str(route.name), entry)
+            entries_per_1000 = (entries * 1000.0 / route.frames
+                                if (entries is not None and route.frames) else None)
             out.append(RouteCoverage(
                 route=route.name,
                 executed=bool(route.entry_cycles.get(entry)),
@@ -268,6 +336,9 @@ class CoverageIndex(NamedTuple):
                 frames_from=route.frames_from,
                 calls=total_calls,
                 calls_per_1000_frames=round(per_1000, 4) if per_1000 is not None else None,
+                entries=entries,
+                entries_per_1000_frames=(round(entries_per_1000, 4)
+                                         if entries_per_1000 is not None else None),
                 callers=calls or ()))
         return tuple(out)
 
@@ -282,8 +353,8 @@ def coverage_files(traces: Path | None = None) -> tuple[tuple[str, Path | None, 
                  for name in sorted(names))
 
 
-def build_coverage_index(traces: Path | None = None, lengths: dict[str, int] | None = None
-                         ) -> CoverageIndex:
+def build_coverage_index(traces: Path | None = None, lengths: dict[str, int] | None = None,
+                         counts: Path | None = None) -> CoverageIndex:
     """One pass over every `.prof` and `.edges`, folded per route.
 
     A `.prof` line is `ADDRESS CYCLES` (hex address, cycles the run spent with that PC --
@@ -317,7 +388,7 @@ def build_coverage_index(traces: Path | None = None, lengths: dict[str, int] | N
                               entry_cycles=entry_cycles, body_cycles=body_cycles,
                               body_instructions=body_instructions,
                               callers=_read_edges(edges) if edges is not None else {}))
-    return CoverageIndex(routes=tuple(out))
+    return CoverageIndex(routes=tuple(out), counts=ec.load_counts(out_dir=counts))
 
 
 def _prof_span(prof: Path, name: str, lengths: dict[str, int]) -> tuple[int | None, ToolMessage]:
@@ -583,6 +654,123 @@ def summarise(name: FunctionName, address: GuestAddress, probes: Sequence[rt.Pro
     return facts.model_copy(update={"route_coverage": lines})
 
 
+# ── what the game was doing at each captured call, and what it wrote ──
+
+def scenes_at_call(probes: Sequence[rt.Probe], paths: Sequence[Path]) -> tuple[SceneAtCall, ...]:
+    """The scene each replayed call happened in, read out of THAT call's own entry snapshot.
+
+    The bytes are `scenes.py`'s: the main-subsystem index `main_` dispatches on and, inside
+    the game-state handler, the subsystem index under it. A probe with no entry snapshot (the
+    original did not come back) contributes nothing; a snapshot whose mode bytes are
+    unreadable is recorded as `other` with no main index, not as a guess."""
+    out: list[SceneAtCall] = []
+    for index, probe in enumerate(probes):
+        if probe.entry is None:
+            continue
+        modes = sc.modes_in_memory(probe.entry.memory)
+        path = paths[index] if index < len(paths) else None
+        out.append(SceneAtCall(
+            state=index, snapshot=path.name if path is not None else "",
+            main=modes.main, gamestate=modes.gamestate, scene=modes.scene,
+            handler=sc.handler_of(modes.main, modes.gamestate)))
+    return tuple(out)
+
+
+#: the registers a struct base register can be: the call's own r0..r7 (r0-r3 are its
+#: arguments, r4-r7 are what the callee keeps, and the assembly walks them as pointers).
+BASE_REGISTERS: tuple[str, ...] = ("r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7")
+
+#: how many RAM writes one function's record keeps (a map loader changes tens of thousands of
+#: words per call; the biggest and the most frequent are what a claim can be read off).
+MAX_FIELD_WRITES = 200
+
+
+def _in_ram(address: int) -> bool:
+    """Whether ADDRESS is in the game's RAM (the places a struct can live)."""
+    return ((0x02000000 <= address < 0x02040000)         # EWRAM
+            or (0x03000000 <= address < 0x03008000)      # IWRAM
+            or (0x05000000 <= address < 0x05000400)      # palette
+            or (0x06000000 <= address < 0x06018000)      # VRAM
+            or (0x07000000 <= address < 0x07000400)      # OAM
+            or (0x0E000000 <= address < 0x0E008000))     # SRAM
+
+
+def pointer_globals(memory: bytes) -> tuple[tuple[str, int], ...]:
+    """The RAM symbols whose name says they hold a pointer (`eAIData1_Ptr`, `*LinkedList`),
+    and the pointer each one holds in this snapshot: the bases a write can be relative to that
+    no register shows (a callee is handed `*eStruct200a6a0` and never loads it into a
+    register this layer can see)."""
+    out: list[tuple[str, int]] = []
+    for start, _end, name in rt._ram_symbols():          # noqa: SLF001  (the shared table)
+        if "Ptr" not in name and "ptr" not in name:
+            continue
+        offset = sc.guest_to_snapshot(start)
+        if offset is None or offset + 4 > len(memory):
+            continue
+        value = struct.unpack_from("<I", memory, offset)[0]
+        if _in_ram(value):
+            out.append((name, value))
+    return tuple(out)
+
+
+def _attributed(written: sf.Written) -> bool:
+    """Whether the base register's struct families and the field names at the offset agree:
+    some name at that offset belongs to a family the base pointed into. Offsets are shared
+    across families, so a base that says nothing (an unnamed EWRAM word) or points into a
+    struct bn6f does not spell out has no attributed name."""
+    return bool(written.candidates) and any(
+        sf.family_of(name) in written.candidates for name in written.names)
+
+
+def field_writes(probes: Sequence[rt.Probe]) -> tuple[FieldWrite, ...]:
+    """The RAM the replayed calls wrote, as `BASE + OFFSET` with bn6f's own field names.
+
+    A write is described against every base that reaches it: each register the entry state
+    carried that points into RAM, and every pointer the entry state held in a `*Ptr` symbol.
+    Only bases within `structfields.OFFSET_LIMIT` count (every struct bn6f declares is smaller
+    than that, so a write further out is a coincidence, not a field). The bases are sorted by
+    address, so a write only looks at the ones near it, and the nearest one wins -- that is the
+    base the assembly used, the way `strh r0, [r5, #oBattleObject_Timer]` means r5."""
+    counts: Counter[tuple[str, int, int, int]] = Counter()
+    writes: dict[tuple[str, int, int, int], FieldWrite] = {}
+    for probe in probes:
+        if not (probe.returned and probe.entry is not None):
+            continue
+        bases = [(register, rt._register(probe.entry.header, register))    # noqa: SLF001
+                 for register in BASE_REGISTERS]
+        bases += [(f"*{name}", value) for name, value in pointer_globals(probe.entry.memory)]
+        bases = sorted(((value, register) for register, value in bases if _in_ram(value)))
+        if not bases:
+            continue
+        values = [value for value, _register in bases]
+        symbols = {value: region_of(value) for value in values}
+        for change in probe.memory_changes:
+            if rt._is_io(change.address) or not _in_ram(change.address):   # noqa: SLF001
+                continue        # I/O has its own writes; the rest of the guest is not RAM
+            low = bisect_right(values, change.address - sf.OFFSET_LIMIT)
+            high = bisect_right(values, change.address + 1)
+            if low == high:
+                continue
+            value, register = bases[high - 1]
+            key = (register, value, change.address - value, change.size)
+            counts[key] += 1
+            offset = key[2]
+            written = sf.resolve(offset, symbols[value])
+            for start in range(offset + 1, offset + max(1, change.size)):
+                if written.names:
+                    break       # the store starts in a field that has a name
+                written = sf.resolve(start, symbols[value])   # it straddles two: name the rest
+            writes[key] = FieldWrite(base=register, base_address=GuestAddress(value),
+                                     symbol=symbols[value], offset=offset,
+                                     struct_offset=written.struct_offset, size=change.size,
+                                     count=0, field_names=written.names,
+                                     struct_guess=written.family, candidates=written.candidates,
+                                     names_at_offset=written.total,
+                                     attributed=_attributed(written),
+                                     in_family=written.family in written.candidates)
+    return tuple(writes[key].model_copy(update={"count": count})
+                 for key, count in counts.most_common(MAX_FIELD_WRITES))
+
 # ── the cache: what a record was made from ──────────────────────────────
 
 def _sha1(path: Path) -> str:
@@ -614,13 +802,26 @@ def coverage_fingerprint(traces: Path | None = None) -> ToolMessage:
     return ToolMessage(hashlib.sha1("\n".join(sorted(parts)).encode()).hexdigest()[:16])   # noqa: S324
 
 
-def inputs_for(name: FunctionName, states: int, snapshots: Path, traces: Path) -> Inputs:
+def counts_fingerprint(counts_dir: Path | None = None) -> ToolMessage:
+    """One hash over every entry-count file's mtime and size: the counting half of the cache
+    key, so `wf graphs entry-counts` being re-run re-reads coverage without replaying calls."""
+    folder = ec.counts_dir() if counts_dir is None else counts_dir
+    parts: list[str] = []
+    for path in sorted(folder.glob("*.tsv")) if folder.is_dir() else ():
+        stat = path.stat()
+        parts.append(f"{path.stem}:{int(stat.st_mtime)}:{stat.st_size}")
+    return ToolMessage(hashlib.sha1("\n".join(parts).encode()).hexdigest()[:16])   # noqa: S324
+
+
+def inputs_for(name: FunctionName, states: int, snapshots: Path, traces: Path,
+               counts_dir: Path | None = None) -> Inputs:
     """The inputs one function's record is made from, as the cache reads them."""
     snaps = entry_snapshots(name, snapshots)
     newest = max((path.stat().st_mtime for path in snaps), default=0.0)
-    return Inputs(mgba_run=_stamp(rt.PROJECT_ROOT_BIN), rom=_stamp(ROM),
+    return Inputs(mgba_run=_stamp(rt.find_mgba_run()), rom=_stamp(ROM),
                   snapshots=ToolMessage(f"{int(newest)} {len(snaps)}"),
-                  states=states, coverage=coverage_fingerprint(traces))
+                  states=states, coverage=coverage_fingerprint(traces),
+                  counts=counts_fingerprint(counts_dir))
 
 
 def record_path(facts_dir: Path, address: GuestAddress) -> Path:
@@ -659,7 +860,8 @@ def note_progress(facts_dir: Path, line: str) -> None:
 
 def plan(facts_dir: Path, only: Sequence[str] = (), states: int = DEFAULT_STATES,
          limit: int = DEFAULT_LIMIT, traces: Path | None = None,
-         snapshots: Path | None = None) -> tuple[tuple[Target, ...], tuple[Target, ...],
+         snapshots: Path | None = None,
+         counts_dir: Path | None = None) -> tuple[tuple[Target, ...], tuple[Target, ...],
                                                 tuple[RouteName, ...], tuple[ToolMessage, ...]]:
     """Build the coverage of every function in the run and write the records that need no
     mGBA (every function whose captured calls have not changed, and every function that has
@@ -686,11 +888,20 @@ def plan(facts_dir: Path, only: Sequence[str] = (), states: int = DEFAULT_STATES
     if limit:
         targets = targets[:limit]
 
-    index = build_coverage_index(traces)
+    index = build_coverage_index(traces, counts=Path(counts_dir) if counts_dir else None)
     route_names = tuple(route.name for route in index.routes)
     coverage_of = coverage_fingerprint(traces)
+    counts_of = counts_fingerprint(counts_dir)
     notes.append(ToolMessage(f"read {len(index.routes)} recorded route(s): "
                              f"{', '.join(str(name) for name in route_names)}"))
+    counted = sorted(index.counts.by_route)
+    if counted:
+        notes.append(ToolMessage(f"entry counts for {len(counted)} route(s): "
+                                 f"{', '.join(counted)}"))
+    else:
+        notes.append(ToolMessage("no entry counts were found "
+                                 f"({ec.counts_dir()}): `calls` is the indirect call sites' "
+                                 f"counts and `entries` is unknown"))
     to_replay: list[Target] = []
     kept = 0
     replayed = 0
@@ -698,15 +909,16 @@ def plan(facts_dir: Path, only: Sequence[str] = (), states: int = DEFAULT_STATES
         unit = units()[target.name]
         path = record_path(facts_dir, target.address)
         record = read_record(path)
-        inputs = inputs_for(target.name, states, snapshots, traces)
+        inputs = inputs_for(target.name, states, snapshots, traces, counts_dir)
         snaps = int(inputs.snapshots.split()[-1])
         coverage = index.for_function(target.address, GuestAddress(unit.hi))
         if record is not None and record.inputs is not None and _same_facts(record, inputs):
-            if record.inputs.coverage != coverage_of:
+            if record.inputs.coverage != coverage_of or record.inputs.counts != counts_of:
                 write_record(path, record.model_copy(update={
                     "routes": coverage, "name": target.name, "inputs": inputs,
                     "reached": _reached(coverage), "calls": _calls(coverage),
                     "calls_per_1000_frames": _calls_per_1000(coverage),
+                    "entries": _entries(coverage), "entries_per_1000_frames": _entries_per_1000(coverage),
                     "cycles": _cycles(coverage), "routes_reached": _routes_reached(coverage)}))
             kept += 1                 # the captured calls are the same: keep the facts, refresh
             continue                   # the coverage if a recording moved under it
@@ -736,7 +948,8 @@ def _same_facts(record: FunctionFacts, inputs: Inputs) -> bool:
 
 
 def _reached(coverage: Sequence[RouteCoverage]) -> bool:
-    return any(route.executed or route.body_executed or route.calls for route in coverage)
+    return any(route.executed or route.body_executed or route.calls or route.entries
+               for route in coverage)
 
 
 def _calls(coverage: Sequence[RouteCoverage]) -> int:
@@ -749,27 +962,52 @@ def _calls_per_1000(coverage: Sequence[RouteCoverage]) -> float:
     return round(calls * 1000.0 / frames, 4) if (calls and frames) else 0.0
 
 
+def _entries(coverage: Sequence[RouteCoverage]) -> int:
+    """How many times the CPU entered the function over every counted route. A route with no
+    count contributes nothing (it is not known to be zero)."""
+    return sum(route.entries or 0 for route in coverage)
+
+
+def _entries_per_1000(coverage: Sequence[RouteCoverage]) -> float:
+    entries = _entries(coverage)
+    frames = sum(route.frames or 0 for route in coverage if route.entries is not None)
+    return round(entries * 1000.0 / frames, 4) if (entries and frames) else 0.0
+
+
 def _cycles(coverage: Sequence[RouteCoverage]) -> int:
     return sum(route.function_cycles for route in coverage)
 
 
 def _routes_reached(coverage: Sequence[RouteCoverage]) -> int:
-    return sum(1 for route in coverage if route.executed or route.body_executed or route.calls)
+    return sum(1 for route in coverage
+               if route.executed or route.body_executed or route.calls or route.entries)
 
 
 def _record(target: Target, unit: Unit, coverage: Sequence[RouteCoverage], inputs: Inputs,
             snaps: int, facts: rt.RuntimeFacts | None, error: str | None, probes: int = 0,
             returned: int = 0, arguments: Sequence[RegisterStats] = (),
-            returns: Sequence[RegisterStats] = ()) -> FunctionFacts:
+            returns: Sequence[RegisterStats] = (),
+            scenes_at_call: Sequence[SceneAtCall] = (),
+            field_writes: Sequence[FieldWrite] = ()) -> FunctionFacts:
     """One function's record, with the coverage and (when it could be gathered) the facts."""
+    scenes = Counter(call.scene for call in scenes_at_call)
     return FunctionFacts(address=target.address, address_hex=f"0x{int(target.address):08X}",
                          name=target.name, end=GuestAddress(unit.hi), asm=unit.asm,
                          reached=_reached(coverage), captured=snaps > 0, captured_states=snaps,
                          states=inputs.states, probes=probes, returned=returned,
                          routes=tuple(coverage), calls=_calls(coverage),
-                         calls_per_1000_frames=_calls_per_1000(coverage), cycles=_cycles(coverage),
+                         calls_per_1000_frames=_calls_per_1000(coverage),
+                         entries=_entries(coverage),
+                         entries_per_1000_frames=_entries_per_1000(coverage),
+                         cycles=_cycles(coverage),
                          routes_reached=_routes_reached(coverage),
                          arguments=tuple(arguments), returns=tuple(returns),
+                         scenes_at_call=tuple(scenes_at_call),
+                         scenes=tuple(ToolMessage(f"{name}: {count} of {len(scenes_at_call)} "
+                                                  f"captured call(s)")
+                                      for name, count in sorted(scenes.items(),
+                                                                key=lambda row: (-row[1], row[0]))),
+                         field_writes=tuple(field_writes),
                          facts=facts, facts_error=error, inputs=inputs,
                          built=ToolMessage(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())))
 
@@ -779,7 +1017,8 @@ def _record(target: Target, unit: Unit, coverage: Sequence[RouteCoverage], input
 def gather(facts_dir: Path, to_replay: Sequence[Target], states: int = DEFAULT_STATES,
            jobs: int = DEFAULT_JOBS, traces: Path | None = None,
            snapshots: Path | None = None,
-           scratch: Path | None = None) -> tuple[int, int, int, float, tuple[ToolMessage, ...]]:
+           scratch: Path | None = None,
+           counts_dir: Path | None = None) -> tuple[int, int, int, float, tuple[ToolMessage, ...]]:
     """Replay K captured entry states per function, in JOBS threads, and fold what the
     original did into each function's record. A function whose replay crashes or times out
     is recorded with its `facts_error`; it never stops the run.
@@ -790,7 +1029,7 @@ def gather(facts_dir: Path, to_replay: Sequence[Target], states: int = DEFAULT_S
     traces = TRACES if traces is None else traces
     snapshots = SNAPSHOTS if snapshots is None else snapshots
     started = time.monotonic()
-    index = build_coverage_index(traces)
+    index = build_coverage_index(traces, counts=Path(counts_dir) if counts_dir else None)
     rt._ram_symbols()             # noqa: SLF001  (one RAM symbol table for the whole run, not one per thread)
     scratch = scratch or facts_dir / "scratch"
     scratch.mkdir(parents=True, exist_ok=True)
@@ -802,18 +1041,22 @@ def gather(facts_dir: Path, to_replay: Sequence[Target], states: int = DEFAULT_S
     def one(target: Target) -> None:
         unit = units()[target.name]
         coverage = index.for_function(target.address, GuestAddress(unit.hi))
-        inputs = inputs_for(target.name, states, snapshots, traces)
+        inputs = inputs_for(target.name, states, snapshots, traces, counts_dir)
         snaps = len(entry_snapshots(target.name, snapshots))
         probes: tuple[rt.Probe, ...] = ()
         facts: rt.RuntimeFacts | None = None
         error: str | None = None
         returned = 0
+        scenes: tuple[SceneAtCall, ...] = ()
+        writes: tuple[FieldWrite, ...] = ()
         try:
             with tempfile.TemporaryDirectory(dir=scratch, prefix=f"{int(target.address):08X}_") as work:
                 probes = replay(target.name, states, Path(work), snapshots=snapshots)
             returned = sum(1 for probe in probes if probe.returned)
             if returned:
                 facts = summarise(target.name, target.address, probes, coverage)
+                scenes = scenes_at_call(probes, entry_snapshots(target.name, snapshots))
+                writes = field_writes(probes)
             else:
                 reasons = [str(probe.problem) for probe in probes if probe.problem]
                 error = (reasons[0] if reasons else
@@ -822,7 +1065,8 @@ def gather(facts_dir: Path, to_replay: Sequence[Target], states: int = DEFAULT_S
             error = f"{type(error_raised).__name__}: {error_raised}"[:200]
         arguments, returns = argument_stats(probes)
         record = _record(target, unit, coverage, inputs, snaps=snaps, facts=facts, error=error,
-                         probes=len(probes), returned=returned, arguments=arguments, returns=returns)
+                         probes=len(probes), returned=returned, arguments=arguments, returns=returns,
+                         scenes_at_call=scenes, field_writes=writes)
         write_record(record_path(facts_dir, target.address), record)
         with lock:
             if returned:
@@ -858,7 +1102,7 @@ def gather(facts_dir: Path, to_replay: Sequence[Target], states: int = DEFAULT_S
 
 def write_index(facts_dir: Path, targets: Sequence[Target]) -> FactsReport:
     """Write build/facts/coverage.tsv (one row per function) and say what the run produced."""
-    rows = ["# address\tname\treached\troutes\tcalls/1k\tcaptured\tfacts\terror"]
+    rows = ["# address\tname\treached\troutes\tentries\tentries/1k\tcalls/1k\tcaptured\tfacts\terror"]
     reached = captured = with_facts = errors = 0
     reasons: dict[str, int] = {}
     examples: list[ToolMessage] = []
@@ -866,7 +1110,7 @@ def write_index(facts_dir: Path, targets: Sequence[Target]) -> FactsReport:
         path = record_path(facts_dir, target.address)
         record = read_record(path)
         if record is None:
-            rows.append(f"0x{int(target.address):08X}\t{target.name}\t-\t-\t-\t-\t-\t(no record)")
+            rows.append(f"0x{int(target.address):08X}\t{target.name}\t-\t-\t-\t-\t-\t-\t-\t(no record)")
             continue
         reached += 1 if record.reached else 0
         captured += 1 if record.captured else 0
@@ -881,7 +1125,10 @@ def write_index(facts_dir: Path, targets: Sequence[Target]) -> FactsReport:
         rows.append("\t".join((
             record.address_hex, record.name, "yes" if record.reached else "no",
             ",".join(str(route.route) for route in record.routes
-                     if route.executed or route.body_executed or route.calls) or "-",
+                     if route.executed or route.body_executed or route.calls or route.entries)
+            or "-",
+            str(record.entries) if record.entries else "-",
+            f"{record.entries_per_1000_frames:g}" if record.entries else "-",
             f"{record.calls_per_1000_frames:g}", str(record.captured_states),
             "yes" if (record.facts is not None and record.returned) else "no",
             record.facts_error or "-")))
@@ -915,13 +1162,16 @@ class Gathered(Result):
     notes: tuple[ToolMessage, ...]
 
 
-def step_plan(facts_dir: Path, only: Sequence[str], states: int, limit: int) -> Planned:
-    targets, replay, routes, notes = plan(facts_dir, only, states, limit)
+def step_plan(facts_dir: Path, only: Sequence[str], states: int, limit: int,
+              counts_dir: Path | None = None) -> Planned:
+    targets, replay, routes, notes = plan(facts_dir, only, states, limit, counts_dir=counts_dir)
     return Planned(targets=targets, replay=replay, routes=routes, notes=notes)
 
 
-def step_gather(facts_dir: Path, planned: Planned, states: int, jobs: int) -> Gathered:
-    facts, errors, skipped, seconds, notes = gather(facts_dir, planned.replay, states, jobs)
+def step_gather(facts_dir: Path, planned: Planned, states: int, jobs: int,
+                counts_dir: Path | None = None) -> Gathered:
+    facts, errors, skipped, seconds, notes = gather(facts_dir, planned.replay, states, jobs,
+                                                   counts_dir=counts_dir)
     return Gathered(facts=facts, errors=errors, skipped=skipped, seconds=seconds, notes=notes)
 
 

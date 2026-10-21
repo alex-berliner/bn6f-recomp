@@ -214,6 +214,45 @@ static void ce_count(uint32_t site, uint32_t target, uint32_t lr) {
     ce_lost++;
 }
 
+/* --count-entries FILE OUT [G0 [G1]]: how many times each of the entry
+ * addresses listed in FILE (hex, one per line) is EXECUTED while the game frame
+ * counter is in [G0, G1). Unlike --profile-game, which attributes CYCLES to a
+ * PC, this counts EXECUTIONS of the watched entries, so it answers "how many
+ * times was this function called" for every listed function in one pass -- what
+ * wf facts records as `calls`. The same stepping loop runs (forced on for the
+ * window), so the counts are exact; OUT lines are "ADDR COUNT" for every
+ * watched address that ran at least once. */
+#define NENTRY 65536
+static uint8_t ce_count_rom[0x02000000 / 16], ce_count_iwram[0x8000 / 16];
+static uint32_t entry_addr[NENTRY];        /* the watched entries, in file order */
+static unsigned long entry_n[NENTRY];
+static unsigned n_entries;
+static int entry_ready;
+static inline void count_entry(uint32_t a) {
+    if (!entry_ready) return;
+    a &= ~1u;
+    if (a >= 0x08000000u && a < 0x0A000000u) {
+        if (!(ce_count_rom[(a - 0x08000000u) >> 4] >> ((a >> 1) & 7) & 1)) return;
+    } else if (a >= 0x03000000u && a < 0x03008000u) {
+        if (!(ce_count_iwram[(a - 0x03000000u) >> 4] >> ((a >> 1) & 7) & 1)) return;
+    } else return;
+    uint32_t h = (a * 2654435761u) & (NENTRY - 1);
+    for (unsigned k = 0; k < NENTRY; k++, h = (h + 1) & (NENTRY - 1))
+        if (entry_addr[h] == a) { entry_n[h]++; return; }
+}
+static void count_dump_ones(const char *out, unsigned long from, unsigned long to) {
+    FILE *o = fopen(out, "w");
+    if (!o) { perror(out); return; }
+    unsigned seen = 0;
+    for (unsigned k = 0; k < NENTRY; k++)
+        if (entry_addr[k] && entry_n[k]) { fprintf(o, "%08x %lu\n", entry_addr[k], entry_n[k]); seen++; }
+    fprintf(o, "# count-entries: %u watched, %u executed, game frames %lu..%lu\n",
+            n_entries, seen, from, to);
+    fclose(o);
+    printf("count-entries: %u of %u entries executed over game frames %lu..%lu -> %s\n",
+           seen, n_entries, from, to, out);
+}
+
 /* The game's frame counter (a u16 behind a pointer at ADDR), unwrapped: when it
  * reads lower than before (the wrap past 65535) counting continues upward
  * from the previous value, so a trace longer than 65536 game frames keeps
@@ -245,6 +284,10 @@ int main(int argc, char **argv) {
     /* --count-entry ADDR: while profiling, histogram (r0, lr) at each
      * execution of ADDR (e.g. a runtime function's entry). */
     unsigned long count_pc = 0;
+    /* --count-entries FILE OUT [G0 [G1]]: exact execution counts of the entry
+     * addresses in FILE over the game-frame window [G0, G1) (see count_entry). */
+    const char *cnt_file = NULL;
+    unsigned long cnt_from = 0, cnt_to = 0;
     /* --load-state FILE / --save-state FILE: start from / end with an mGBA
      * save state (for building input traces step by step). */
     const char *load_state = NULL, *save_state = NULL;
@@ -328,6 +371,8 @@ int main(int argc, char **argv) {
     int pending = 0;
     unsigned long snapf_off = 0, snapf_mask = 0, snapf_val = 0;
     int pg_active = 0, pg_continue = 0, pg_done = 0;
+    const char *ce_out_cnt = NULL;
+    int cnt_active = 0, cnt_dumped = 0;
     uint64_t pg_total = 0;
     unsigned pg_hw0 = 0;
     unsigned last_digest = ~0u;
@@ -359,6 +404,28 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--trace-pc")) trace_pc = 1;
         else if (!strcmp(argv[i], "--step-from")) step_from = strtoul(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--count-entry")) count_pc = strtoul(argv[++i], 0, 0);
+        else if (!strcmp(argv[i], "--count-entries")) {
+            cnt_file = argv[++i]; ce_out_cnt = argv[++i];
+            cnt_from = strtoul(argv[++i], 0, 0);
+            if (i + 1 < argc && argv[i + 1][0] >= '0' && argv[i + 1][0] <= '9') cnt_to = strtoul(argv[++i], 0, 0);
+            else { cnt_to = ~0ul; if (i + 1 < argc && argv[i + 1][0] == '-') i++; }
+            FILE *f = fopen(cnt_file, "r");
+            if (!f) { fprintf(stderr, "cannot read %s\n", cnt_file); return 2; }
+            char line[64];
+            while (fgets(line, sizeof line, f)) {
+                uint32_t a = strtoul(line, 0, 16) & ~1u;
+                if (!a) continue;
+                if (n_entries >= NENTRY) { fprintf(stderr, "too many entries in %s\n", cnt_file); return 2; }
+                if (a >= 0x08000000u && a < 0x0A000000u) ce_count_rom[(a - 0x08000000u) >> 4] |= 1u << ((a >> 1) & 7);
+                else if (a >= 0x03000000u && a < 0x03008000u) ce_count_iwram[(a - 0x03000000u) >> 4] |= 1u << ((a >> 1) & 7);
+                else continue;   /* not in ROM or IWRAM: nothing to step there */
+                uint32_t h = (a * 2654435761u) & (NENTRY - 1);
+                while (entry_addr[h]) h = (h + 1) & (NENTRY - 1);
+                entry_addr[h] = a; n_entries++;
+            }
+            fclose(f);
+            entry_ready = 1;
+        }
         else if (!strcmp(argv[i], "--load-state")) load_state = argv[++i];
         else if (!strcmp(argv[i], "--save")) save_file = argv[++i];
         else if (!strcmp(argv[i], "--call-snaps")) { call_dir = argv[++i]; call_steps = strtoul(argv[++i], 0, 0); }
@@ -806,6 +873,13 @@ int main(int argc, char **argv) {
             pg_active = 0;          /* --step-window: back to whole frames */
             pg_done = 1;
         }
+        if (cnt_file && game_frame_addr && !cnt_active && when >= cnt_from && when < cnt_to)
+            cnt_active = 1;
+        if (cnt_active && when >= cnt_to) {
+            count_dump_ones(ce_out_cnt, cnt_from, cnt_to);
+            cnt_dumped = 1;
+            break;
+        }
         if (pg_active && when >= pg_to) {
             FILE *pf = fopen("profile.txt", "w");
             fprintf(pf, "# game %lu..%lu hw %u..%u cycles %llu\n", pg_from, pg_to, pg_hw0, fr,
@@ -821,7 +895,7 @@ int main(int argc, char **argv) {
         }
         /* a pending --poke-at steps its frame on its own */
         int poke_step = next_poke < npokes && game_frame_addr && when + 1 + 2 * poke_live >= poke_gs[next_poke];
-        if (pg_active || poke_step || ce_out) {
+        if (pg_active || poke_step || ce_out || cnt_active) {
             /* step one hardware frame, attributing cycles to the PC */
             uint32_t f0 = core->frameCounter(core);
             uint64_t t0 = mTimingGlobalTime(core->timing);
@@ -959,6 +1033,7 @@ int main(int argc, char **argv) {
                     }
                     save_snapshot(core, snap_dir, snap_saved++, (uint32_t)pc, (uint32_t)cpsr);
                 }
+                if (cnt_active) count_entry((uint32_t)pc);
                 if (count_pc && ((uint32_t)pc & ~1u) == (count_pc & ~1u)) {
                     int32_t r0 = 0, lr = 0;
                     core->readRegister(core, "r0", &r0);
@@ -1014,6 +1089,9 @@ int main(int argc, char **argv) {
         }
     }
 done:
+    /* a window that ended early (--until-game-frame, the frame budget, end of trace)
+     * still counted what it saw: report it rather than lose it */
+    if (cnt_file && !cnt_dumped) count_dump_ones(ce_out_cnt, cnt_from, cnt_to);
     if (ce_out) {
         FILE *o = fopen(ce_out, "w");
         unsigned long distinct = 0;

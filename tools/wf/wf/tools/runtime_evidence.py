@@ -277,8 +277,13 @@ def _load_capture_bases(function: FunctionName) -> tuple[Snap, ...]:
 
 
 def find_mgba_run() -> Path:
-    """Where the project keeps the mGBA runner (tools/oracle.py invokes it the same way)."""
-    path = PROJECT_ROOT_BIN
+    """Where the project keeps the mGBA runner (tools/oracle.py invokes it the same way).
+
+    `WF_MGBA_RUN` overrides the path: a worktree of the wf code that needs a runner built
+    from its own `tools/mgba_run.c` (a new option, say) points this at its own build, so the
+    checked-in runner the rest of the project uses is never overwritten."""
+    override = os.environ.get("WF_MGBA_RUN")
+    path = Path(override) if override else PROJECT_ROOT_BIN
     if not path.exists():
         raise FileNotFoundError(f"mgba_run not found at {path}; build it with tools/build.sh first")
     return path

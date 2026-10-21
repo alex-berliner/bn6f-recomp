@@ -52,6 +52,7 @@ from pydantic import Field, ValidationError, model_validator
 from wf.repo import REPO, RUNS
 from wf.tools import facts as ft
 from wf.tools import intervene as it
+from wf.tools import structfields as sf
 from wf.tools.facts import FunctionFacts, RouteCoverage
 from wf.types import (FrameCount, FunctionName, GuestAddress, ModelSpec, Result, RouteName,
                       ToolMessage)
@@ -281,12 +282,32 @@ def check_claim(claim: Claim, record: FunctionFacts | None) -> ClaimCheck:
 
 
 def _reached_in_scene(claim: ReachedInScene, record: FunctionFacts) -> ClaimCheck:
+    """Was this function reached in `claim.scene`? Prefers `record.scenes_at_call` -- the per-call
+    scene each captured call's own entry snapshot says the game was in -- because a route is an
+    input tape, not a scene (`story2` runs a battle, opens a menu and returns to the map).
+    Falls back to the route->scene table when no per-call scenes were recorded (the captures
+    were not replayed, or the replay produced no scenes)."""
+    captured_scenes = seen_scenes_at_call(record)
+    if captured_scenes is not None:
+        observed_scenes = captured_scenes
+        where = ", ".join(f"{s.state}={s.scene}" for s in record.scenes_at_call[:4])
+        if not record.scenes_at_call:
+            return ClaimCheck(claim=claim, status="unknown", observed=ToolMessage(
+                f"{len(record.scenes_at_call)} scene(s) captured; none could be named "
+                "(entry snapshot's mode bytes were unreadable or outside the jump tables)"))
+        if claim.scene in observed_scenes:
+            return ClaimCheck(claim=claim, status="pass", observed=ToolMessage(
+                f"over {len(record.scenes_at_call)} captured call(s) it ran in {claim.scene} "
+                f"({where})"))
+        return ClaimCheck(claim=claim, status="fail", observed=ToolMessage(
+            f"over {len(record.scenes_at_call)} captured call(s) it ran in "
+            f"{sorted(observed_scenes)} ({where}); never {claim.scene}"))
     reached = reached_routes(record)
-    scenes = {scene_of(str(route.route)) for route in reached}
-    where = ", ".join(str(route.route) for route in reached) or "(none)"
     if not reached:
         return ClaimCheck(claim=claim, status="fail", observed=ToolMessage(
             f"no recorded route executed it (0 of {len(record.routes)} routes)"))
+    scenes = {scene_of(str(route.route)) for route in reached}
+    where = ", ".join(str(route.route) for route in reached) or "(none)"
     if claim.scene in scenes:
         return ClaimCheck(claim=claim, status="pass", observed=ToolMessage(
             f"executed on {where} ({claim.scene})"))
@@ -297,20 +318,64 @@ def _reached_in_scene(claim: ReachedInScene, record: FunctionFacts) -> ClaimChec
         f"executed on {where}: scenes {sorted(s for s in scenes if s)}, never {claim.scene}"))
 
 
+def seen_scenes_at_call(record: FunctionFacts) -> set[str] | None:
+    """The distinct scenes the record's per-call scenes observed, or None when no per-call
+    scenes were recorded (the captures weren't replayed). `other` is removed -- a function only
+    ever seen in `other` (an unnamed mode) is not contradicted by a scene claim about it."""
+    if not record.scenes_at_call:
+        return None
+    return {call.scene for call in record.scenes_at_call if call.scene != "other"}
+
+
 def _writes_ram(claim: WritesRam, record: FunctionFacts) -> ClaimCheck:
-    if record.facts is None or not record.returned:
-        return ClaimCheck(claim=claim, status="unknown", observed=_no_facts(record))
+    """Did the function write into RAM that bn6f names with `claim.symbol_prefix`?
+
+    Claims are written in the disassembly's own vocabulary (`oBattleObject_Timer`,
+    `oAIData`), which names a struct FIELD or FAMILY, while a RAM symbol names a struct
+    INSTANCE with the object index spelled out (`eT3BattleObject1_Timer` is the same field).
+    So the two are matched through bn6f's struct tables, never as text, in three steps of
+    decreasing strength:
+
+    * `field_writes` whose `field_names` the base register points into (`attributed`), or whose
+      `struct_guess` is a family the base register sits in (`in_family`). Offsets are shared
+      across families (0x8 is `oBattleObject_CurAction` and eighty-five other structs' first
+      field), so a name at an offset the base does not point into is not evidence about it.
+    * `field_writes`' base region and the `memory_writes` regions the calls changed, read back
+      through the family table: `eT3BattleObject1_Timer` answers to `oBattleObject_Timer` and
+      to the family `oBattleObject`, and `eBattleState0_HP` to `oBattleState_HP`.
+    * nothing at all -- `unknown`, because no capture was replayed or no base pointed at RAM."""
     prefix = claim.symbol_prefix.casefold()
-    symbols = [str(write.symbol) for write in record.facts.memory_writes]
-    hits = [symbol for symbol in symbols if symbol.casefold().startswith(prefix)]
-    biggest = (", ".join(f"{write.symbol}({write.bytes}B)"
-                         for write in record.facts.memory_writes[:4]) or "nothing")
+    hits: list[str] = []
+    for write in record.field_writes:
+        if write.attributed:
+            hits += [name for name in write.field_names
+                     if name.casefold().startswith(prefix) and name not in hits]
+        if write.in_family and write.struct_guess.casefold().startswith(prefix):
+            if write.struct_guess not in hits:
+                hits.append(write.struct_guess)
+    if record.facts is not None and record.returned:
+        for region in record.facts.memory_writes:
+            symbol = str(region.symbol)
+            if symbol.casefold().startswith(prefix) and symbol not in hits:
+                hits.append(symbol)
+            # a region symbol that IS a field (`eT3BattleObject1_Timer`) resolves to the bn6f
+            # field names at its own offset, which is what the claim is spelled in
+            written = sf.resolve(0, symbol)
+            for name in written.names:
+                if name.casefold().startswith(prefix) and name not in hits:
+                    hits.append(name)
+            for family in written.candidates:
+                if family.casefold().startswith(prefix) and family not in hits:
+                    hits.append(family)
     if hits:
         return ClaimCheck(claim=claim, status="pass", observed=ToolMessage(
-            f"over {record.returned} replayed call(s) it wrote inside "
-            f"{', '.join(hits[:4])}"))
+            f"over {record.returned} replayed call(s) it wrote inside {', '.join(hits[:4])}"))
+    if record.facts is None or not record.returned:
+        return ClaimCheck(claim=claim, status="unknown", observed=_no_facts(record))
+    biggest = (", ".join(f"{write.symbol}({write.bytes}B)"
+                         for write in record.facts.memory_writes[:4]) or "nothing")
     return ClaimCheck(claim=claim, status="fail", observed=ToolMessage(
-        f"over {record.returned} replayed call(s) it wrote {biggest}; no symbol starts with "
+        f"over {record.returned} replayed call(s) it wrote {biggest}; none of it is "
         f"{claim.symbol_prefix}"))
 
 
@@ -404,19 +469,35 @@ def _inside_ram_or_rom(low: int, high: int) -> bool:
 
 
 def _called_every_frame(claim: CalledEveryFrame, record: FunctionFacts) -> ClaimCheck:
+    """Is the function called once a frame (or more) on the best recorded route? Prefers real
+    entries (`entries_per_1000_frames` from the per-route entry counts) -- the CPU entering the
+    function's entry address on the route -- over `calls_per_1000_frames`, which is only the
+    recorded indirect call sites (`bl` and direct-call entries are invisible to it, and an
+    instrumented site can be wrong about which function it lands on)."""
     reached = reached_routes(record)
     if not reached:
         return ClaimCheck(claim=claim, status="fail", observed=ToolMessage(
             "no recorded route executed it, so it is not called every frame"))
+    entry_rates = [(str(route.route), float(route.entries_per_1000_frames)) for route in reached
+                   if route.entries_per_1000_frames is not None]
+    if entry_rates:
+        best_route, best = max(entry_rates, key=lambda row: row[1])
+        every = best >= EVERY_FRAME_PER_1000
+        shown = (f"{best:.1f} entries / 1000 frames on {best_route} "
+                 f"({len(entry_rates)} counted route(s))")
+        if every == claim.yes:
+            return ClaimCheck(claim=claim, status="pass", observed=ToolMessage(shown))
+        return ClaimCheck(claim=claim, status="fail", observed=ToolMessage(shown))
     rates = [(str(route.route), float(route.calls_per_1000_frames)) for route in reached
              if route.calls_per_1000_frames is not None]
     if not rates:
         return ClaimCheck(claim=claim, status="unknown", observed=ToolMessage(
-            "no recorded route carries call counts for it (only the recorded indirect call "
-            "sites are counted)"))
+            "no recorded route carries call counts for it (the indirect call sites are not "
+            "instrumented and the entry counts were not collected for any route)"))
     best_route, best = max(rates, key=lambda row: row[1])
     every = best >= EVERY_FRAME_PER_1000
-    shown = (f"most on {best_route}: {best:.1f} calls / 1000 frames over {len(rates)} route(s)")
+    shown = (f"most on {best_route}: {best:.1f} calls / 1000 frames over {len(rates)} route(s)"
+             " (from .edges, not entries)")
     if every == claim.yes:
         return ClaimCheck(claim=claim, status="pass", observed=ToolMessage(shown))
     return ClaimCheck(claim=claim, status="fail", observed=ToolMessage(shown))

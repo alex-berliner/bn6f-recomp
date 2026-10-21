@@ -391,14 +391,17 @@ def test_write_index_writes_a_row_per_function(tmp_path: Path, recordings: Path,
     gather(facts_dir, to_replay, jobs=1)
     report = write_index(facts_dir, targets)
     rows = (facts_dir / "coverage.tsv").read_text().splitlines()
-    assert rows[0].startswith("# address\tname\treached\troutes\tcalls/1k\tcaptured\tfacts\terror")
+    assert rows[0].startswith("# address\tname\treached\troutes\tentries\tentries/1k\t"
+                              "calls/1k\tcaptured\tfacts\terror")
     assert len(rows) == len(targets) + 1
     foo = next(row for row in rows if "foo_08001234" in row).split("\t")
     assert foo[:3] == [f"0x{FOO:08X}", "foo_08001234", "yes"]
-    assert foo[3] == "battle,wander" and foo[5] == "2" and foo[6] == "yes"   # routes, states, facts
-    assert float(foo[4]) == pytest.approx(2 * 1000 / 3000, abs=1e-3)   # 2 calls / 3000 frames
+    # routes, entries, entries/1k, calls/1k, states, facts (no counts were counted here)
+    assert foo[3] == "battle,wander" and foo[4] == "-" and foo[5] == "-"
+    assert foo[7] == "2" and foo[8] == "yes"
+    assert float(foo[6]) == pytest.approx(2 * 1000 / 3000, abs=1e-3)   # 2 calls / 3000 frames
     bar = next(row for row in rows if "bar_08005678" in row).split("\t")
-    assert bar[2:7] == ["yes", "sweep", "0", "0", "no"]                # reached, never captured
+    assert bar[2:9] == ["yes", "sweep", "-", "-", "0", "0", "no"]    # reached, never captured
     assert report.functions == 3 and report.with_facts == 1 and report.captured == 1
     assert report.rows == 3 and report.examples
 
