@@ -1,0 +1,54 @@
+name: battle_linkRelatedObjectToOwner
+address: '0x080BC468'
+kind: function
+status: probable
+summary: Hook called after landing a decelerating flight/slide that links the moved object (r5) to its
+  related object (r3, owner) when the battle isn't paused, the owner still has HP and isn't flagged with
+  collision/state bits 0x110c00, by computing the grid-column distance between owner and object and passing
+  it to sub_801DCCC for visual linking (e.g., telegraph line).
+interface: (r3 = related owner object, r5 = object just landed) -> void; calls sub_801DCCC(r0 = ((r5.X
+  - r3.X) >> 16), r1 = 0) when conditions allow
+details: 'Preserves r4-r7. Calls battle_isPaused and bails on non-zero. Loads the RelatedObject1Ptr of
+  r5 into r3 (owner), checks its oBattleObject_HP > 0; loads CollisionDataPtr->ObjectFlags1 and ANDs with
+  the constant 0x110c00, bailing if any bit set. Otherwise computes the signed 24.8 column delta between
+  r5.X and r3.X (r5.X - r3.X, lsr #16 to get the grid column) and calls sub_801DCCC(delta, 0), swapping
+  r5 to the owner first. Likely drives the visual link/effect between an incoming projectile-style object
+  and its owner after its flight/slide lands.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: cmp r0,#0 / beq locret on HP check at 0x80BC478 — gates on owner's HP>0; ldr r0,[r3,#oBattleObject_CollisionDataPtr]
+    / ldr [r0,#ObjectFlags1] / tst r0,0x110c00 — gates on owner's collision/state flags 0x110c00; r0 =
+    (r5.X - r3.X) >> 16 at 0x80BC48A — column distance between landed object and its owner; bl sub_801DCCC
+    with r1=0 at 0x80BC48E — passes the delta to a link/effect handler; Called from both battle_objUpdateDeceleratingFlight
+    and battle_stepDecelSlide right before they pop {r4,r6,r7,pc} — runs at the landing/handoff moment
+    for the moved object
+  refs:
+  - bn6f/asm/asm31.s:9766
+  - 0x080BC2C8 battle_objUpdateDeceleratingFlight
+  - 0x080BC30E battle_stepDecelSlide
+  - 0x0800A03C battle_isPaused
+  - 0x0801DCCC sub_801DCCC
+  reproduce: python3 tools/asmcat.py 0x080BC468
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-024121'
+coverage:
+- battlesweep
+open_questions:
+- What sub_801DCCC actually does with (columnDelta, 0) — i.e., what visual/script effect it produces between
+  the owner and the landed object
+- Why the 0x110c00 mask and which flag bits (e.g., reflectable, hidden, intangible) it is guarding against
+- Why r5 is reassigned to the owner before the call — does the callee expect the owner in r5
+sources:
+- wf investigate investigate-20261021-024121
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eedd7a8a
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80BC468 -> battle_linkRelatedObjectToOwner
+  where: bn6f 36db7a37
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BC468

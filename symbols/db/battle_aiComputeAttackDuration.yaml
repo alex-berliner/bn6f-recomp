@@ -1,0 +1,50 @@
+name: battle_aiComputeAttackDuration
+address: '0x081004C8'
+kind: function
+status: probable
+summary: Returns a randomized attack duration (frames) for an AI attack, with a +60 boost when the target
+  object has flag 0xA000 set.
+interface: () -> r0 = u16 attack duration (frames)
+details: Loads pointer dword_81004E8 = {0x28, 0x24, 0x20, 0x1C} into r0 and calls sub_800FE28, presumably
+  a random-in-range helper that returns one of those values. It then queries object_getFlag on the current
+  object and tests mask 0xA000 (the high bits of the first object flag word). When the test is non-zero,
+  0x3C (60) is added to the random value before returning. The caller stores this result as the AI attack's
+  AttackDuration field, in line with the surrounding AI attack initialization sequence (loading versioned
+  attacks, choosing target, setting object attack register).
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: Call site at 0x0810062A stores return in oAIAttackVars_AttackDuration as halfword; dword_81004E8
+    = 0x1C202428 looks like a {lo, hi} pair, 0x1C..0x28, fed to sub_800FE28 as a range table; object_getFlag()
+    with no argument returns a global/int; tst against 0xA000 selects a duration boost; Boost of +0x3C
+    (60) frames conditional on flag bit suggests a longer stun/status effect when applicable; Caller sub_8100614
+    is clearly an AI attack initializer (sets tier, init flag, attack pair, panel callback, target, attack0=0xD)
+  refs:
+  - bn6f/asm/asm31.s:161613
+  - 0x08100614 sub_8100614
+  - 0x0801A166 object_getFlag
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x081004C8
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-024121'
+coverage:
+- battlesweep
+open_questions:
+- What sub_800FE28 actually does with the dword pointer (whether it's RNG, table lookup, or a buffer for
+  it)
+- Which flag bit 0xA000 represents (status effect, panel state, or alliance-related) — only the mask is
+  visible, not which object was sampled
+- The dword layout {0x1C,0x20,0x24,0x28} — whether sub_800FE28 treats it as two u16 ranges or four bytes
+sources:
+- wf investigate investigate-20261021-024121
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eedd7a8a
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_81004C8 -> battle_aiComputeAttackDuration
+  where: bn6f 36db7a37
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81004C8

@@ -1,0 +1,50 @@
+name: req_runShutdownDecompJob
+address: '0x0803FBE8'
+kind: function
+status: probable
+summary: Enqueues a BG-tile-decomp shutdown request and zeroes the 0x140-byte decomp work buffer used
+  by it.
+interface: () -> ()
+details: Sets r0 to eDecompBuffer2013A00, r1 to BG1X_Offset (a DRAM address for the BG-tile destination),
+  r2=1 (likely a 'shutdown'/'stop' sub-cmd), r3=0xA2400000 (mode/source/dst packed arg), then tail-calls
+  req_enqueueTask so the background request worker eventually fills the BG-tile area. It then memsets
+  the first 0x140 bytes of eDecompBuffer2013A00 to 0, readying the decomp work buffer for the next life.
+  Called from the game-over scene-setup path, consistent with tearing down the current battle/field scene.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 0x0803FBE8 loads r0=eDecompBuffer2013A00, r1=BG1X_Offset, r2=1, r3=0xA2400000 then bl req_enqueueTask
+    - a producer for the background request queue; next loop clears 0x140 bytes of eDecompBuffer2013A00
+    to 0, identifying that as the decomp work-buffer for the enqueued job; scene_gameOverSetup_803FB64
+    uses this just before SetScreenFade(8,0x20) and switching state index to 4, i.e. during game-over
+    scene tear-down; rq_enqueueTask summary says it fills the byte_20081B0 request with cmd/params/buffer
+    ptr and raises the active flag, matching the args supplied here
+  refs:
+  - bn6f/asm/asm03_1_1.s:15056
+  - 0x0803FB64 scene_gameOverSetup_803FB64
+  - 0x080068EC req_enqueueTask
+  reproduce: python3 tools/asmcat.py 0x0803FBE8
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-024121'
+coverage:
+- battle
+- battlesweep
+- chips
+- fuzz
+open_questions:
+- Exact packing of 0xA2400000 (source/dest/mode fields) and what the r2=1 sub-command means to the request
+  worker
+- Whether BG1X_Offset is the actual destination the decmp job writes, or just a tag the worker reads
+sources:
+- wf investigate investigate-20261021-024121
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eedd7a8a
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_803FBE8 -> req_runShutdownDecompJob
+  where: bn6f 36db7a37
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803FBE8

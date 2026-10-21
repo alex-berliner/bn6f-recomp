@@ -1,0 +1,45 @@
+name: battleSweepTick
+address: '0x080FB6C0'
+kind: function
+status: probable
+summary: Per-frame tick for the BattleSweep chip, animating a sweep count and playing a sweep SFX once.
+interface: (r5 = entity?, r7 = chipState?) -> void; preserves r4,r6
+details: Drives a small state machine on a chip control struct at r7. On the first call (byte [r7+1] ==
+  0) it sets the state to 4, writes 0x12 to [r5+0x10], calls sub_80FB874, plays sound effect 0x20 (0x21+0xFF)
+  via PlaySoundEffect, and stores byte [r7+0xE] into the halfword at [r7+0x10] as a duration/frame counter.
+  Subsequent calls decrement that counter; when it reaches zero it decrements byte [r7+0xD] (a sweep remaining
+  count). If more sweeps remain it clears state to 0 to re-trigger the animation; if none remain it writes
+  0x10 to the halfword at [r7] as a terminal/done state.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: Caller route is named 'battlesweep'; Plays sound effect 0x20 once on entry (PlaySoundEffect
+    call); Uses a 2-state machine via [r7+1] and a counter at [r7+0x10]; Decrements [r7+0xD] (sweep count)
+    each time the counter expires; Writes 0x10 to [r7] when [r7+0xD] hits 0 — done state
+  refs:
+  - bn6f/asm/asm31.s:151037
+  - 0x080005CC PlaySoundEffect
+  - 0x080FB874 sub_80FB874
+  reproduce: python3 tools/asmcat.py 0x080FB6C0
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-024121'
+coverage:
+- battlesweep
+- chips
+open_questions:
+- No known callers; the 'battlesweep' route must be registered as a chip tick handler somewhere
+- Exact meaning of [r7], [r7+0xD], [r7+0xE], and what r5 (with [r5+0x10]) refers to is unknown
+- sub_80FB874's role in the sweep animation is not yet documented
+sources:
+- wf investigate investigate-20261021-024121
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eedd7a8a
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80FB6C0 -> battleSweepTick
+  where: bn6f 36db7a37
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80FB6C0

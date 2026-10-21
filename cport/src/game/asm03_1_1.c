@@ -3300,10 +3300,10 @@ static void call_render_info_b(void) {
     GUEST_CALL(renderInfo_80017A0);
 }
 
-/* register form: calls sub_803FBE8 outside this file, which has no typed C interface yet */
+/* register form: calls req_runShutdownDecompJob outside this file, which has no typed C interface yet */
 static void call_scene_teardown(u32 self) {
     R5 = self;
-    GUEST_CALL(sub_803FBE8);
+    GUEST_CALL(req_runShutdownDecompJob);
 }
 
 /* register form: calls SetScreenFade outside this file, which has no typed C interface yet */

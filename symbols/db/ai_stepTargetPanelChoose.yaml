@@ -1,0 +1,53 @@
+name: ai_stepTargetPanelChoose
+address: '0x0810CA4C'
+kind: function
+status: probable
+summary: AI attack step that polls a panel-chooser callback and reserves the chosen panel.
+interface: () -> void; r7 = AI attack vars struct
+details: Runs each tick while the parent AI attack is in this step. Decrements the step timer (oAIAttackVars_StepTimer);
+  when it expires, calls the function pointer stored at oAIAttackVars_PanelChooseCallback with a target
+  object pointer (oAIAttackVars_TargetObjectPtr) as the argument. If the callback returns a non-zero panel
+  coordinate, the function stores the X/Y in oAIAttackVars_TargetPanelX/TargetPanelY and reserves that
+  panel via object_reservePanel. On success it advances to step 0xD and sets oAIAttackVars_HitElement
+  = 8; on failure (or callback returning 0) it clears r5's current animation index (oBattleObject_CurAnim),
+  sets the step timer back to 5 with oAIAttackVars_HitElement = 0x20, and falls through to clearing bit
+  2 of r5's object header flags.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: Field reads (ldrh StepTimer, ldr TargetObjectPtr, ldr PanelChooseCallback) identify the AI attack
+    vars layout; When timer hits 0, callback pointer in r1 is invoked via `bx r1` with target object in
+    r0; Returned (r0,r1) = (x,y) written to oAIAttackVars_TargetPanelX/Y when r0!=0; bl object_reservePanel
+    is invoked only when a valid panel coordinate was returned; Both success and failure branches rewrite
+    StepTimer (0xd / 0x5) and HitElement (8 / 0x20) to drive the next step; Tail clears bit 2 of oObjectHeader_Flags
+    in r5, matching other AI step helpers' tail pattern
+  refs:
+  - bn6f/asm/dat31.s:710
+  - 0x0801BB1C object_reservePanel
+  reproduce: python3 tools/asmcat.py 0x0810CA4C
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-024121'
+coverage:
+- battlesweep
+- beastsp
+- story5
+- story6
+- story9
+open_questions:
+- Which AI attack script indices dispatch this routine (no callers are currently mapped)
+- What exactly oAIAttackVars_HitElement values 8 vs 0x20 mean to the attack state machine
+- Signature of the PanelChooseCallback (r0=obj) -> (x,y) is inferred from the writes; may return only
+  x with y implied
+sources:
+- wf investigate investigate-20261021-024121
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eedd7a8a
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_810CA4C -> ai_stepTargetPanelChoose
+  where: bn6f 36db7a37
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810CA4C

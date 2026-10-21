@@ -1,0 +1,45 @@
+name: ai_runScriptStepAttack
+address: '0x080F29D8'
+kind: function
+status: probable
+summary: 'Dispatches one AI ''attack'' script step: evaluates a flag and triggers a chip attack if set.'
+interface: (r6 = battle object, r0 derived from AI state script id) -> no return; side effects via ai_useChipAttack
+details: Reads the AI state's script id byte from the battle object at offset oAIState_ScriptId, uses
+  it to index a two-entry jump table at off_80F29FC whose entries are ai_scriptStepAttack9+1 and sub_80F2A16+1.
+  The branch falls through into GetAIData_Unk_44_Flag, tests the returned bitmask against constant 0x600,
+  and only when those bits are set calls ai_useChipAttack with r1=r2=0 before returning. Acts as a tiny
+  script-step dispatcher for the player-AI's 'attack' phase.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: ldrb r0,[r6,#oAIState_ScriptId] + ldr r1,[r1,r0] + bx r1 -> dispatches script step from a 2-entry
+    table; off_80F29FC jump table labelled ai_scriptStepAttack9 and sub_80F2A16 indicates an 'attack'
+    script step entry point; bl GetAIData_Unk_44_Flag immediately after the dispatch tail -> this function
+    is the ai_scriptStepAttack9 case; tst r0,#0x600 gates the chip-attack call, so this step only fires
+    a chip when flag bits 0x600 are set; bl ai_useChipAttack with zero r1/r2 = immediate, unconditional
+    chip use on the player's slot
+  refs:
+  - bn6f/asm/asm31.s:132426
+  - 0x0800FFFE GetAIData_Unk_44_Flag
+  - 0x0801056A ai_useChipAttack
+  reproduce: python3 tools/asmcat.py 0x080F29D8
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-024121'
+coverage:
+- battlesweep
+open_questions:
+- What does the sibling entry sub_80F2A16 do (the other branch of this step)?
+- What AI state script ids route through this step (so we know which battle phase uses it)?
+sources:
+- wf investigate investigate-20261021-024121
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eedd7a8a
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80F29D8 -> ai_runScriptStepAttack
+  where: bn6f 36db7a37
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F29D8

@@ -1,0 +1,47 @@
+name: ai_getBusterHoldDuration
+address: '0x080F49A2'
+kind: function
+status: probable
+summary: Picks a hold-charge duration (in frames) for the random-panel buster attack from a small table,
+  then increases it if the Buster flag is set.
+interface: () -> r0 = hold-duration word; uses r5 = caller battle object
+details: 'Selects one of two base values from a 8-byte constant pool at byte_80F49CC (entries at offsets
+  +0/+4 corresponding to bne: b vs unconditional, based on a counter at oBattleObject_ExtraVars+0x10 <=
+  2) plus an index determined by sub_800FE28. If the caller''s object_getFlag returns flag bit 0xA000
+  the result is increased by 0x1E (~30). Used as the oAIAttackVars_AttackDuration for attack id 9 in ai_startRandomPanelAttack.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: Returned value is stored into ai_startRandomPanelAttack's oAIAttackVars_AttackDuration field;
+    Conditional add of 0x1E when (object_getFlag() & 0xA000) suggests an attack-duration bump based on
+    a Buster/charged flag; Two table entries picked by comparing an ExtraVars counter to 2, giving short
+    vs long hold timings (3,6,18,30,1E,24 in the pool); Reads from byte_80F49CC, an 8-byte duration table;
+    the other branch reads entry+4; Called only by ai_startRandomPanelAttack for a panel-attack (id 9),
+    so the value is the attack's hold duration
+  refs:
+  - bn6f/asm/asm31.s:136543
+  - 0x080F4AB2 ai_startRandomPanelAttack
+  - 0x0801A166 object_getFlag
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x080F49A2
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-024121'
+coverage:
+- battlesweep
+open_questions:
+- What counter at oBattleObject_ExtraVars+0x10 actually measures (consecutive hits? turns?) and which
+  table entries correspond to bne vs blt
+- Exact meaning of flag mask 0xA000 (charger level + element?)
+sources:
+- wf investigate investigate-20261021-024121
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f eedd7a8a
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80F49A2 -> ai_getBusterHoldDuration
+  where: bn6f 36db7a37
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80F49A2
