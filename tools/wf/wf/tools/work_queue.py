@@ -57,16 +57,16 @@ class Route(Result):
 # 10-14, OpenCode's 10-16: within each route, the cheapest good model first, then quota that lapses soonest.
 ROUTES: dict[Band, Route] = {
     Band.TINY: Route(prompt=PromptKind.TYPED, models=_models(
-        "hyper/glm-5.3-flash", "minimax/MiniMax-M3", "hyper/qwen3.8-flash", "hyper/deepseek-v4.1-flash",
+        "hyper/glm-5.3-flash", "minimax/MiniMax-M3", "hyper/qwen3.8-flash", "hyper/deepseek-v4.1-flash", "hyper/kimi-k2.5", "hyper/minimax-m3",
         "zai/glm-5.3-flash", "opencode/glm-5.3-flash")),
     Band.SMALL: Route(prompt=PromptKind.TYPED, models=_models(
-        "minimax/MiniMax-M3", "hyper/glm-5.3-flash", "hyper/qwen3.8-flash", "hyper/deepseek-v4.1-flash",
+        "minimax/MiniMax-M3", "hyper/glm-5.3-flash", "hyper/qwen3.8-flash", "hyper/deepseek-v4.1-flash", "hyper/kimi-k2.5", "hyper/minimax-m3",
         "zai/glm-5.3-flash", "opencode/glm-5.3-flash")),
     Band.MEDIUM: Route(prompt=PromptKind.TYPED, models=_models(
-        "minimax/MiniMax-M3", "hyper/glm-5.3-flash", "hyper/qwen3.8-flash", "hyper/deepseek-v4.1-flash",
+        "minimax/MiniMax-M3", "hyper/glm-5.3-flash", "hyper/qwen3.8-flash", "hyper/deepseek-v4.1-flash", "hyper/kimi-k2.5", "hyper/minimax-m3",
         "zai/glm-5.3-flash", "opencode/qwen3.8-flash")),
     Band.LARGE: Route(prompt=PromptKind.TYPED, models=_models(
-        "hyper/qwen3.8-flash", "hyper/glm-5.3-flash", "minimax/MiniMax-M3", "hyper/deepseek-v4.1-flash",
+        "hyper/qwen3.8-flash", "hyper/glm-5.3-flash", "minimax/MiniMax-M3", "hyper/deepseek-v4.1-flash", "hyper/kimi-k2.5", "hyper/minimax-m3",
         "zai/glm-5.3", "opencode/qwen3.8-flash")),
     Band.LARGER: Route(prompt=PromptKind.TYPED, models=_models(
         "hyper/qwen3.8-flash", "minimax/MiniMax-M3", "hyper/glm-5.3-flash", "zai/glm-5.3",
