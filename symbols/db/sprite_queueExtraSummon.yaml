@@ -1,0 +1,45 @@
+name: sprite_queueExtraSummon
+address: '0x0813809C'
+kind: function
+status: probable
+summary: If object flag 0x24 is set, queues an extra summon OAM entry (var 0xd) via sub_81380B0
+interface: (uses r5 = object; r0..r3 = 0x80,0x18,0,0xd -> jumps to sub_81380B0)
+details: Reads a 16-bit flag at object+0x24. If zero, returns immediately. If non-zero, primes the standard
+  OAM sub_queue arguments (r0=0x80, r1=0x18, r2=0, r3=0xd — a larger/deeper sprite than the default r3=0xc
+  in the caller) and tail-calls sub_81380B0 to queue the tile. The caller then queues the normal summon
+  sprite and animates both via battleObject_animateStepQueueOam, so this represents a paired 'extra' summon
+  sprite shown only when bit 0x24 says so.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'sub_813809C+0x04: ldrh r0,[r5,#0x24]; tst r0,r0; beq -> gate on flag at object+0x24; sub_813809C+0x0A:
+    mov r0,#0x80; mov r1,#0x18; mov r2,#0; mov r3,#0xd -> alternate summon args; sub_813809C+0x12: b loc_81380C8
+    -> tail-calls sub_81380B0 to queue the OAM; 0x081380E0 calls sub_813809C then sub_81380B0 with (4,0x20,0x20,0xc)
+    then battleObject_animateStepQueueOam — paired summon queueing pattern; sub_81380B0 is the shared
+    OAM-queue helper used in both branches'
+  refs:
+  - bn6f/asm/asm36.s:17344
+  - 0x081380E0 sub_81380E0
+  - 0x081380C8 sub_81380B0
+  - 0x081380D0 sub_81380B0
+  reproduce: python3 tools/asmcat.py 0x0813809C
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-004802'
+open_questions:
+- Which object's +0x24 bit this is — it's in r5 set by the caller, but the object type/owner is not shown
+  in this function or its immediate caller
+- Whether the same sprite is reused or two distinct sprites are stacked (r3=0xc vs 0xd are close, possibly
+  meta/different tile set)
+sources:
+- wf investigate investigate-20261021-004802
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c359212c
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_813809C -> sprite_queueExtraSummon
+  where: bn6f 4d0c50db
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813809C

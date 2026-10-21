@@ -1,0 +1,44 @@
+name: battle_objectCleanupByState
+address: '0x080E14EC'
+kind: function
+status: probable
+summary: Dispatches a battle object's teardown to one of two cleanup routines based on the value of its
+  +0x58 state byte.
+interface: (r0 = battleObjectPtr) -> void; reads [r0+0x58].byte; if ==2 calls battle_objectCleanup, else
+  calls sub_80E146C
+details: 'Loads a pointer from the battle object at offset 0x58 and branches on its low byte. When the
+  state byte is 2, the object is torn down via battle_objectCleanup (which clears the 0x2 bit and per-bit
+  resets other flags/links). Any other state value is delegated to sub_80E146C, whose purpose is currently
+  unknown. The function is itself a leaf/dispatcher: it pops {pc} to return after whichever callee runs,
+  so it depends on callees not corrupting lr.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: ldr r2,[r0,#0x58] reads the dispatch state field from the object; ldrb r3,[r2]; cmp r3,#2; bne
+    -> two-way switch on the low byte; bl battle_objectCleanup when state == 2 (known teardown path);
+    bl sub_80E146C when state != 2 (unknown alternate teardown); pop {pc} at both exits makes the function
+    a pure dispatcher over its callees
+  refs:
+  - bn6f/asm/asm31.s:93368
+  - 0x080E1352 battle_objectCleanup
+  - 0x080E146C sub_80E146C
+  reproduce: python3 tools/asmcat.py 0x080E14EC
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-004802'
+open_questions:
+- Who calls this dispatcher (no callers known)?
+- What state byte values does sub_80E146C handle (and what does it do)?
+- Is the +0x58 pointer dereferenced only to read a byte, or held for longer-lived state?
+sources:
+- wf investigate investigate-20261021-004802
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c359212c
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80E14EC -> battle_objectCleanupByState
+  where: bn6f 4d0c50db
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E14EC

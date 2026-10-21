@@ -1,0 +1,47 @@
+name: rfu_reinitRecvSlots
+address: '0x08146E60'
+kind: function
+status: probable
+summary: 'Re-initialises the RFU receive-side state: clears byte_20101E0 and zeroes per-slot receive buffers,
+  then calls rfu_resetRecvSlots.'
+interface: () -> void
+details: This tiny thunk prepares r0 (byte_20101E0) and r1 (rfuPerSlotRecvBuffers) and r2=0xc as the arguments
+  for rfu_resetRecvSlots, which clears queue globals, rebuilds the active-slot bitmask, and zeroes per-slot
+  recv state for up to 4 peers. Its only caller, sub_812A4AC, invokes it along the same wireless-link-restart
+  path that also re-calls submenu_resetState, rfu_shouldRestartWirelessLink, and rfu_startLinkTransfer.
+  The paired byte_20101E0 / rfuPerSlotRecvBuffers arguments match the parameters rfu_resetRecvSlots expects,
+  and the size 0xc is just passed through unchanged. It is essentially a typed wrapper around rfu_resetRecvSlots
+  in the RFU subsystem.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: tail-calls rfu_resetRecvSlots after loading byte_20101E0 (r0), rfuPerSlotRecvBuffers (r1), 0xc
+    (r2); caller sub_812A4AC places it on the wireless-link recovery path alongside rfu_shouldRestartWirelessLink
+    and rfu_startLinkTransfer; function signature (a0, a1, a2 -> void) is exactly rfu_resetRecvSlots's
+    signature, so this is a thin re-init wrapper; no global state is touched directly here; everything
+    is forwarded to rfu_resetRecvSlots
+  refs:
+  - bn6f/asm/libs.s:6568
+  - 0x0812A4AC sub_812A4AC
+  - 0x08146E90 rfu_resetRecvSlots
+  reproduce: python3 tools/asmcat.py 0x08146E60
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-004802'
+open_questions:
+- What exactly byte_20101E0 represents (RFU control byte, send flag, etc.) and its role vs. the per-slot
+  recv buffers.
+- Whether this is meant to be invoked both on link setup and on RFU error recovery, given the caller branches
+  on rfu_shouldRestartWirelessLink.
+sources:
+- wf investigate investigate-20261021-004802
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c359212c
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_8146E60 -> rfu_reinitRecvSlots
+  where: bn6f 4d0c50db
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8146E60

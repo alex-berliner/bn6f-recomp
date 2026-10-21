@@ -2,57 +2,53 @@ name: rfu_maintainLink
 address: '0x0803C7E8'
 kind: function
 status: probable
-summary: 'RFU wireless-link tick: on a failed/lost link it sets flag 0x40, decrements [r7+0xA], and once
-  that expires raises flags 0x08 and 0x80 via sub_813D978; otherwise if sub_8146888 reports no activity
-  it resets the link command (0), clears [r7+3], and calls sub_8146CFC and sub_813DA84 to restart the
-  link.'
-interface: (r7 = RFU session/task struct, global) -> r0 clobbered; RFU flags word at 0x200BC50+0xC updated,
-  [r7+0xA] counter decremented, [r7+3] byte cleared
-details: 'The function first queries sub_803CB24 (returns 0xFF/0xFE as special link statuses). Status
-  0xFE, or state 4 from sub_8146808, means the link is down: it ORs flag 0x40 into the RFU shared flags,
-  decrements the counter at [r7+0xA], and when it reaches zero calls sub_813D978 and raises flags 0x08
-  and 0x80 — a delayed disconnect/error announcement. In the normal path it calls sub_8146888 and returns
-  if it reports activity; otherwise it resets the link command via rfu_setLinkCommand(0), clears the byte
-  at [r7+3], and calls sub_8146CFC and sub_813DA84, which looks like restarting or re-sending the idle
-  link command. r7 is a module-level session struct, not a passed argument, so callers are likely a task/tick
-  handler for the wireless subsystem.'
+summary: 'RFU wireless-link tick: on a failed/lost link it sets flag 0x40, decrements [r7+0xA], and once that expires
+  raises flags 0x08 and 0x80 via sub_813D978; otherwise if sub_8146888 reports no activity it resets the link command
+  (0), clears [r7+3], and calls sub_8146CFC and sub_813DA84 to restart the link.'
+interface: (r7 = RFU session/task struct, global) -> r0 clobbered; RFU flags word at 0x200BC50+0xC updated, [r7+0xA]
+  counter decremented, [r7+3] byte cleared
+details: 'The function first queries sub_803CB24 (returns 0xFF/0xFE as special link statuses). Status 0xFE, or state
+  4 from sub_8146808, means the link is down: it ORs flag 0x40 into the RFU shared flags, decrements the counter
+  at [r7+0xA], and when it reaches zero calls sub_813D978 and raises flags 0x08 and 0x80 — a delayed disconnect/error
+  announcement. In the normal path it calls sub_8146888 and returns if it reports activity; otherwise it resets
+  the link command via rfu_setLinkCommand(0), clears the byte at [r7+3], and calls sub_8146CFC and sub_813DA84,
+  which looks like restarting or re-sending the idle link command. r7 is a module-level session struct, not a passed
+  argument, so callers are likely a task/tick handler for the wireless subsystem.'
 evidence:
 - method: assembly-reading
   date: '2026-10-19'
-  detail: 'cmp #0xFF / #0xFE against sub_803CB24 result are error sentinels, both leading to flag 0x40
-    path (asm lines 3-8); ldrh/strh on [r7,#0xA] with bne implements a timeout countdown before sub_813D978
-    and flags 8|0x80; rfu_orFlags(0x40), rfu_orFlags(8), rfu_orFlags(0x80) mark disconnect/error state
-    in the shared RFU flags; mov r0,#0; bl rfu_setLinkCommand plus strb r0,[r7,#3] resets the pending
-    link command in the retry path; branch on sub_8146808()==4 treats a specific connection state the
-    same as status 0xFE'
+  detail: 'cmp #0xFF / #0xFE against sub_803CB24 result are error sentinels, both leading to flag 0x40 path (asm
+    lines 3-8); ldrh/strh on [r7,#0xA] with bne implements a timeout countdown before sub_813D978 and flags 8|0x80;
+    rfu_orFlags(0x40), rfu_orFlags(8), rfu_orFlags(0x80) mark disconnect/error state in the shared RFU flags; mov
+    r0,#0; bl rfu_setLinkCommand plus strb r0,[r7,#3] resets the pending link command in the retry path; branch
+    on sub_8146808()==4 treats a specific connection state the same as status 0xFE'
   refs:
   - bn6f/asm/asm03_1_1.s:7761
   - 0x0803CB00 rfu_orFlags
   - 0x0813D934 rfu_setLinkCommand
   - 0x0803CB24 sub_803CB24
   reproduce: python3 tools/asmcat.py 0x0803C7E8
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The code matches the proposal''s structure: status 0xFE or sub_8146808==4 triggers flag 0x40, decrement
-    [r7+0xA], and on zero calls sub_813D978 + flags 0x08/0x80; otherwise sub_8146888 activity returns
-    early, else rfu_setLinkCommand(0), clear [r7+3], call sub_8146CFC and sub_813DA84. However the summary
-    overstates ''delayed disconnect'' — sub_813D978 raises flags too, and the proposal names a callee
-    rfu_setLinkCommand at 0x0813D934 but the code calls 0x0813D934 for rfu_setLinkCommand? Actually bl
-    0x0813D934 is rfu_setLinkCommand per callees, so that part is fine. The prefix is right (rfu). Name
-    ''rfu_handleDisconnectTimeout'' is reasonable but ''rfu_pollLinkStatus'' or ''rfu_maintainLink'' better
-    captures both branches.; run wf investigate investigate-20261019-033611; proposed by Hyper glm-5.3-flash,
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The code
+    matches the proposal''s structure: status 0xFE or sub_8146808==4 triggers flag 0x40, decrement [r7+0xA], and
+    on zero calls sub_813D978 + flags 0x08/0x80; otherwise sub_8146888 activity returns early, else rfu_setLinkCommand(0),
+    clear [r7+3], call sub_8146CFC and sub_813DA84. However the summary overstates ''delayed disconnect'' — sub_813D978
+    raises flags too, and the proposal names a callee rfu_setLinkCommand at 0x0813D934 but the code calls 0x0813D934
+    for rfu_setLinkCommand? Actually bl 0x0813D934 is rfu_setLinkCommand per callees, so that part is fine. The
+    prefix is right (rfu). Name ''rfu_handleDisconnectTimeout'' is reasonable but ''rfu_pollLinkStatus'' or ''rfu_maintainLink''
+    better captures both branches.; run wf investigate investigate-20261019-033611; proposed by Hyper glm-5.3-flash,
     revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
 open_questions:
 - Meaning of the 0x40/0x08/0x80 RFU flag bits and who consumes them (no callers known)
 - Exact semantics of sub_803CB24 status codes 0xFF/0xFE and of sub_8146808 state 4
 - What sub_813D978, sub_8146CFC and sub_813DA84 do (teardown vs. reconnection setup)
 - Which global struct r7 points to and where it is initialised
-- 'The code matches the proposal''s structure: status 0xFE or sub_8146808==4 triggers flag 0x40, decrement
-  [r7+0xA], and on zero calls sub_813D978 + flags 0x08/0x80; otherwise sub_8146888 activity returns early,
-  else rfu_setLinkCommand(0), clear [r7+3], call sub_8146CFC and sub_813DA84. However the summary overstates
-  ''delayed disconnect'' — sub_813D978 raises flags too, and the proposal names a callee rfu_setLinkCommand
-  at 0x0813D934 but the code calls 0x0813D934 for rfu_setLinkCommand? Actually bl 0x0813D934 is rfu_setLinkCommand
-  per callees, so that part is fine. The prefix is right (rfu). Name ''rfu_handleDisconnectTimeout'' is
-  reasonable but ''rfu_pollLinkStatus'' or ''rfu_maintainLink'' better captures both branches.'
+- 'The code matches the proposal''s structure: status 0xFE or sub_8146808==4 triggers flag 0x40, decrement [r7+0xA],
+  and on zero calls sub_813D978 + flags 0x08/0x80; otherwise sub_8146888 activity returns early, else rfu_setLinkCommand(0),
+  clear [r7+3], call sub_8146CFC and sub_813DA84. However the summary overstates ''delayed disconnect'' — sub_813D978
+  raises flags too, and the proposal names a callee rfu_setLinkCommand at 0x0813D934 but the code calls 0x0813D934
+  for rfu_setLinkCommand? Actually bl 0x0813D934 is rfu_setLinkCommand per callees, so that part is fine. The prefix
+  is right (rfu). Name ''rfu_handleDisconnectTimeout'' is reasonable but ''rfu_pollLinkStatus'' or ''rfu_maintainLink''
+  better captures both branches.'
 sources:
 - wf investigate investigate-20261019-033611
 changes:
@@ -64,5 +60,9 @@ changes:
   what: rename sub_803C7E8 -> rfu_maintainLink
   where: bn6f 1189566c
   tool: tools/rename_symbol.py
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c359212c
+  tool: tools/symdoc.py
 previous_names:
 - sub_803C7E8

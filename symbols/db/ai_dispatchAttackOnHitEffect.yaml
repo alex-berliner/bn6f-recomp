@@ -1,0 +1,41 @@
+name: ai_dispatchAttackOnHitEffect
+address: '0x081070A8'
+kind: function
+status: probable
+summary: Dispatches the on-hit effect routine for an AI attack based on its hit element
+interface: (r0 = HitElement index, r7 = this AI attack vars) -> tail-call to handler
+details: 'Loads off_81070BC (a small table of three handler addresses: ai_attackStepDelayedHit, sub_81070EC,
+  sub_8107156) indexed by r7->oAIAttackVars_HitElement, then uses ''mov lr,pc / bx r1'' to tail-call into
+  the selected handler with original arguments. r0 appears to be passed through, and the function returns
+  whatever the handler returns via the bx (no separate epilogue save).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'ldr r0 = oAIAttackVars_HitElement at r7+# (assembly: ldrb r0,[r7,#0x...]); off_81070BC holds
+    three function pointers used as a hit-element dispatch table (lines off_81070BC); tail call: ''mov
+    lr,pc ; bx r1'' switches to the chosen handler (assembly lines); first handler named ai_attackStepDelayedHit
+    indicates the case is ''attack step on delayed hit'' effect; function calls itself by epilogue pop
+    {r7,pc}, meaning it never returns locally'
+  refs:
+  - bn6f/asm/asm31.s:176307
+  reproduce: python3 tools/asmcat.py 0x081070A8
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-004802'
+open_questions:
+- who calls this dispatcher — no callers listed yet; confirmation would need r7/HitElement to be set as
+  on-hit state in an AI attack step
+- what the three handler cases actually do — naming 'DelayedHit' suggests timing, but the other two are
+  still placeholders
+sources:
+- wf investigate investigate-20261021-004802
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c359212c
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_81070A8 -> ai_dispatchAttackOnHitEffect
+  where: bn6f 4d0c50db
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81070A8

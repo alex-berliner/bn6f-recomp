@@ -1,0 +1,41 @@
+name: battle_dispatchCurPhase
+address: '0x080BD81A'
+kind: function
+status: probable
+summary: Tail-calls a phase-specific battle update handler based on oBattleObject_CurPhase.
+interface: (r0, r1, r2, r3 = caller-saved; r5 = battle object) -> jumps to selected handler; clobbers
+  r0, flags
+details: Reads the byte at oBattleObject_CurPhase on the battle object pointed to by r5, uses it as an
+  index into a two-entry function pointer table at off_80BD82C, and tail-calls (bx r1) the entry with
+  the thumb bit set (+1). The pop {pc} after the bx is reached only if the branch somehow returns, making
+  this effectively an unconditional dispatch. No registers are explicitly preserved across the dispatch.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: ldrb r0, [r5,#oBattleObject_CurPhase] selects dispatch index from battle object; off_80BD82C
+    holds two words, sub_80BD834+1 and sub_80BD878+1 — the +1 is the thumb flag, so the table is a vector
+    of phase handlers; mov lr, pc / bx r1 is a standard tail-call pattern into the selected handler; pop
+    {pc} after bx indicates the author treated this as a jump, not a true call; No callers known — undetermined
+    which CurPhase value routes to which callee
+  refs:
+  - bn6f/asm/asm31.s:12532
+  reproduce: python3 tools/asmcat.py 0x080BD81A
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-004802'
+open_questions:
+- Which CurPhase value selects sub_80BD834 vs sub_80BD878 (order in the table not verified)
+- What each of the two handlers actually does for their phase
+- Who calls this dispatch (r5/argument setup by caller would confirm the battle role)
+sources:
+- wf investigate investigate-20261021-004802
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c359212c
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80BD81A -> battle_dispatchCurPhase
+  where: bn6f 4d0c50db
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD81A
