@@ -417,7 +417,7 @@ static void chatbox_runScript_impl(u32 toolkit, u32 archive, u32 script_idx) {
     /* Queue the tilemap BG transfer and copy tile/font data. */
     queue_gfx_transfer(A_dword_86BEB20, 0x600DC80, GFX_TRANSFER_SIZE);
     copy_by_eight_words(A_byte_86BEC80, A_unk_3001B40, TILE_COPY_SIZE);
-    copy_by_eight_words(A_dword_86B7AC0, A_byte_3001710, TILE_COPY_SIZE);
+    copy_by_eight_words(A_ChatboxPalette, A_chatboxTileRowScratchBuf, TILE_COPY_SIZE);
 }
 
 /* chatbox_runScript(r0 = archive, r1 = script_idx, r10 = toolkit) -> void */
@@ -2702,7 +2702,7 @@ static ChatboxResult chatbox_load_text(u32 scriptPtr, u32 chatbox) {
     /* Compute destination slot in the 64-byte-per-entry text pool */
     u32 slotAddr = chatbox + CHATBOX_SLOT_OFFSET;
     u16 slot     = LD16(slotAddr);
-    u32 dest     = A_byte_200AFA0 + ((u32)slot << 6);
+    u32 dest     = A_chatboxTextSlots + ((u32)slot << 6);
 
     /* Copy one block of text into the slot */
     copy_bytes(textSrc, dest, CHATBOX_TEXT_BLOCK_SIZE);
@@ -2757,7 +2757,7 @@ Next chatbox_loadNaviTextLine_80420BC(void) {
 typedef struct {
     u32 result;        /* r0: always 1 */
     u32 historyOffset; /* r1: offset of the history slot that received cmd+4 */
-    u32 textBank;      /* r4: byte_200AFA0 + slot*64, the per-slot text buffer */
+    u32 textBank;      /* r4: chatboxTextSlots + slot*64, the per-slot text buffer */
 } ChatboxPushResult;
 
 /* register form: calls protectedZennyOrZero_803D06C outside this file, which has no typed C interface yet */
@@ -2792,12 +2792,12 @@ static ChatboxPushResult chatbox_push_text_level(u32 arg1, u32 arg2, u32 arg3, u
     else
         scriptPtr = default_text_script(0, arg1, arg2, arg3);
 
-    u32 textBank = A_byte_200AFA0 + (LD8(cmd + 3) << 6);
+    u32 textBank = A_chatboxTextSlots + (LD8(cmd + 3) << 6);
     setup_text_script(scriptPtr, LD8(cmd + 2), textBank);
 
     /* the setup routine may have edited the command word, so re-read the slot */
     slot = LD8(cmd + 3);
-    textBank = A_byte_200AFA0 + (slot << 6);
+    textBank = A_chatboxTextSlots + (slot << 6);
     ST32(chat + oChatbox_TextScriptCursorPtr, textBank);
 
     /* when this level closes, resume the command list after this word */
@@ -2855,10 +2855,10 @@ static u32 chatbox_advance(u32 script_ptr, u32 chatbox) {
     u32 src   = LD32(table);
     u32 count = LD32(table + 4);
 
-    /* Ring-buffer destination: byte_200AFA0 + slot_index * 64. */
+    /* Ring-buffer destination: chatboxTextSlots + slot_index * 64. */
     u32 slot_field = chatbox + 0x64;
     u32 slot_idx   = LD16(slot_field);
-    u32 dst        = A_byte_200AFA0 + (slot_idx << 6);
+    u32 dst        = A_chatboxTextSlots + (slot_idx << 6);
 
     /* Copy the string words into the slot. */
     call_CopyWords(src, dst, count);

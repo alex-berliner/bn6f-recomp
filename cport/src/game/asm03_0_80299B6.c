@@ -1803,7 +1803,7 @@ Next sub_802C348(void) {
 #define EXTRA_XFER_ENTRY    0x0802C448u /* (src, dest, size) for the extra tile sheet */
 #define TILE_STAGING_BUF    0x2034B30u  /* unk_2034B30 – EWRAM staging for copied tile sheet */
 #define PET_CHIP_VRAM       0x06014000u /* VRAM destination for 80h chip data */
-#define PERMUTED_REC_DEST   0x030016B0u /* byte_30016B0 – WRAM dest for permuted record */
+#define PERMUTED_REC_DEST   0x030016B0u /* gfxIWRAMTransferBuffer – WRAM dest for permuted record */
 
 #define NAVI_ENTRY_SIZE   12            /* bytes per entry in the indexed attribute array */
 #define NAVI_DISPLAY_SIZE 0x20          /* bytes to clear in the display struct */
@@ -2359,7 +2359,7 @@ Next battle_getStateTableEntryPtr_802C8EA(void) {
  * state byte 0x0D. battle_findSpecificBossOnOpposingSide_802CA1E maps that state byte to an index into the
  * frame-window tables (0xFF = no window for this state). For a valid index i
  * the object's timer at [r5+0x1C] is compared against the u16 window bounds
- * unk_20018C0[i] (window start) and unk_2000260[i] (window end):
+ * unk_20018C0[i] (window start) and battleBestTimes[i] (window end):
  *
  *   timer <  start              -> [r5+0x0F] = 1, result 2 (window not reached)
  *   start <= timer < end        -> [r5+0x0F] = 1, result 1 (inside the window)
@@ -2392,8 +2392,8 @@ Next battle_checkTimerWindowSubstate_802C97E(void) {
 
         if ((s32)timer >= (s32)windowStart) {
             R4 = 1;
-            R1 = A_unk_2000260;
-            R2 = windowEnd = LD16(A_unk_2000260 + index);
+            R1 = A_battleBestTimes;
+            R2 = windowEnd = LD16(A_battleBestTimes + index);
             R3 = timer = LD32(R5 + 0x1C);
 
             if ((s32)timer < (s32)windowEnd) {
@@ -2421,9 +2421,9 @@ Next battle_checkTimerWindowSubstate_802C97E(void) {
  * Reads the u32 at battle state +0x40 (the value to record), then asks
  * battle_findSpecificBossOnOpposingSide_802CA1E which table slot the state's byte at +0x0D selects (0xFF =
  * nothing to record).  unk_20018C0 tracks the best (lowest) value seen per
- * slot and unk_2000260 the running value:
+ * slot and battleBestTimes the running value:
  *   - value below the recorded one: overwrite both tables
- *   - otherwise: lower the unk_2000260 entry if the value is below it
+ *   - otherwise: lower the battleBestTimes entry if the value is below it
  * Returns with the flags left as the original's last comparison set them
  * (the v flag is an output; nz/c are free). */
 Next battle_updateSlotBestRecords_802C9B8(void) {
@@ -2449,16 +2449,16 @@ Next battle_updateSlotBestRecords_802C9B8(void) {
 
     u32 offset = slot * 2;
     u16 recorded = LD16(A_unk_20018C0 + offset);
-    u16 current = LD16(A_unk_2000260 + offset);
+    u16 current = LD16(A_battleBestTimes + offset);
 
     if ((s32)value < (s32)recorded) {
         /* new best value: record it in both tables */
         ST16(A_unk_20018C0 + offset, value);
-        ST16(A_unk_2000260 + offset, value);
+        ST16(A_battleBestTimes + offset, value);
         SET_FLAGS_CMP(value, recorded);
     } else if ((s32)value < (s32)current) {
         /* below the running value: only lower that one */
-        ST16(A_unk_2000260 + offset, value);
+        ST16(A_battleBestTimes + offset, value);
         SET_FLAGS_CMP(value, current);
     } else {
         SET_FLAGS_CMP(value, current);

@@ -949,7 +949,7 @@ Next sub_8006580(void) {
     GUEST_CALL(Terminate_ePalette20097a0_Transform);
 
     /* Clear the effect's global state word and the byte at state+0xD. */
-    ST32(A_dword_20096D0, 0);
+    ST32(A_eRenderDirtyFlags, 0);
     ST8(R5 + 0xD, 0);
 
     /* Restore the render info of the screen the toolkit is showing. */

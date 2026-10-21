@@ -1,0 +1,49 @@
+name: eBattleLinkPacketEnemy
+address: '0x0203F5A4'
+kind: data
+status: probable
+summary: 'Proposed name: eBattleLinkPacketEnemy. Second (player 2 / enemy) battle link packet buffer in
+  EWRAM, mirroring player 1''s byte_203F4A4 (struct)'
+details: 'At 0x0203F5A4 for 8 labeled (up-to-next-label) bytes, but the actual struct size is 0x50 (80
+  bytes) per the CopyWords in transferBattleHandNaviStats_800B3D8 and the 0xC copy in sub_800B444. It
+  is the second of a pair of link-packet buffers: byte_203F4A4 is the first player, this label is the
+  second. battle_initLoopbackLinkPackets builds both via sub_802E45E passing entry index 0 then 1. transferBattleHandNaviStats_800B3D8
+  reads its first byte as a sentinel (0xff = unset) and, when battle effect bit 0x8 is set, overlays it
+  from a separately-prepared AI block at byte_2034A10. battle_loadBattlerSeed copies its first word to
+  entry 1''s +0x44 (RNG seed) and its byte at +4 to entry 1''s +0xE (related seed byte) when the same
+  effect bit is set.'
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: 'asm00_1.s:19198 transferBattleHandNaviStats_800B3D8: reads byte_203F5A4[0] as 0xff sentinel,
+    then CopyWords(byte_2034A10, byte_203F5A4, 0x50) when GetBattleEffects & 8; asm00_1.s:19323 battle_initLoopbackLinkPackets:
+    builds it with sub_802E45E(1, byte_203F5A4) right after sub_802E45E(0, byte_203F4A4); asm00_1.s:19416
+    battle_loadBattlerSeed: loads [r1]=byte_203F5A4[0] and [r1+4]=byte_203F5A4[4] into entry 1''s +0x44
+    seed and +0xE seed byte; asm00_1.s:19253 sub_800B444: CopyWords(byte_203F5A4, unk_203526C, 0xC) —
+    12-byte payload decode slot; asm00_1.s:19585-19595 sub_800B548: byte_203F5A4 sits adjacent to byte_203F4A4
+    in the pair of link-packet tables used to seed battle_loadBattlerSeed'
+  refs:
+  - bn6f/ewram.s:3327
+  - bn6f/asm/asm00_1.s:19198
+  - bn6f/asm/asm00_1.s:19323
+  - bn6f/asm/asm00_1.s:19416
+  - bn6f/asm/asm00_1.s:19253
+  reproduce: grep -n -w byte_203F5A4 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-192515'
+open_questions:
+- The exact struct field layout (it is treated as at least 0x50 bytes by transferBattleHandNaviStats but
+  only the first word and +4 byte are named by battle_loadBattlerSeed)
+sources:
+- wf investigate-data investigate-data-20261020-192515
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e9971e02
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename byte_203F5A4 -> eBattleLinkPacketEnemy
+  where: bn6f 7e179b9d
+  tool: tools/rename_symbol.py
+previous_names:
+- byte_203F5A4

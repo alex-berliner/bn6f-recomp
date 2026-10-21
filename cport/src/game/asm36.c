@@ -496,13 +496,13 @@ static void copy_background_tiles_saveMenu_config_textscript_8132CB8(u32 j, u32 
 
 /* Table at off_8132D58: two entries of four words each --
  * { data pointer, size, extra word, extra word } -- describing the records
- * that get assembled into the init-ref list at unk_20096E0. */
+ * that get assembled into the init-ref list at eDecompInitRefsBuffer. */
 
 /* Build the init-ref list: for each table entry, store the pointer produced by
  * convert_init_ref() followed by the entry's two extra words verbatim, then a
  * zero terminator. */
 static void build_init_ref_list(void) {
-    u32 dest = A_unk_20096E0;
+    u32 dest = A_eDecompInitRefsBuffer;
     u32 table = A_off_8132D58;
     u32 out = 0;
 
@@ -528,7 +528,7 @@ static void save_menu_config_textscript(void) {
 
     /* Decompressing the assembled list supplies part of the background
      * (omitting it leaves the background partially drawn). */
-    decomp_and_copy(A_unk_20096E0);
+    decomp_and_copy(A_eDecompInitRefsBuffer);
 
     /* Second compressed blob for the background
      * (omitting it leaves the background black). */
@@ -2444,7 +2444,7 @@ static inline call_CopyBackgroundTiles_result_sub_8133EC0 call_CopyBackgroundTil
  * The original saves r4-r7 on the stack and restores them at exit,
  * so every caller-visible register is preserved. */
 static void init_screen_data(void) {
-    u32 out_base = A_unk_20096E0;
+    u32 out_base = A_eDecompInitRefsBuffer;
     u32 in_base  = A_off_8133F70;
     u32 out_off  = 0;
     u32 in_off   = 0;
@@ -4670,7 +4670,7 @@ static inline call_CopyBackgroundTiles_result_battle_loadNaviCustomizerGfx call_
 
 /* battle_loadNaviCustomizerGfx: initialise the Navi Customizer screen.
  *
- * Builds a decomp/init-references table at unk_20096E0 from the keyed table
+ * Builds a decomp/init-references table at eDecompInitRefsBuffer from the keyed table
  * at off_8135C2C (one getKeyedTableEntry per triple, plus its two extra
  * words, terminated by a NULL word), runs the two init-ref decomp/copy
  * passes, copies the 0x100-byte palette block into IWRAM, and lays out the
@@ -4683,7 +4683,7 @@ static inline call_CopyBackgroundTiles_result_battle_loadNaviCustomizerGfx call_
 /* base (entry R5) is the Navi Customizer object whose byte 0xF selects the
  * per-Navi tile source. */
 static void load_navi_customizer_gfx(u32 base) {
-    u32 dest = A_unk_20096E0;   /* table under construction */
+    u32 dest = A_eDecompInitRefsBuffer;   /* table under construction */
     u32 src = A_off_8135C2C;    /* key/size/extras table */
     u32 d = 0;                  /* write offset into dest */
     u32 s = 0;                  /* read offset into src */
@@ -4700,7 +4700,7 @@ static void load_navi_customizer_gfx(u32 base) {
     }
     ST32(dest + d, 0);                  /* terminate the init-refs list */
 
-    call_decompAndCopyData_battle_loadNaviCustomizerGfx(A_unk_20096E0);
+    call_decompAndCopyData_battle_loadNaviCustomizerGfx(A_eDecompInitRefsBuffer);
     call_decompAndCopyData_battle_loadNaviCustomizerGfx(A_off_8135C64);
     call_CopyByEightWords_battle_loadNaviCustomizerGfx(A_unk_201CF80, A_unk_30019E0, 0x100);
 
@@ -4927,7 +4927,7 @@ Next navicust_confirmPartPlacement(void) {
 
 /* ── sprite_writeBeastOutOamAttr0 ── */
 /* Write six u16 OAM attribute values for a Beast Out sprite.
- * For each entry i (0..5), read the index byte from unk_2022B70[i],
+ * For each entry i (0..5), read the index byte from eBattleState_TrackedObjectTags[i],
  * then fetch the corresponding u16 from the lookup table selected by mode.
  * If i >= 4 and the index byte is 0, a special "empty" entry at table offset
  * 0xE is used instead. The result is stored into unk_30019E0 at a position
@@ -4937,7 +4937,7 @@ static void write_beast_oam_attr0(u32 mode) {
     u32 table_ptr = LD32(A_off_81366A0 + mode * 4);
 
     for (u32 i = 0; i < 6; i++) {
-        u8 idx = LD8(A_unk_2022B70 + i);
+        u8 idx = LD8(A_eBattleState_TrackedObjectTags + i);
         u16 value;
 
         if (i >= 4 && idx == 0) {
@@ -4975,7 +4975,7 @@ static inline call_CopyBytes_result_sub_813676C call_CopyBytes_sub_813676C(u32 r
 /* Copy 8 bytes from the save/work buffer at 0x2000090 into the battle
  * work area at 0x2022B70 (probably refreshing a small mirrored block). */
 static void copy_work_block(void) {
-    call_CopyBytes_sub_813676C(A_unk_2000090, A_unk_2022B70, 8);
+    call_CopyBytes_sub_813676C(A_unk_2000090, A_eBattleState_TrackedObjectTags, 8);
 }
 
 /* battle_copyWorkBlockToBattleWork_813676C() -> void */
@@ -4998,7 +4998,7 @@ static inline call_CopyBytes_result_sub_813677C call_CopyBytes_sub_813677C(u32 r
 
 /* Copy the 8-byte buffer at 0x2022B70 (battle state slot) to 0x2000090 (work buffer). */
 static void copy_state_to_work_buffer(void) {
-    call_CopyBytes_sub_813677C(A_unk_2022B70, A_unk_2000090, 8);
+    call_CopyBytes_sub_813677C(A_eBattleState_TrackedObjectTags, A_unk_2000090, 8);
 }
 
 /* sub_813677C() -> void */

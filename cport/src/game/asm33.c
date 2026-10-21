@@ -1042,7 +1042,7 @@ static void chipFolder_initGfx(void) {
     /* register form: save/restore caller registers preserved across GUEST_CALLs (original's push/pop of r4-r7) */
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
 
-    u32 out_base = A_unk_20096E0;  /* scratch RAM for the descriptor table */
+    u32 out_base = A_eDecompInitRefsBuffer;  /* scratch RAM for the descriptor table */
     u32 tbl      = A_off_812391C;  /* ROM source table: {src, size, arg1, arg2} rows */
     u32 out_off  = 0;
     u32 in_off   = 0;
@@ -1918,7 +1918,7 @@ Next buildKeyItemFlagsTable_8124384(void) {
 /* ------------------------------------------------------------------
  * Subchip graphics initialisation.
  *
- * Builds a table of "init refs" at unk_20096E0 from a static template
+ * Builds a table of "init refs" at eDecompInitRefsBuffer from a static template
  * table: each template entry is { source ptr, size, word, word } and
  * becomes { getKeyedTableEntry_811FB84(ptr, size), word, word } in the output table,
  * terminated by a 0 word. The ref tables are then decompressed and
@@ -1961,7 +1961,7 @@ static void copy_background_tiles_subchip_initGfx_81243B0(u32 j, u32 i, u32 whic
 }
 
 static void subchip_initGfx_init(void) {
-    u32 refs = A_unk_20096E0;   /* output table, fed to decompAndCopyData below */
+    u32 refs = A_eDecompInitRefsBuffer;   /* output table, fed to decompAndCopyData below */
     u32 template = A_off_8124450; /* 3 entries of { ptr, size, word, word } */
 
     u32 out = 0;

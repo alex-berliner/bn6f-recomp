@@ -2,7 +2,7 @@
  * main_frame.c — frame pacing of the main loop (main_awaitFrame in bn6f
  * main.s).
  *
- * The VBlank handler counts frames in dword_200A870; the main loop runs one
+ * The VBlank handler counts frames in gameFrameCounter; the main loop runs one
  * game step every dword_2009930 frames. This waits for the next VBlank at or
  * after that point and resets the counter.
  *
@@ -13,7 +13,7 @@
 
 #define REG_DISPSTAT   0x04000004u
 #define REG_VCOUNT     0x04000006u
-#define VBLANK_COUNT   0x0200A870u   /* dword_200A870, incremented by the VBlank IRQ */
+#define VBLANK_COUNT   0x0200A870u   /* gameFrameCounter, incremented by the VBlank IRQ */
 #define FRAMES_PER_STEP 0x02009930u  /* dword_2009930 */
 
 /* [0] game steps, [1] total busy scanlines, [2] steps that missed a frame */

@@ -1186,7 +1186,7 @@ static void sub_8123300_call(u32 script_table, u32 dst, u32 decomp_buf) {
  * copying the 12 bytes that follow into the table. Then run the two
  * decompAndCopyData initializers and finally battle_loadTileGridByNavi_8123300 with the script list. */
 static void build_dispatch_table_and_init(void) {
-    u32 dst = A_unk_20096E0;
+    u32 dst = A_eDecompInitRefsBuffer;
     u32 src = A_off_8127160;
     u32 dst_off = 0;
     u32 src_off = 0;
@@ -1210,7 +1210,7 @@ static void build_dispatch_table_and_init(void) {
     }
     ST32(dst + dst_off, 0);
 
-    decompAndCopyData_call(A_unk_20096E0);
+    decompAndCopyData_call(A_eDecompInitRefsBuffer);
     decompAndCopyData_call(A_byte_8127188);
 
     sub_8123300_call(A_off_8127120, A_eTextScript201BF20, A_eDecompBuffer2013A00);
@@ -2260,7 +2260,7 @@ static void copy_bg_tiles(u32 j, u32 i, u32 block, u32 tile_ids, u32 j_size, u32
     R4 = save_r4; R5 = save_r5; R6 = save_r6; R7 = save_r7;
 }
 
-/* Build the tile-descriptor table at unk_20096E0 from the 3-entry source table,
+/* Build the tile-descriptor table at eDecompInitRefsBuffer from the 3-entry source table,
  * then decompress scene data and blit background tiles for the current battle.
  * The flag byte at battle_state+0xD selects which tile-set variant is used. */
 static void setup_battle_scene_tiles(u32 battle_state) {
@@ -2273,19 +2273,19 @@ static void setup_battle_scene_tiles(u32 battle_state) {
         u32 desc = compute_tile_descriptor(
             LD32(A_off_8127DB8 + src_off),
             LD32(A_off_8127DB8 + src_off + 4));
-        ST32(A_unk_20096E0 + dest_off, desc);
+        ST32(A_eDecompInitRefsBuffer + dest_off, desc);
         dest_off += 4;
 
         /* next two words: copy verbatim (dest-ptr and size) */
-        ST32(A_unk_20096E0 + dest_off, LD32(A_off_8127DB8 + src_off + 8));
+        ST32(A_eDecompInitRefsBuffer + dest_off, LD32(A_off_8127DB8 + src_off + 8));
         dest_off += 4;
-        ST32(A_unk_20096E0 + dest_off, LD32(A_off_8127DB8 + src_off + 12));
+        ST32(A_eDecompInitRefsBuffer + dest_off, LD32(A_off_8127DB8 + src_off + 12));
         dest_off += 4;
     }
-    ST32(A_unk_20096E0 + dest_off, 0); /* null-terminate the descriptor list */
+    ST32(A_eDecompInitRefsBuffer + dest_off, 0); /* null-terminate the descriptor list */
 
     /* --- decompress main scene data --- */
-    decompress_data(A_unk_20096E0);
+    decompress_data(A_eDecompInitRefsBuffer);
     decompress_data(A_byte_8127DF0);
 
     /* pick the variant-specific tile-set initRefs based on flag bit 0 */

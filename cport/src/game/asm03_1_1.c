@@ -3111,7 +3111,7 @@ Next infoText_IsTimestampUnchanged_803F8F4(void) {
 /* ── save_BackupToGamePakWithRetry_803FAB4 ── */
 /* save_BackupToGamePakWithRetry_803FAB4: back up the current save block to the game pak, retrying up
  * to three times.  Each attempt refills the RNG seed buffer, copies the
- * 0x80-byte block at dword_20067C0 to the game pak (0xE007F80) and verifies
+ * 0x80-byte block at eSaveWorkBuffer to the game pak (0xE007F80) and verifies
  * the copy.  Returns r0 = 1 if at least one attempt verified OK, r0 = 0 if
  * all three failed. */
 Next save_BackupToGamePakWithRetry_803FAB4(void) {
@@ -3129,14 +3129,14 @@ Next save_BackupToGamePakWithRetry_803FAB4(void) {
         GUEST_CALL(rng_FillSeedBuffer_803FAEE);
 
         /* Copy the 0x80-byte save block into the game pak backup area. */
-        R0 = A_dword_20067C0;
+        R0 = A_eSaveWorkBuffer;
         R1 = 0xE007F80;
         R2 = 0x80;
         GUEST_CALL(libSave_CopyToGamePak);
         lastR3 = R3;
 
         /* Verify the copy; a zero result marks the attempt as failed. */
-        R0 = A_dword_20067C0;
+        R0 = A_eSaveWorkBuffer;
         R1 = 0xE007F80;
         R2 = 0x80;
         R7 = attempt;
@@ -3164,13 +3164,13 @@ Next save_BackupToGamePakWithRetry_803FAB4(void) {
 }
 
 /* ── rng_FillSeedBuffer_803FAEE ── */
-/* rng_FillSeedBuffer_803FAEE: fill the 0x80-byte buffer at dword_20067C0 with random 32-bit
+/* rng_FillSeedBuffer_803FAEE: fill the 0x80-byte buffer at eSaveWorkBuffer with random 32-bit
  * words drawn from the hardware RNG, one GetRNG call per word.
  * r4-r7 are preserved (the original saves/restores them around the loop). */
 Next rng_FillSeedBuffer_803FAEE(void) {
     enum { RNG_FILL_SIZE = 0x80 };  /* bytes to fill (literal =0x80) */
 
-    u32 dst = A_dword_20067C0;
+    u32 dst = A_eSaveWorkBuffer;
 
     for (u32 off = 0; off < RNG_FILL_SIZE; off += 4) {
         GUEST_CALL(GetRNG);
@@ -3182,7 +3182,7 @@ Next rng_FillSeedBuffer_803FAEE(void) {
 
 /* ── save_CommitWorkBufferToGamePak_803FB04 ── */
 /* save_CommitWorkBufferToGamePak_803FB04(r0 = save work buffer value):
- * Store r0 into the save work buffer at dword_20067C0, then copy 0x80 bytes
+ * Store r0 into the save work buffer at eSaveWorkBuffer, then copy 0x80 bytes
  * from that buffer to the Game Pak save area at 0xE007F80.
  * The original pushes/pops r0-r7, so every register is preserved. */
 Next save_CommitWorkBufferToGamePak_803FB04(void) {
@@ -3190,14 +3190,14 @@ Next save_CommitWorkBufferToGamePak_803FB04(void) {
     u32 inR4 = R4, inR5 = R5, inR6 = R6, inR7 = R7;
 
     /* Remember the value being saved, in the save work buffer. */
-    ST32(A_dword_20067C0, inR0);
+    ST32(A_eSaveWorkBuffer, inR0);
 
-    /* libSave_CopyToGamePak(src = dword_20067C0, dest = 0xE007F80, len = 0x80).
+    /* libSave_CopyToGamePak(src = eSaveWorkBuffer, dest = 0xE007F80, len = 0x80).
      * The callee also expects the source pointer in r4. */
-    R0 = A_dword_20067C0;
+    R0 = A_eSaveWorkBuffer;
     R1 = 0xE007F80;
     R2 = 0x80;
-    R4 = A_dword_20067C0;
+    R4 = A_eSaveWorkBuffer;
     GUEST_CALL(libSave_CopyToGamePak);
 
     /* Restore the caller's registers (the original's pop {r0-r7,pc}). */

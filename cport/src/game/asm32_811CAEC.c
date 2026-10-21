@@ -777,7 +777,7 @@ Next mapName_runSequence_811EC50(void) {
 }
 
 /* ── queueGFXTransfersFromTable_811EC68 ── */
-/* Build a list of GFX resource records into the staging buffer at unk_20096E0 and queue
+/* Build a list of GFX resource records into the staging buffer at eDecompInitRefsBuffer and queue
  * them for DMA. The source is a table of triples whose first word is run through
  * getKeyedTableEntry_811FB84 to produce the "packed" header; then the trailing table at off_811ECB4 is
  * copied verbatim until a NULL terminator. Finally QueueGFXTransfersInList is called. */
@@ -802,7 +802,7 @@ static void build_and_queue_gfx_list(void) {
      * entry per record: { derive(src,size), dest, size, src }. The loop runs while
      * srcOff < 0x20 (i.e. exactly two records). */
     u32 srcBase = A_off_811ECFC;   /* r5 in the first loop */
-    u32 staging = A_unk_20096E0;   /* r4 (output buffer) */
+    u32 staging = A_eDecompInitRefsBuffer;   /* r4 (output buffer) */
     u32 srcOff = 0;                /* r7 in the first loop */
     u32 dstOff = 0;                /* r6 */
 

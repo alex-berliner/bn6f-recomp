@@ -434,7 +434,7 @@ static u32 rfu_clear_all_slots_rfu_clearAllSlot(void) {
     for (u32 slot = 0; slot < 4; slot++) {
         /* Zero the slot's received-data buffer (0x34 halfwords) */
         ST16(fill_word, 0);
-        u32 data_ptr = LD32(A_dword_2010CB0 + slot * 4);
+        u32 data_ptr = LD32(A_rfuConnectionSlots + slot * 4);
         call_SWI_CpuSet_rfu_clearAllSlot(fill_word, data_ptr, 0x1000034);
 
         /* Zero the slot's link/destination buffer (10 halfwords) */
@@ -472,7 +472,7 @@ Next rfu_clearAllSlot(void) {
 /* ── STWI_init_timer ── */
 /* STWI_init_timer(r0 = callback slot, r1 = timer id):
  * Install STWI_intr_timer as the handler stored at *r0 and record the timer id
- * in the STWI work area (dword_2010CCC). Then enable the timer's IRQ bit in
+ * in the STWI work area (pSTWIWork). Then enable the timer's IRQ bit in
  * REG_IE, briefly disabling interrupts (REG_IME) around the update so the new
  * bit can't fire mid-write.
  *
@@ -488,7 +488,7 @@ Next STWI_init_timer(void) {
     ST32(slot, A_STWI_intr_timer | 1);
 
     /* Save the timer id in the STWI work area. */
-    u32 workSlot = A_dword_2010CCC;
+    u32 workSlot = A_pSTWIWork;
     u32 work = LD32(workSlot);
     ST8(work + 0xA, timerId);
 
@@ -536,7 +536,7 @@ Next STWI_init_Callback_S(void) {
  * Store the given callback into the STWI work struct's callback slot (offset 0x18),
  * so the wireless library invokes it when a message arrives. */
 Next STWI_set_Callback_M(void) {
-    u32 stwiWork = LD32(A_dword_2010CCC);
+    u32 stwiWork = LD32(A_pSTWIWork);
 
     ST32(stwiWork + 0x18, R0);
 
@@ -547,7 +547,7 @@ Next STWI_set_Callback_M(void) {
 /* STWI_set_Callback_S(r0 = callback function pointer):
  * Register r0 as the "send done" callback in the STWI library's work struct. */
 Next STWI_set_Callback_S(void) {
-    u32 stwiWork = LD32(A_dword_2010CCC);
+    u32 stwiWork = LD32(A_pSTWIWork);
     ST32(stwiWork + 0x1C, R0); /* oStwiWork_Callback */
     RETURN_TO_CALLER();
 }
@@ -555,9 +555,9 @@ Next STWI_set_Callback_S(void) {
 /* ── STWI_set_Callback_ID ── */
 /* STWI_set_Callback_ID(r0 = callback ID):
  * Store the given ID as the STWI (wireless) callback ID in the STWI work
- * struct pointed to by dword_2010CCC. */
+ * struct pointed to by pSTWIWork. */
 Next STWI_set_Callback_ID(void) {
-    ST32(LD32(A_dword_2010CCC) + 0x20, R0);
+    ST32(LD32(A_pSTWIWork) + 0x20, R0);
     RETURN_TO_CALLER();
 }
 
@@ -569,11 +569,11 @@ static void sio32_id_init(void) {
     ST16(A_InterruptMasterEnableRegister, 0);
 
     /* Clear the multiplayer-SIO IRQ bit (bit 8 << multiplayer_id, with the id read from
-     * the save data at dword_2010CCC + 0xA) and the generic SIO IRQ bit 0x80 in IE.
+     * the save data at pSTWIWork + 0xA) and the generic SIO IRQ bit 0x80 in IE.
      * The original's `lsl r1, r0` by a register gives 0 for a shift of 32 or more; C's
      * << does not (x86 takes the count mod 32), so such an id clears no timer bit here. */
     {
-        u32 save_ptr = LD32(A_dword_2010CCC);
+        u32 save_ptr = LD32(A_pSTWIWork);
         u32 shift = LD8(save_ptr + 0xA);
         u32 mask = (shift < 32 ? 8u << shift : 0u) | 0x80u;
         ST16(A_InterruptEnableRegister,

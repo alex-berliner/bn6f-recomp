@@ -2681,7 +2681,7 @@ static void set_flag_bits(u32 mask) {
 
 /* Load a 32-byte GFX chunk into VRAM, stamp background tiles, and enable flag bit 4. */
 static void setup_battle_background(void) {
-    queue_gfx_transfer_sub_801DDF6(A_dword_86E1C78, A_unk_3001A80, 0x20);
+    queue_gfx_transfer_sub_801DDF6(A_dword_86E1C78, A_iGfxTransferBuffer, 0x20);
     copy_bg_tiles(6, 0, 3, A_word_801ED6C, 0x12, 2);
     set_flag_bits(0x10); /* 1 << 4 */
 }
@@ -2742,7 +2742,7 @@ static void load_background_tileset(u32 scene) {
 
     /* Queue one 32-byte row from the page table into the tile transfer buffer. */
     u32 src = (page - 1) * 0x20 + A_byte_86E1CD8;
-    call_QueueEightWordAlignedGFXTransfer(src, A_unk_3001A80, 0x20);
+    call_QueueEightWordAlignedGFXTransfer(src, A_iGfxTransferBuffer, 0x20);
 
     /* Blit a 6×2 grid of 32×32 tile blocks into VRAM block 3. */
     call_CopyBackgroundTiles_sub_801DE82(6, 0, 3, A_word_801EDB4, 0x12, 2);
@@ -3108,7 +3108,7 @@ Next event_markStepDoneAndPlayFinishEffects_801E0DC(void) {
 /* battle_loadModeGfx_801E10E: prepare the mode-specific battle gfx and raise eStruct flag 0x400.
  *
  * If the current battle mode is not 6, queue a 0x20-word gfx transfer copying
- * the dword_86E1C78 tiles into the buffer at unk_3001A80.  Afterwards set bit
+ * the dword_86E1C78 tiles into the buffer at iGfxTransferBuffer.  Afterwards set bit
  * 10 (mask 1 << 10) in the eStruct at 0x2035280 via flagSetBits.
  */
 Next battle_loadModeGfx_801E10E(void) {
@@ -3117,10 +3117,10 @@ Next battle_loadModeGfx_801E10E(void) {
 
     if (battleMode != 6) {
         /* QueueEightWordAlignedGFXTransfer(src = dword_86E1C78,
-         *                                  dst = unk_3001A80,
+         *                                  dst = iGfxTransferBuffer,
          *                                  size = 0x20 words) */
         R0 = A_dword_86E1C78;
-        R1 = A_unk_3001A80;
+        R1 = A_iGfxTransferBuffer;
         R2 = 0x20;
         GUEST_CALL(QueueEightWordAlignedGFXTransfer);
     }
@@ -3927,7 +3927,7 @@ Next setByteFieldCapped99_801E828(void) {
 #define NULL_TILE_MARKER       A_byte_801FDC0
 #define DIGIT_TILE_TABLE       A_off_801FD64
 #define FIXED_BG_SRC           A_byte_86F2900
-#define FIXED_BG_DST           A_byte_30016B0
+#define FIXED_BG_DST           A_gfxIWRAMTransferBuffer
 
 /* register form: calls QueueEightWordAlignedGFXTransfer outside this file, which has no typed C interface yet */
 static void queue_gfx_transfer_sub_801E838(u32 src, u32 dest, u32 size) {

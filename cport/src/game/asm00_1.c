@@ -1820,7 +1820,7 @@ static void reset_state_for_new_location(u32 toolkit) {
 
     /* Camera interaction flag and global transition byte */
     ST8(0x20099CC, 0);  /* eCamera + 0x4C */
-    ST8(0x20096D0, 0);  /* dword_20096D0 */
+    ST8(0x20096D0, 0);  /* eRenderDirtyFlags */
 
     call_sub_8004702(gs);
 

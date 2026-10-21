@@ -2564,7 +2564,7 @@ Next gfx_flushDataListAndContinue_802811C(void) {
 /* gfx_queueIndexedRecordTiles_802812C(r0 = record index):
  * Queue a record's graphics for transfer: the two 0x40-byte halves of its
  * 0x80-byte block go to VRAM 0x060170E0 and 0x06017160, and a 0x20-byte
- * chunk reached through the record goes to byte_30016B0. */
+ * chunk reached through the record goes to gfxIWRAMTransferBuffer. */
 Next gfx_queueIndexedRecordTiles_802812C(void) {
     u32 savedR4 = R4;
     u32 record = R0;
@@ -2590,8 +2590,8 @@ Next gfx_queueIndexedRecordTiles_802812C(void) {
     R0 = record;
     GUEST_CALL(getPermutedRecord32_8028172);
 
-    /* ...and queue it (0x20 bytes) to byte_30016B0. */
-    R1 = A_byte_30016B0;
+    /* ...and queue it (0x20 bytes) to gfxIWRAMTransferBuffer. */
+    R1 = A_gfxIWRAMTransferBuffer;
     R2 = 0x20;
     GUEST_CALL(QueueEightWordAlignedGFXTransfer);
 
@@ -3302,9 +3302,9 @@ static void sprite_descriptor_fill(void) {
  * which has no typed C interface yet */
 static void queue_sprite_tile_gfx(void) {
     /* Queue a 0x20-byte tile row from ROM (byte_86E587C) into VRAM
-     * (unk_3001A80). */
+     * (iGfxTransferBuffer). */
     R0 = (u32)A_byte_86E587C;
-    R1 = (u32)A_unk_3001A80;
+    R1 = (u32)A_iGfxTransferBuffer;
     R2 = 0x20;
     GUEST_CALL(QueueEightWordAlignedGFXTransfer);
 }

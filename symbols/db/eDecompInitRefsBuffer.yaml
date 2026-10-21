@@ -1,0 +1,49 @@
+name: eDecompInitRefsBuffer
+address: '0x020096E0'
+kind: data
+status: probable
+summary: 'Proposed name: eDecompInitRefsBuffer. Staging buffer in EWRAM built as a 0-terminated list of
+  (src, dst, size|flags) entries that drive decompAndCopyData / QueueGFXTransfersInList. (table of u32)'
+details: Its address is loaded once per caller into r4 and grown by writing four bytes at [r4, r6] until
+  a terminator of zero is written, after which it is handed by pointer in r0 to either decompAndCopyData
+  (chipFolder_initGfx_812386C, subchip_initGfx_81243B0, initTitleScreens_81270D0) or QueueGFXTransfersInList
+  (queueGFXTransfersFromTable_811EC68). The entries it holds come from a packed source table walked two
+  words at a time via sub_811FB84, plus a trailing verbatim table copied in (off_811ECB4). The bound 0x40/0x30/0x20
+  word caps match the per-call source sizes; the buffer has 96 bytes = 24 words, enough headroom for the
+  largest caller.
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: 'asm32.s:35374-35407 (queueGFXTransfersFromTable_811EC68): builds entries, writes 0 terminator
+    to [r4,r6], then passes unk_20096E0 in r0 to QueueGFXTransfersInList; asm33.s:987-1013 (chipFolder_initGfx_812386C):
+    same pattern, r4=unk_20096E0, 0x40-word cap, passed to decompAndCopyData; asm33.s:2534-2560 (subchip_initGfx_81243B0):
+    same pattern, 0x30-word cap, passed to decompAndCopyData; asm33.s:8259-8285 (initTitleScreens_81270D0):
+    same pattern, 0x20-word cap, passed to decompAndCopyData; 99-byte allocated region = 24 u32 entries,
+    consistent with the 0x40-word upper bound used by chipFolder_initGfx'
+  refs:
+  - bn6f/ewram.s:693
+  - bn6f/asm/asm32.s:35374
+  - bn6f/asm/asm32.s:35407
+  - bn6f/asm/asm33.s:987
+  - bn6f/asm/asm33.s:1013
+  reproduce: grep -n -w unk_20096E0 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-192515'
+open_questions:
+- Exact entry layout (which word is size vs flags) is not visible at any of the shown sites — inferred
+  from decompAndCopyData's contract, not directly read here.
+- Whether the same buffer is reused across calls (rebuilt each call from r6=0) or persists between calls
+  is not confirmed.
+sources:
+- wf investigate-data investigate-data-20261020-192515
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e9971e02
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename unk_20096E0 -> eDecompInitRefsBuffer
+  where: bn6f 7e179b9d
+  tool: tools/rename_symbol.py
+previous_names:
+- unk_20096E0

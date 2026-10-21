@@ -2396,7 +2396,7 @@ Next sub_800AAF2(void) {
 /* ── clearIndexEntryPair_800AAFC ── */
 /* clearIndexEntryPair_800AAFC(r0 = entry index):
  * Fills two 40-word (0x28) arrays with 0xFFFFFFFF, one entry into each.
- * The first array lives at unk_20018C0, the second at unk_2000260; both are
+ * The first array lives at unk_20018C0, the second at battleBestTimes; both are
  * laid out as 0x28-byte records selected by the index in r0.
  * Caller's r3 and r4 are preserved; r2 is left at 0xFFFFFFFF.
  */
@@ -2411,7 +2411,7 @@ Next clearIndexEntryPair_800AAFC(void) {
     GUEST_CALL(WordFill);
 
     /* Clear the matching entry of the second table. */
-    R0 = A_unk_2000260 + index * 0x28;
+    R0 = A_battleBestTimes + index * 0x28;
     R1 = 0x28;
     R2 = 0xFFFFFFFF;
     GUEST_CALL(WordFill);
@@ -2926,7 +2926,7 @@ static void init_battle_state(u32 toolkit_ptr, u32 r6_input) {
 
     if (!skip_aux_copies) {
         copy_words_sub_800B144(A_unk_20018C0, buf + 0x70, 0x28);
-        copy_words_sub_800B144(A_unk_2000260, buf + 0x98, 0x28);
+        copy_words_sub_800B144(A_battleBestTimes, buf + 0x98, 0x28);
     }
 
     /* Query byte pairs (sub_81209DC reads R6) */
@@ -3120,7 +3120,7 @@ static void transfer_battle_hand_navi_stats(void) {
 
     /* AI battle-effect flag => copy the secondary hand/navi stats if active. */
     if (get_battle_effects_transferBattleHandNaviStats_800B3D8() & BATTLE_EFFECT_FLAG_8) {
-        copy_slot_if_active(A_byte_203F5A4, A_byte_2034A10);
+        copy_slot_if_active(A_eBattleLinkPacketEnemy, A_byte_2034A10);
     }
 
     /* Primary battle navi stats block (always copied). */
@@ -3159,7 +3159,7 @@ Next sub_800B428(void) {
 
 /* ── sub_800B444 ── */
 /* sub_800B444: reload the two saved 12-byte blocks into the working battle
- * data area (byte_203F4A4 -> unk_2035260 and byte_203F5A4 -> unk_203526C),
+ * data area (byte_203F4A4 -> unk_2035260 and eBattleLinkPacketEnemy -> unk_203526C),
  * then run battle_syncEffectSlotBetweenBuffers_802C9EA to act on the restored data. */
 Next sub_800B444(void) {
     /* first block: 3 words */
@@ -3169,7 +3169,7 @@ Next sub_800B444(void) {
     GUEST_CALL(CopyWords);
 
     /* second block: 3 words */
-    R0 = A_byte_203F5A4;
+    R0 = A_eBattleLinkPacketEnemy;
     R1 = A_unk_203526C;
     R2 = 0xC;
     GUEST_CALL(CopyWords);
@@ -3182,19 +3182,19 @@ Next sub_800B444(void) {
 /* ── battle_resetLinkSyncFlags_800B460 ── */
 /* battle_resetLinkSyncFlags_800B460: zero the 32-bit values at 0x203F4A0 and 0x203F5A0. */
 Next battle_resetLinkSyncFlags_800B460(void) {
-    ST32(A_dword_203F4A0, 0);
+    ST32(A_battleLinkTransferBuffer, 0);
     ST32(A_dword_203F5A0, 0);
     RETURN_TO_CALLER();
 }
 
 /* ── battle_doBothTrackedIdsMatch_800B46C ── */
-/* battle_doBothTrackedIdsMatch_800B46C(r0 = id): r0 = 1 if both tracked ids (dword_203F4A0 and
+/* battle_doBothTrackedIdsMatch_800B46C(r0 = id): r0 = 1 if both tracked ids (battleLinkTransferBuffer and
  * dword_203F5A0) equal the given id, 0 otherwise.
  * Also hands the loaded values back in r1/r2 and the id in r3; flags are
  * left from the last comparison performed, so callers may branch on them. */
 Next battle_doBothTrackedIdsMatch_800B46C(void) {
     u32 id = R0;
-    u32 idA = LD32(A_dword_203F4A0);
+    u32 idA = LD32(A_battleLinkTransferBuffer);
     u32 idB = LD32(A_dword_203F5A0);
 
     R3 = id;

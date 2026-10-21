@@ -25,7 +25,7 @@ Next chatbox_resetPrinterState_801FE00(void) {
     R3 = A_eStruct2036780;
 
     /* clear the 0x200-byte text buffer ... */
-    R0 = A_dword_203F4A0;
+    R0 = A_battleLinkTransferBuffer;
     R1 = 0x200;
     GUEST_CALL(ZeroFillByEightWords);
 

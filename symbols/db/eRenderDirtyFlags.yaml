@@ -1,0 +1,48 @@
+name: eRenderDirtyFlags
+address: '0x020096D0'
+kind: data
+status: probable
+summary: 'Proposed name: eRenderDirtyFlags. Word of per-frame dirty/affected render flags consumed by
+  sprite_queueFramePieces, set during cross-over/transform palette cycles and cleared on teardown. (u32)'
+details: Lives in EWRAM at 0x020096D0, 8 bytes wide (4 used) before the next label. e_stepColorCycle writes
+  0x40 to it as a whole word when it dirties palette slots 0x14/0x15 during the cross-over overlay color
+  step. sub_8006580 stores 0 to the same word to tear the overlay down. sprite_queueFramePieces reads
+  a single byte from it and ORs it into each piece's render-info byte (e.g. flag 0x40 / 0x80) before queuing
+  OAM. scenario_prepareEnterMap_8004D48 clears the byte as part of resetting per-map state, so the flag
+  starts each map fresh.
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: asm00_1.s:4060 scenario_prepareEnterMap_8004D48 strb r0 into dword_20096D0 to clear the dirty
+    flags on map enter; asm00_1.s:7316 e_stepColorCycle writes the word 0x40 into dword_20096D0 after
+    stepping the overlay color cycle; asm38.s:1397 sprite_queueFramePieces ldrb from dword_20096D0 and
+    ORs into [r5,#0x16] (renderInfo byte), stripped of mirror bits; asm00_1.s:7360 sub_8006580 stores
+    0 into dword_20096D0 to clear the dirty flags at overlay teardown; off_80065B4/off_300658C/off_8004DEC
+    each declare dword_20096D0 alongside other eRenderInfo/dirty-flag symbols
+  refs:
+  - bn6f/ewram.s:689
+  - bn6f/asm/asm00_1.s:4060
+  - bn6f/asm/asm00_1.s:7316
+  - bn6f/asm/asm38.s:1397
+  - bn6f/asm/asm00_1.s:4101
+  reproduce: grep -n -w dword_20096D0 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-192515'
+open_questions:
+- Does the full word hold additional flag bits beyond the seen 0x40 and the cleared zero state, or are
+  they only set as side effects of writes?
+- Is this the same byte the proj calls out for eRenderInfo flips, or is it a separate per-frame dirty
+  bitfield consumed by the rendering path?
+sources:
+- wf investigate-data investigate-data-20261020-192515
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e9971e02
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename dword_20096D0 -> eRenderDirtyFlags
+  where: bn6f 7e179b9d
+  tool: tools/rename_symbol.py
+previous_names:
+- dword_20096D0

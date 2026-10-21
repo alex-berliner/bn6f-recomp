@@ -36,7 +36,7 @@ enum { PC_TILE = 0, PC_X = 1, PC_Y = 2, PC_SIZE = 3, PC_SHAPE = 4, PIECE_SIZE = 
 enum { ENT_ATTR01 = 0, ENT_ATTR2 = 4, ENT_LAYER = 6, ENT_DEPTH = 8, ENTRY_SIZE = 12 };
 
 #define ENTRY_BUFFER   0x03002400u   /* unk_3002400 */
-#define MOSAIC_GLOBAL  0x020096D0u   /* dword_20096D0: mosaic bit for every sprite */
+#define MOSAIC_GLOBAL  0x020096D0u   /* eRenderDirtyFlags: mosaic bit for every sprite */
 #define AFFINE_PARAMS  0x0200A6F0u   /* word_200A6F0: 12-byte slots; [8] angle, [9] x scale, [10] y scale */
 #define SIN_TABLE      0x080065E0u   /* math_sinTable (s16, 1.12 fixed point) */
 #define COS_TABLE      0x08006660u   /* math_cosTable */

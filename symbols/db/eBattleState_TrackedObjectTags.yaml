@@ -1,0 +1,52 @@
+name: eBattleState_TrackedObjectTags
+address: '0x02022B70'
+kind: data
+status: probable
+summary: 'Proposed name: eBattleState_TrackedObjectTags. Six-byte slot table in the battle state buffer
+  that tracks up to six active battle-object tag (descriptor) bytes. (table of u8 (6 slots))'
+details: 'unk_2022B70 sits inside the 8-byte battle state block at 0x2022B70 that is copied to/from the
+  work/save buffer at 0x2000090 by battle_copyWorkBlockToBattleWork_813676C and sub_813677C, and is zeroed
+  by ZeroFillByByte. The first 6 bytes are treated by battle_trackObjectIdInList and battle_removeObjectTagFromList
+  as a packed list of up to six battle-object descriptor tags (the byte at offset +3 of each battle-object
+  entry): a scan over six bytes adds a tag if a zero slot is found, and removal shifts later slots left.
+  sprite_writeBeastOutOamAttr0 reads those six bytes as attribute selectors for the Beast-Out OAM shadow
+  indices 0x7A-0x7F, treating 0 as ''no object this slot''. The 8-byte block''s remaining two bytes are
+  unused by the listed sites.'
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: asm36.s:13709 sprite_writeBeastOutOamAttr0 — indexed ldrb r0,[r5,r4] loops r4 0..5, skipping
+    slots that are zero, mapping the six tags onto OAM indices 0x7A-0x7F; asm36.s:13780 battle_trackObjectIdInList
+    — scans r6 0..5 of the table looking for an existing tag or the first zero to write the new object's
+    id+3 tag; asm36.s:13842 battle_removeObjectTagFromList — scans the six-slot table for the tag and
+    shifts remaining entries left with a length derived from 6-r6; asm36.s:13880 battle_copyWorkBlockToBattleWork_813676C
+    — CopyBytes(unk_2000090, unk_2022B70, 8) treats the buffer as an 8-byte block in the battle state;
+    asm36.s:13893 sub_813677C — CopyBytes(unk_2022B70, unk_2000090, 8) and ZeroFillByByte(unk_2022B70,
+    8) back the save/restore and reset of the block
+  refs:
+  - bn6f/ewram.s:2226
+  - bn6f/asm/asm36.s:13709
+  - bn6f/asm/asm36.s:13780
+  - bn6f/asm/asm36.s:13842
+  - bn6f/asm/asm36.s:13880
+  reproduce: grep -n -w unk_2022B70 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-192515'
+open_questions:
+- What occupies the remaining two bytes of the 8-byte block; sub_813677C only copies 8, but only 6 are
+  documented as the tracked-object-tags list
+- Whether a zero slot means 'no entry' or an entry whose tag happens to equal zero (the asm uses tst/beq
+  to skip zero-value slots when picking Beast-Out attrs)
+sources:
+- wf investigate-data investigate-data-20261020-192515
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e9971e02
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename unk_2022B70 -> eBattleState_TrackedObjectTags
+  where: bn6f 7e179b9d
+  tool: tools/rename_symbol.py
+previous_names:
+- unk_2022B70

@@ -1,0 +1,45 @@
+name: rfuSlotId
+address: '0x020103E0'
+kind: data
+status: probable
+summary: 'Proposed name: rfuSlotId. Selected RFU wireless-link slot index used to dispatch per-slot state-machine
+  commands. (u8)'
+details: Holds the 0-3 RFU slot id the RFU wrapper is currently targeting. It is read in nearly every
+  site as a one-byte index that selects an entry in dword_2010CB0 (a 4-entry pointer table of per-slot
+  RFU state structs), used to gate a `strb`/ldrh state-word read, to drive `rfu_clearSlot`/`rfu_setRecvBuffer`
+  slot-id arguments, and to build a `1 << slotId` bitmask in rfu_niSendPacket. It is written in rfu_handleLinkCommand
+  from `eStruct200FE00.word_200FE14`, the link-callback scratch that names the slot whose command arrived.
+  The four sites that only dereference it index with the value times 4 against dword_2010CB0, matching
+  the standard rfu slot id.
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: asm/libs.s:6299 rfu_handleDisconnectMsg indexes dword_2010CB0 by `byte_20103E0*4` to read the
+    slot's state word and check 0x26; asm/libs.s:8317 rfu_initCommState reads it then passes the value
+    as r1 to rfu_clearSlot(0xc, slotId, ...); asm/libs.s:8600 rfu_niSendPacket reads it and computes `1<<slotId`
+    as the target mask before queueing an NI send; asm/libs.s:8964 rfu_handleLinkCommand writes the low
+    byte of eStruct200FE00+0x14 into it (the incoming-slot id from the link callback) and then passes
+    it on; asm/libs.s:9364 jpt_814825A indexes dword_2010CB0 by `byte_20103E0*4` to read the per-slot
+    state at offset 0x34 and compare to 0x46
+  refs:
+  - bn6f/ewram.s:1491
+  - bn6f/asm/libs.s:6299
+  - bn6f/asm/libs.s:8317
+  - bn6f/asm/libs.s:8600
+  - bn6f/asm/libs.s:8964
+  reproduce: grep -n -w byte_20103E0 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 5; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-192515'
+sources:
+- wf investigate-data investigate-data-20261020-192515
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e9971e02
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename byte_20103E0 -> rfuSlotId
+  where: bn6f 7e179b9d
+  tool: tools/rename_symbol.py
+previous_names:
+- byte_20103E0

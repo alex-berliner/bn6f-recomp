@@ -16,7 +16,7 @@
 #define BBS_FLAG_VALUE      2              /* value both flags are set to */
 #define BBS_BOARD_CAPACITY  64             /* message numbers logged per board */
 #define BBS_MESSAGE_LOG     A_byte_2001400 /* per board: 64 logged message numbers */
-#define BBS_WRITE_INDEX     A_unk_2000FC0  /* per board: u32 index of the next free log slot */
+#define BBS_WRITE_INDEX     A_BBSMessageCounts  /* per board: u32 index of the next free log slot */
 
 /* The registers the original leaves behind for its caller. */
 typedef struct {
@@ -89,7 +89,7 @@ Next reqBBS_813E616(void) {
     R2 = 0x40;
     GUEST_CALL(ByteFill);
 
-    R0 = A_unk_2000FC0;
+    R0 = A_BBSMessageCounts;
     R1 = 0x20;
     GUEST_CALL(ZeroFillByWord);
 

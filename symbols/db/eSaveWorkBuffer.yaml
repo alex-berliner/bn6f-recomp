@@ -1,0 +1,41 @@
+name: eSaveWorkBuffer
+address: '0x020067C0'
+kind: data
+status: probable
+summary: 'Proposed name: eSaveWorkBuffer. a 128-byte EWRAM scratch buffer that the save routines fill,
+  hand to libSave_CopyToGamePak, and flush to the Game Pak save area at 0xE007F80 (struct)'
+details: EWRAM buffer of exactly 0x80 bytes. rng_FillSeedBuffer_803FAEE fills it with 32 random u32 words
+  from GetRNG. save_CommitWorkBufferToGamePak_803FB04 writes the caller's r0 at offset 0 and then copies
+  the whole buffer to Game Pak. save_BackupToGamePakWithRetry_803FAB4 seeds it via rng_FillSeedBuffer_803FAEE
+  and copies the buffer to the Game Pak backup slot. The 0x80-byte size matches a Game Pak SRAM page used
+  by the save library.
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: rng_FillSeedBuffer_803FAEE stores 32 random u32s into it (asm03_1_1.s:14843); save_CommitWorkBufferToGamePak_803FB04
+    writes caller's r0 at [r4] then passes r0..r2 to libSave_CopyToGamePak (asm03_1_1.s:14860); save_BackupToGamePakWithRetry_803FAB4
+    seeds the buffer via rng_FillSeedBuffer_803FAEE then passes it to libSave_CopyToGamePak (asm03_1_1.s:14809);
+    off_803FB18 and off_803FB1C both .word dword_20067C0 and are loaded as the r0 (buffer) and r2 (size
+    0x80) args to libSave_CopyToGamePak (asm03_1_1.s:14869,14871)
+  refs:
+  - bn6f/ewram.s:498
+  - bn6f/asm/asm03_1_1.s:14809
+  - bn6f/asm/asm03_1_1.s:14843
+  - bn6f/asm/asm03_1_1.s:14860
+  - bn6f/asm/asm03_1_1.s:14862
+  reproduce: grep -n -w dword_20067C0 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 5; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-192515'
+sources:
+- wf investigate-data investigate-data-20261020-192515
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e9971e02
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename dword_20067C0 -> eSaveWorkBuffer
+  where: bn6f 7e179b9d
+  tool: tools/rename_symbol.py
+previous_names:
+- dword_20067C0

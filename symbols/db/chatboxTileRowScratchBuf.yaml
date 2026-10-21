@@ -1,0 +1,49 @@
+name: chatboxTileRowScratchBuf
+address: '0x03001710'
+kind: data
+status: probable
+summary: 'Proposed name: chatboxTileRowScratchBuf. A 32-byte IWRAM scratch buffer that receives the chatbox''s
+  per-row text tilemap row (8 tiles) from the chatbox script / text-color paths, then gets queued for
+  transfer to VRAM with the rest of the chatbox GFX. (u8)'
+details: Every site passes byte_3001710 as the destination of a CopyByEightWords call with size 0x20,
+  in functions that build the chatbox tilemap/text GFX (chatbox_runScript, chatbox_reqBBS_80404C0, dead_80405F8,
+  chatbox_F6_textcolor, copy_8002668). The same address also appears as a source/dest entry in the GFX-transfer
+  table off_811ECB4 inside queueGFXTransfersFromTable_811EC68 (size 0x20), so the bytes written by CopyByEightWords
+  are then DMA'd into the chatbox's per-row VRAM tilemap window at 0x600D340. It is sized 0x20 (32 bytes
+  = 8 tiles worth), matching the chatbox row's tile count, and is being copied freshly each call rather
+  than preserved across calls, so it is a scratch/reload buffer rather than persistent chatbox state.
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: chatbox.s:1098 chatbox_runScript copies dword_86B7AC0 -> byte_3001710 (size 0x20) as the third
+    block of the chatbox GFX reload; chatbox.s:1256/1411 chatbox_reqBBS_80404C0 and dead_80405F8 do the
+    same 0x20-byte copy from dword_86B7AC0 into byte_3001710 alongside the other chatbox GFX reloads;
+    chatbox.s:4839/4848 chatbox_F6_textcolor picks one of dword_86B7AA0's rows (or a 0x4C-byte-into-r5
+    entry) and copies 0x20 bytes into byte_3001710, showing per-row text-color tilemaps land here; asm00_0.s:5669
+    copy_8002668 also copies 0x20 bytes from dword_86A5500 into byte_3001710; asm32.s:35421 queueGFXTransfersFromTable_811EC68
+    emits byte_3001710 (size 0x20) into VRAM 0x600D340 via its off_811ECB4 transfer-table entry
+  refs:
+  - bn6f/iwram_data.s:85
+  - bn6f/asm/chatbox.s:1098
+  - bn6f/asm/asm00_0.s:5669
+  - bn6f/asm/chatbox.s:1256
+  - bn6f/asm/chatbox.s:1411
+  reproduce: grep -n -w byte_3001710 bn6f/iwram_data.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-192515'
+open_questions:
+- The exact VRAM destination (0x600D340 in off_811ECB4) is presumed to be the chatbox text per-row tilemap
+  window, but no label in the disassembly names that VRAM region yet.
+sources:
+- wf investigate-data investigate-data-20261020-192515
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f e9971e02
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename byte_3001710 -> chatboxTileRowScratchBuf
+  where: bn6f 7e179b9d
+  tool: tools/rename_symbol.py
+previous_names:
+- byte_3001710
