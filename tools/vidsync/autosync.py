@@ -949,6 +949,33 @@ def try_encounter(D):
     log(f'  encounter: {len(ok)} start it; take {t[3]} (to {res[t[3]][0]}, mean cost {res[t[3]][1]:.3f})')
     return state_at(f - 2), [t[1][0]]          # (again: state_at's scratch slot held another write point)
 
+def try_noencounter(D):
+    """Ours starts a random battle where the video walks on (run11d 1389010: just after a save, LocEnemy's last
+    ~90 frames; our step roll passed and took its battle, the video's did not and LocEnemy expired): the walk
+    counter written to 0 some frames before our trigger, so no roll passes there (LocEnemy's countdown goes on
+    with the steps); the path's keys judge it."""
+    last = max([p[0] for p in b.pokes] + [0])
+    W0 = max(last + 1, D - 90, ring[0][0])
+    w = state_at(W0)
+    if w is None: return None
+    ks = path_keys(); p0 = b.press_gf
+    b.e.load(w[1]); prev = b.e.read(syms.GS_SUBSYSTEM, 1)[0]; T = None
+    for g in range(W0, min(D + 6, b.g)):
+        b.e.step(ks[g - p0][0]); s = b.e.read(syms.GS_SUBSYSTEM, 1)[0]
+        if prev == 4 and s == 8: T = g + 1; break
+        prev = s
+    if T is None: return None
+    ats = [T - k for k in (2, 4, 7, 12, 20) if T - k > last and T - k >= W0]
+    if not ats: return None
+    w = state_at(min(ats) - 1)
+    if w is None: return None
+    ex = {f'N{a}': [[a, f'{ENC_STEPS:#x}=0x0/2']] for a in ats}
+    r = reach_many(w, ex, D + 400, D)
+    best = max(ex, key=lambda t: (r[t][0], -r[t][1]))
+    log(f'  no encounter: ours starts a battle at {T}; walk counter 0 at {best[1:]} reaches {r[best][0]} (mean cost {r[best][1]:.3f})')
+    if r[best][0] < D + 100: return None
+    return w, ex[best]
+
 def try_pick(D):
     """The video's random battle is one ours cannot pick: the entry is iCurrFrame % (eligible entries)
     (pickBattleSettingsEntry_80AA5F4) and a picked battle too weak for MegaMan is dropped (battle_tryEncounter_
@@ -2014,7 +2041,7 @@ def repair(D):
     tried = {name for name, _ in first}
     order = [('offset', try_offset), ('overlay', try_overlay), ('hand', try_hand), ('redraw', try_redraw), ('gmd', try_gmd),
              ('subchip', try_subchip), ('position', try_position), ('relocate', try_relocate), ('nudge', try_nudge), ('tornado', try_tornado), ('mapobj', try_mapobj),
-             ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('kill', try_kill), ('split', try_split), ('skipahead', try_skipahead), ('menuwalk', try_menuwalk), ('die', lambda D: try_kill(D, 0)),
+             ('noencounter', try_noencounter), ('encounter', try_encounter), ('pick', try_pick), ('library', try_library), ('hp', try_hp), ('kill', try_kill), ('split', try_split), ('skipahead', try_skipahead), ('menuwalk', try_menuwalk), ('die', lambda D: try_kill(D, 0)),
              *[(name, h) for name, h in PLUGINS if name not in MATCHERS]]
     # a battle whose folder shuffle no fix has held to yet: its first hand goes before a video jump (a wrong hand
     # costs little on the custom screen, and the offset handler re-anchored over one, run8t 839618)
