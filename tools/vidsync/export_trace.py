@@ -95,10 +95,13 @@ def mgba_replay(trace, save, pokes, end):
 
 
 def emu_replay(R, keys):
-    """The result as vidsync ran it: emu_server, pokes registered, boot, then the keys."""
+    """The result as vidsync ran it: emu_server, pokes registered, boot, then the keys. A poke at or past
+    the end is left out, as poke_lines leaves it out of the recording (a fix_ checkpoint often ends on its
+    own write)."""
     e = Emu()
     for g, spec in R.get('pokes', []):
-        e.poke(g, spec)
+        if g < len(keys):
+            e.poke(g, spec)
     i = 0
     while i < len(keys):
         j = i
