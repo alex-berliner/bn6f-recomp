@@ -106,6 +106,17 @@ def test_select_targets_honours_count(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert len(selected) == 3
 
 
+def test_an_explicitly_named_function_is_taken_even_with_an_earlier_candidate(monkeypatch: pytest.MonkeyPatch,
+                                                                             tmp_path: Path) -> None:
+    """--only asks for a function by name: an earlier candidate (one holding no name) is a reason to
+    ask again, not a reason to skip it — which is what a second run over the same set needs."""
+    fake_selection(monkeypatch, tmp_path, finished=frozenset({"sub_08000002"}))
+    # nobody asks: the one with an earlier candidate is out, the other two are not named
+    assert "sub_08000002" not in [target.name for target in select_targets(tmp_path, 500, ())]
+    asked = select_targets(tmp_path, 500, (FunctionName("sub_08000002"),))
+    assert [target.name for target in asked] == ["sub_08000002"]
+
+
 # ── the names a proposal may carry ────────────────────────────────────────
 
 def test_a_name_must_not_carry_the_placeholder_or_hedge() -> None:
@@ -364,7 +375,7 @@ def fake_graph(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, contexts: tuple[
                retry: frozenset[str] = frozenset()) -> tuple[Target, ...]:
         return tuple(context.target for context in contexts)
 
-    def gather(targets: tuple[Target, ...], run_dir: Path) -> tuple[Context, ...]:
+    def gather(targets: tuple[Target, ...], run_dir: Path, gather: bool = False) -> tuple[Context, ...]:
         return contexts
 
     def investigate_all(model: ModelSpec, given: tuple[Context, ...], run_dir: Path, run_id: str,
@@ -602,6 +613,203 @@ def test_the_prompt_says_the_call_sites_are_the_evidence(monkeypatch: pytest.Mon
     assert "call sites are the evidence" in prompt
     assert "used only as" in prompt
     assert investigate.CONTEXT_TOKENS == 6_000
+
+
+# ── the runtime facts a --facts run shows (`wf facts` records) ─────────
+
+def fake_record(address: int = 0x08001234, name: str = "sub_08001234",
+                **over: object) -> dict[str, object]:
+    """One `wf facts` record in the shape the layer writes it (docs/workflows/facts-notes.md), with
+    the fields the block reads: a battle and an overworld route that reached it, an indirect caller,
+    the RAM and I/O the replayed calls wrote, and the arguments and returns."""
+    record: dict[str, object] = {
+        "address": address, "address_hex": f"0x{address:08X}", "name": name, "end": address + 0x10,
+        "asm": "asm00_0.s:10", "reached": True, "captured": True, "captured_states": 8, "states": 8,
+        "probes": 8, "returned": 8, "calls": 6, "calls_per_1000_frames": 0.02, "cycles": 900,
+        "routes_reached": 2,
+        "routes": [
+            {"route": "battle", "executed": True, "body_executed": True, "frames": 20000, "calls": 4,
+             "callers": [{"site": "0x03005C68", "caller": "0x0803E18C",
+                          "name": "battle_dispatchAI_8003E18", "count": 4}]},
+            {"route": "story2", "executed": True, "body_executed": True, "frames": 33546, "calls": 2,
+             "callers": [{"site": "0x03005C70", "caller": "0x0803E18C",
+                          "name": "battle_dispatchAI_8003E18", "count": 2},
+                         {"site": "0x03005C74", "caller": "0x08123456", "name": "sub_8123456", "count": 1}]},
+            {"route": "wander", "executed": False, "body_executed": False, "frames": 8000, "calls": None,
+             "callers": []},
+        ],
+        "arguments": [{"reg": "r0", "samples": 8, "distinct": 1, "lowest": 12, "highest": 12,
+                       "values": [12]},
+                      {"reg": "r1", "samples": 8, "distinct": 3, "lowest": 1, "highest": 9,
+                       "values": [1, 2, 9]}],
+        "returns": [{"reg": "r0", "samples": 8, "distinct": 2, "lowest": 1, "highest": 4,
+                     "values": [1, 4]}],
+        "facts": {
+            "name": name, "address": address, "probes": 8, "returned": 8,
+            "register_inputs": ["inputs r0 = 0x0000000C"], "register_outputs": ["outputs r0 = 0x00000001"],
+            "registers_written": ["writes r0"], "written_patterns": ["r0: changed 0x0000000C->0x00000001"],
+            "io_writes": [{"name": "REG_DISPSTAT", "address": 0x04000004, "size": 2, "value": 0x0020,
+                           "matched": 8}],
+            "memory_writes": [{"symbol": "eBattleState_Flags", "address": 0, "bytes": 4,
+                               "distinct_values": 7},
+                              {"symbol": "IWRAM", "address": 0, "bytes": 32, "distinct_values": 1}],
+            "route_coverage": []},
+        "facts_error": None, "built": "2026-10-21T11:16:00Z"}
+    record.update(over)
+    return record
+
+
+def write_record_file(directory: Path, address: int = 0x08001234, name: str = "sub_08001234",
+                      **over: object) -> Path:
+    """A `wf facts` record on disk, where the layer keeps them (by_address/0xADDR.json)."""
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"0x{address:08X}.json"
+    path.write_text(json.dumps(fake_record(address, name, **over)))
+    return path
+
+
+def block_for(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, address: int = 0x08001234,
+              name: str = "sub_08001234", **over: object) -> str:
+    """The --facts block for a function whose record was written into a facts dir of its own."""
+    facts_dir = tmp_path / "by_address"
+    facts_dir.mkdir(parents=True, exist_ok=True)
+    write_record_file(facts_dir, address, name, **over)
+    monkeypatch.setattr(investigate, "FACTS_BY_ADDRESS", facts_dir)
+    record = investigate.facts_record(GuestAddress(address))
+    assert record is not None
+    return investigate.runtime_facts_text(record, FunctionName(name))
+
+
+def test_the_facts_block_says_what_the_original_game_was_observed_doing(monkeypatch: pytest.MonkeyPatch,
+                                                                       tmp_path: Path) -> None:
+    block = block_for(monkeypatch, tmp_path)
+    assert "battle (battle)" in block and "overworld (story2)" in block     # the scenes, and the routes
+    assert "wander" not in block                                            # a route that did not reach it
+    assert "reached by 2 of 3 recorded routes" in block and "6 calls" in block
+    assert "battle_dispatchAI_8003E18 (6 calls)" in block                   # the runtime callers, by name
+    assert "eBattleState_Flags (4 bytes, 7 values)" in block                # RAM written, distinct values
+    assert "REG_DISPSTAT = 0x00000020 (2 bytes, in 8 probes)" in block      # I/O written
+    assert "r0 = 0x0000000C (8 calls, one value)" in block                  # the arguments
+    assert "r1 = 0x00000001..0x00000009 (8 calls, 3 values)" in block
+    assert "returns: r0 = 0x00000001..0x00000004" in block                  # and what it returned
+    assert "argument registers left unchanged: r1" in block
+    assert "observed by running the ORIGINAL game" in block
+
+
+def test_the_facts_block_is_short_and_hides_the_blind_spots_it_has(monkeypatch: pytest.MonkeyPatch,
+                                                                   tmp_path: Path) -> None:
+    block = block_for(monkeypatch, tmp_path)
+    assert len(block.splitlines()) <= investigate.FACTS_LINES
+    assert "write-only I/O registers read back as junk" in block   # an empty I/O line is not evidence
+
+
+def test_the_ram_symbols_are_capped_and_a_bare_region_sorts_last(monkeypatch: pytest.MonkeyPatch,
+                                                                 tmp_path: Path) -> None:
+    writes = [{"symbol": f"sym_{index}", "address": 0, "bytes": index, "distinct_values": index}
+              for index in range(1, 15)]
+    writes.append({"symbol": "IWRAM", "address": 0, "bytes": 999, "distinct_values": 3})
+    block = block_for(monkeypatch, tmp_path, facts={**fake_record()["facts"],   # type: ignore[dict-item]
+                                                   "memory_writes": writes})
+    symbols = block.split("RAM symbols it wrote: ")[1].splitlines()[0]
+    assert symbols.count("sym_") == investigate.MAX_FACTS_SYMBOLS and "+5 more" in symbols
+    assert symbols.index("sym_14") < symbols.index("sym_5")        # widest first
+    assert "IWRAM" not in symbols                                 # a bare region name says least
+
+
+def test_a_function_no_recording_reached_is_told_so(monkeypatch: pytest.MonkeyPatch,
+                                                    tmp_path: Path) -> None:
+    """Silence is information too, and it is not evidence for a name either way."""
+    block = block_for(monkeypatch, tmp_path, reached=False, routes=[])
+    assert "never executed by the recordings" in block
+    assert "reached by" not in block and len(block.splitlines()) == 2
+
+
+def test_a_reached_function_with_no_replayed_call_says_what_is_unknown(monkeypatch: pytest.MonkeyPatch,
+                                                                       tmp_path: Path) -> None:
+    block = block_for(monkeypatch, tmp_path, facts=None, facts_error="state 0 did not return within "
+                                                                     "5000000 instructions", probes=0,
+                      returned=0, arguments=[], returns=[])
+    assert "unknown -- 0 captured call(s) were replayed and none returned" in block
+    assert "did not return within 5000000 instructions" in block
+
+
+def test_a_function_with_no_facts_record_is_not_a_crash(monkeypatch: pytest.MonkeyPatch,
+                                                         tmp_path: Path) -> None:
+    monkeypatch.setattr(investigate, "FACTS_BY_ADDRESS", tmp_path / "nothing-here")
+    assert investigate.facts_record(GuestAddress(0x08001234)) is None
+    assert "none recorded for sub_1" in investigate.runtime_facts_text(None, FunctionName("sub_1"))
+
+
+def test_a_half_written_record_reads_as_none(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    facts_dir = tmp_path / "by_address"
+    facts_dir.mkdir()
+    (facts_dir / "0x08001234.json").write_text('{"address": 1, "nam')
+    monkeypatch.setattr(investigate, "FACTS_BY_ADDRESS", facts_dir)
+    assert investigate.facts_record(GuestAddress(0x08001234)) is None
+
+
+def test_the_routes_map_to_the_scenes_they_were_played_in() -> None:
+    assert investigate.scene_of("battle") == "battle" and investigate.scene_of("battlesweep") == "battle"
+    assert investigate.scene_of("chips") == "battle"
+    assert investigate.scene_of("story3") == "overworld" and investigate.scene_of("maps") == "overworld"
+    assert investigate.scene_of("wander") == "overworld"
+    assert investigate.scene_of("menus2") == "menu" and investigate.scene_of("title_mash_a") == "title"
+    assert investigate.scene_of("beastsp") == "mixed" and investigate.scene_of("fuzz") == "mixed"
+
+
+def test_the_record_is_looked_up_by_entry_address(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A record is filed by address, so the thumb bit of a name's address finds it either way."""
+    facts_dir = tmp_path / "by_address"
+    write_record_file(facts_dir, 0x08001234)
+    monkeypatch.setattr(investigate, "FACTS_BY_ADDRESS", facts_dir)
+    assert investigate.facts_record(GuestAddress(0x08001235)) is not None
+
+
+def test_the_prompt_says_the_facts_are_observed_and_the_name_must_fit(monkeypatch: pytest.MonkeyPatch,
+                                                                      tmp_path: Path) -> None:
+    context = context_of(target("sub_8000000"), tmp_path).model_copy(
+        update={"facts": block_for(monkeypatch, tmp_path)})
+    prompt = investigate.prompt_investigate(context, ("sprite",))
+    assert "Runtime facts (observed by running the ORIGINAL game" in prompt
+    assert "It is evidence, not a guess" in prompt and "must be consistent with it" in prompt
+    assert prompt.index("Runtime facts") < prompt.index("Assembly:")
+    checked = investigate.prompt_check(context, named_proposal(), ("sprite",))
+    assert "It is evidence, not a guess" in checked and "Runtime facts" in checked
+
+
+def test_a_run_without_facts_asks_exactly_as_before(monkeypatch: pytest.MonkeyPatch,
+                                                    tmp_path: Path) -> None:
+    """The flag is off by default: without it the brief carries no facts and no rule about them."""
+    context = context_of(target("sub_8000000"), tmp_path)
+    assert context.facts == ""
+    prompt = investigate.prompt_investigate(context, ("sprite",))
+    assert "Runtime facts" not in prompt and "It is evidence, not a guess" not in prompt
+    assert "Runtime facts" not in investigate.prompt_check(context, named_proposal(), ("sprite",))
+
+
+def test_the_graph_gathers_the_facts_only_when_asked(monkeypatch: pytest.MonkeyPatch,
+                                                      tmp_path: Path) -> None:
+    """`--facts` reaches the gathering step through the run state (off unless the flag says so)."""
+    asked: list[bool] = []
+    targets = (target("sub_8000000"),)
+    contexts = (context_of(targets[0], tmp_path),)
+
+    def select(run_dir: Path, count: int, only: tuple[FunctionName, ...],
+               retry: frozenset[str] = frozenset()) -> tuple[Target, ...]:
+        return targets
+
+    def gather(targets: tuple[Target, ...], run_dir: Path, gather: bool = False) -> tuple[Context, ...]:
+        asked.append(gather)
+        return contexts
+
+    monkeypatch.setattr(graph, "select_targets", select)
+    monkeypatch.setattr(graph, "gather_all", gather)
+    run_investigate(InvestigateState(run_dir=tmp_path / "run", gather=True),
+                    run_id="investigate-facts", tracked=False)
+    assert asked == [True]
+    run_investigate(InvestigateState(run_dir=tmp_path / "run2"), run_id="investigate-plain",
+                    tracked=False)
+    assert asked == [True, False]      # the flag is off by default
 
 
 # ── the stragglers: give up, do not cache, do not block the exit ───────

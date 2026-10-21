@@ -10,9 +10,13 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
   python -m wf queue   --stop | --status    # ask the running queue to finish its farm runs and end (SIGTERM
                                             # or Ctrl-C too; twice: at once, jobs under way stay open); its ledger
   python -m wf drafts  --model PROVIDER/MODEL [--drafter P/M] [--prompt old] [--jobs N] [FUNCTION...]   # entries for accepted candidates
-  python -m wf investigate [--count N] [--only NAME]... [--retry-unnamed RUN_ID] [--model M] [--checker M] [--jobs N]
+  python -m wf investigate [--count N] [--only NAME]... [--only-file FILE] [--retry-unnamed RUN_ID]
+                       [--facts|--no-facts] [--model M] [--checker M] [--jobs N]
                        # cheap models propose candidate symbols/db entries for placeholder functions;
-                       # the candidates (for review, nothing installed) go to build/investigate/RUN_ID
+                       # the candidates (for review, nothing installed) go to build/investigate/RUN_ID.
+                       # --facts adds what the original game did at runtime (`wf facts`, build/facts):
+                       # the scenes, the runtime callers, the RAM and I/O written, the arguments and
+                       # the returns of the calls replayed in mGBA; the name has to be consistent with it
   python -m wf investigate-data [--count N] [--only NAME]... [--model M] [--checker M] [--jobs N]
                        # the same for placeholder DATA labels (byte_203F750, unk_2017A00): the code
                        # that uses the label is the evidence; candidates go to build/investigate_data/RUN_ID
@@ -117,6 +121,7 @@ from wf.tools.vidsync import driver_status
 from wf.tools.investigate import DEFAULT_CHECKER as DEFAULT_INVESTIGATE_CHECKER
 from wf.tools.investigate import DEFAULT_MODEL as DEFAULT_INVESTIGATE_MODEL
 from wf.tools.investigate import DEFAULT_COUNT as DEFAULT_INVESTIGATE_COUNT
+from wf.tools.investigate import FACTS_BY_ADDRESS
 from wf.tools.investigate_data import DEFAULT_CHECKER as DEFAULT_INVESTIGATE_DATA_CHECKER
 from wf.tools.investigate_data import DEFAULT_COUNT as DEFAULT_INVESTIGATE_DATA_COUNT
 from wf.tools.investigate_data import DEFAULT_MODEL as DEFAULT_INVESTIGATE_DATA_MODEL
@@ -185,7 +190,9 @@ class InvestigateCommand(BaseModel):
     command: Literal["investigate"]
     count: int
     only: tuple[FunctionName, ...] = Field(alias="only")
+    only_file: Path | None = None
     retry_unnamed: str | None = None
+    gather: bool = False
     model: ModelSpec
     checker: ModelSpec
     jobs: int
@@ -483,14 +490,30 @@ def start_drafts(command: DraftsCommand) -> None:
     print_json(run_drafts(start, run_id))
 
 
+def read_only_file(path: Path) -> tuple[FunctionName, ...]:
+    """The function names an --only-file lists, one per line (`#` comments and blank lines are
+    skipped): the explicit list of a run over a chosen set (an A/B half, say) without repeating
+    --only sixty times."""
+    names: list[FunctionName] = []
+    for line in path.read_text().splitlines():
+        text = line.split("#", 1)[0].strip()
+        if text:
+            names.append(FunctionName(text))
+    return tuple(dict.fromkeys(names))
+
+
 def start_investigate(command: InvestigateCommand) -> None:
     run_id, _ = new_run("investigate")
     run_dir = investigate.INVESTIGATE / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     before = investigate.quota_snapshot(run_dir / "quota-before.json")
-    start = InvestigateState(run_dir=run_dir, count=command.count, only=command.only,
-                             retry_unnamed=command.retry_unnamed, model=command.model,
-                             checker=command.checker, jobs=command.jobs)
+    only = command.only + (read_only_file(command.only_file) if command.only_file else ())
+    if command.gather:
+        print(f"{FACTS_BY_ADDRESS}: runtime facts for the models are on "
+              f"({sum(1 for _ in FACTS_BY_ADDRESS.glob('*.json'))} records)")
+    start = InvestigateState(run_dir=run_dir, count=command.count, only=only,
+                             retry_unnamed=command.retry_unnamed, gather=command.gather,
+                             model=command.model, checker=command.checker, jobs=command.jobs)
     try:
         report = run_investigate(start, run_id)
     finally:
@@ -845,7 +868,18 @@ def parse_command() -> Command:
                                help="cheap models propose candidate symbols/db entries for placeholder functions")
     look.add_argument("--count", type=int, default=DEFAULT_INVESTIGATE_COUNT,
                       help=f"how many functions to take (default {DEFAULT_INVESTIGATE_COUNT})")
-    look.add_argument("--only", action="append", default=[], help="investigate these functions, whatever else")
+    look.add_argument("--only", action="append", default=[],
+                      help="investigate these functions, whatever else (an earlier candidate does "
+                           "not rule a named function out)")
+    look.add_argument("--only-file", type=Path,
+                      help="a file of function names, one per line, to investigate like --only "
+                           "(# comments allowed): the explicit list of a run over a chosen set")
+    look.add_argument("--facts", dest="gather", action="store_true", default=False,
+                      help="show the models what the original game did at runtime, from `wf facts` "
+                           "(the scenes it runs in, its runtime callers, the RAM and I/O it writes, "
+                           "its arguments and returns), and require the proposed name to fit")
+    look.add_argument("--no-facts", dest="gather", action="store_false",
+                      help="do not show the runtime facts (default)")
     look.add_argument("--retry-unnamed", help="an earlier run's ID: re-ask the functions its proposals left "
                                               "without a name (their new candidates go to the new run folder)")
     look.add_argument("--model", default=DEFAULT_INVESTIGATE_MODEL, help="who proposes (default hyper/glm-5.3-flash)")

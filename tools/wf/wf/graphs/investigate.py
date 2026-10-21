@@ -47,6 +47,7 @@ class InvestigateState(BaseModel):
     count: int = DEFAULT_COUNT
     only: tuple[FunctionName, ...] = ()
     retry_unnamed: str | None = None                     # an earlier run's ID: re-ask its unnamed ones
+    gather: bool = False                                 # --facts: show what the original game did
     model: ModelSpec = DEFAULT_MODEL
     checker: ModelSpec = DEFAULT_CHECKER
     jobs: int = DEFAULT_JOBS
@@ -97,6 +98,7 @@ def select_the_targets(given: SelectInput) -> SelectOutput:
 class GatherInput(Result):
     targets: tuple[Target, ...]
     run_dir: Path
+    gather: bool = False          # --facts: every context carries the runtime-facts block too
 
 
 class GatherOutput(Result):
@@ -107,9 +109,11 @@ class GatherOutput(Result):
 def gather_the_contexts(given: GatherInput) -> GatherOutput:
     """Each target's brief: its assembly, bn6f's comment, its callers and callees with what the
     project knows about them, up to three callers' code around their call sites (how the callers
-    set the call up and use the result), and the data it touches (the assembly and the snippets
-    are kept under the run's directory)."""
-    return GatherOutput(contexts=gather_all(given.targets, given.run_dir))
+    set the call up and use the result), the data it touches (the assembly and the snippets
+    are kept under the run's directory), and, with --facts, what the original game did at runtime
+    (`wf facts`): the scenes it runs in, its runtime callers, the RAM and I/O it writes and the
+    arguments and returns of the calls replayed in mGBA."""
+    return GatherOutput(contexts=gather_all(given.targets, given.run_dir, given.gather))
 
 
 class InvestigateInput(Result):

@@ -9,8 +9,15 @@ The models are asked through tools/llm.py `complete` (their token use lands in t
 tools/convert/usage.jsonl, read back per call by tag). A reply that holds no JSON object is asked
 once more with a short \"reply with only the JSON object\" follow-up (the counted retry); a proposed
 name that carries an address or a digit run from the placeholder, or hedges, is treated as no name.
-The written candidate files are checked with tools/symdb.py's own loader and entry check."""
+The written candidate files are checked with tools/symdb.py's own loader and entry check.
+
+With `--facts` the context also carries what the ORIGINAL game did at runtime, from `wf facts`
+(build/facts/by_address/0xADDR.json, keyed by entry address, never by name): which scenes the
+recordings reach the function in, who calls it at run time, which bn6f RAM symbols and I/O registers
+it writes, and the arguments and returns of the captured calls replayed in mGBA. It is observation,
+not inference, and the prompts say so; without the flag the brief is byte for byte what it was."""
 import json
+import os
 import re
 import subprocess
 import sys
@@ -24,6 +31,8 @@ from typing import Literal, cast
 import yaml
 from pydantic import field_serializer
 
+from wf.tools import facts            # the runtime-facts layer: the records --facts reads
+from wf.tools import runtime_evidence as rt   # the RuntimeFacts the records carry (io writes)
 from wf.tools.models import Prompt
 from wf.repo import REPO, SNAPSHOTS
 from wf.types import FunctionName, GuestAddress, ModelSpec, Result, RouteName, SymbolName, SymbolStatus, ToolMessage
@@ -41,6 +50,8 @@ ASM_DIR = REPO / "bn6f/asm"                        # where the functions' assemb
 DATA_FILES = ("data.s", "ewram.s", "iwram_data.s", "iwram.s", "rom.s", "vram.s")
 USAGE_LOG = REPO / "tools/convert/usage.jsonl"     # where tools/llm.py logs every call
 QUOTA = REPO / "tools/convert/quota.py"            # the providers' own meters (Hyper: credits)
+FACTS = Path(os.environ.get("WF_FACTS_DIR") or REPO / "build/facts")   # where `wf facts` wrote
+FACTS_BY_ADDRESS = FACTS / facts.BY_ADDRESS           # its records, one per function entry address
 
 CONTEXT_TOKENS = 6_000                             # the brief a model sees, all sections together
 CHARS_PER_TOKEN = 2.6                              # code and assembly, as tools/llm.py measures prompts
@@ -51,6 +62,11 @@ MAX_TOKENS = 10_000                                # output cap: room for the re
 MAX_CALL_SITES = 3                                 # callers whose code around the call site is shown
 SITE_INSTRUCTIONS = 25                             # instructions of a caller shown around one call site
 SITE_CHARS = 1_600                                 # chars of one call-site snippet, cut at a line
+FACTS_LINES = 25                                    # the runtime-facts block is a short block, not a brief
+MAX_FACTS_SYMBOLS = 10                              # RAM symbols it writes, named
+MAX_FACTS_CALLERS = 6                               # runtime callers, named
+MAX_FACTS_ROUTES = 4                                # routes named per scene
+MAX_FACTS_IO = 8                                    # I/O registers it writes, named
 STRAGGLER_SECONDS = 300                            # a request still unanswered this long after the last other
                                                    # request of its pass finished is abandoned
 
@@ -116,6 +132,8 @@ class Context(Result):
     sites: tuple[CallSite, ...] = ()       # the callers' calls (up to MAX_CALL_SITES)
     sites_text: Path = Path("")            # the snippets around them; empty: no call site is known
     data: tuple[DataSymbol, ...] = ()
+    facts: str = ""                        # the --facts block: what the original game was seen
+                                            # doing; empty: the run did not gather facts
 
 
 class Answer(Result):
@@ -332,7 +350,9 @@ def select_targets(run_dir: Path, count: int, only: tuple[FunctionName, ...],
     """The placeholder functions worth investigating, ranked, up to COUNT (all of ONLY when given,
     only the RETRY names when a --retry-unnamed run selects from an earlier run's unanswered ones);
     none that an earlier run already wrote a candidate for — except exactly the RETRY names, whose
-    earlier candidate held no name."""
+    earlier candidate held no name, and the names asked for by name (--only/--only-file ask for a
+    function whatever an earlier run left of it, and a second run over a chosen set is how two
+    prompts are compared over the same functions)."""
     units = funcindex.lifted_units()
     find = funcindex.unit_finder(funcindex.unit_ranges())
     neighbours = call_graph() if GRAPH.exists() else {}
@@ -345,7 +365,7 @@ def select_targets(run_dir: Path, count: int, only: tuple[FunctionName, ...],
             continue
         if retry and name not in retry:      # a retry run takes the earlier run's unnamed ones
             continue
-        if name in done and name not in retry:
+        if name in done and name not in retry and name not in only:
             continue
         if only and name not in only:
             continue
@@ -675,10 +695,11 @@ def sites_text_of(target: Target, sites: tuple[CallSite, ...], label: str,
 def gather_context(target: Target, run_dir: Path, labels: dict[str, tuple[Path, int]],
                    summaries: dict[str, str], find: Finder, units: dict[str, funcindex.Unit],
                    neighbours: dict[int, tuple[frozenset[int], frozenset[int],
-                                               tuple[tuple[int, int], ...]]]) -> Context:
+                                               tuple[tuple[int, int], ...]]], gather: bool = False) -> Context:
     """What the models see about one function: its assembly, bn6f's comment above it, its callers
     and callees with the summaries they have, up to three callers' code around their call sites,
-    and the data it touches (the assembly and the snippets are kept under the run's directory)."""
+    the data it touches (the assembly and the snippets are kept under the run's directory), and,
+    with `gather` (--facts), what the original game did at runtime."""
     label = label_at(target.address, target.name, find)
     assembly = write_context_assembly(run_dir, target.name, target.source)
     source_file = source_path(target.source)
@@ -694,7 +715,8 @@ def gather_context(target: Target, run_dir: Path, labels: dict[str, tuple[Path, 
                    callees=_neighbours(callees, find, summaries),
                    sites=sites,
                    sites_text=write_site_snippets(run_dir, target.name, text) if sites else Path(""),
-                   data=_data_symbols(assembly.read_text(errors="replace") if assembly.exists() else "", labels))
+                   data=_data_symbols(assembly.read_text(errors="replace") if assembly.exists() else "", labels),
+                   facts=runtime_facts_text(facts_record(target.address), target.name) if gather else "")
 
 
 def _neighbours(addresses: frozenset[int], find: Finder, summaries: dict[str, str]) -> tuple[Neighbour, ...]:
@@ -720,15 +742,179 @@ def _data_symbols(assembly: str, labels: dict[str, tuple[Path, int]]) -> tuple[D
     return tuple(out)
 
 
-def gather_all(targets: tuple[Target, ...], run_dir: Path) -> tuple[Context, ...]:
+def gather_all(targets: tuple[Target, ...], run_dir: Path, gather: bool = False) -> tuple[Context, ...]:
     """Every target's context: the shared indexes once, then one context per function."""
     labels = label_index()
     summaries = db_summaries()
     find = funcindex.unit_finder(funcindex.unit_ranges())
     units = funcindex.lifted_units()
     neighbours = call_graph() if GRAPH.exists() else {}
-    return tuple(gather_context(target, run_dir, labels, summaries, find, units, neighbours)
+    return tuple(gather_context(target, run_dir, labels, summaries, find, units, neighbours, gather)
                  for target in targets)
+
+
+# ── what the original game did at runtime (the --facts block) ─────────
+
+FACTS_HEADER = ("Runtime facts (observed by running the ORIGINAL game, not inferred: the recorded "
+                "routes in build/facts, and captured calls of it replayed in mGBA):")
+FACTS_CAVEAT = ("  Blind spots: only values that CHANGED are listed (reads and same-value writes are "
+                "invisible); write-only I/O registers read back as junk and are never listed, so an "
+                "empty I/O line does NOT rule out display, scrolling, DMA or sound work.")
+
+
+def scene_of(route: str) -> str:
+    """Which part of the game a recorded route was playing: the scenes a function is reached in say
+    as much about its purpose as the assembly does. battle*/chips fight, story*/maps/wander walk
+    around, menus* are menus, title_mash_a is the title screen; beastsp (the whole game) and fuzz
+    (nothing in particular) say no scene of their own."""
+    if route.startswith("battle") or route == "chips":
+        return "battle"
+    if route.startswith("story") or route in ("maps", "wander"):
+        return "overworld"
+    if route.startswith("menus"):
+        return "menu"
+    if route == "title_mash_a":
+        return "title"
+    return "mixed"
+
+
+def facts_record(address: GuestAddress) -> facts.FunctionFacts | None:
+    """The `wf facts` record for the function entered at ADDRESS -- filed by entry address, so a
+    rename never moves it -- or None when the layer holds none (never run, or not for this one)."""
+    return facts.read_record(FACTS_BY_ADDRESS / f"0x{int(address) & ~1:08X}.json")
+
+
+def _reached_routes(record: facts.FunctionFacts) -> tuple[facts.RouteCoverage, ...]:
+    """The routes the recordings executed this function in (its entry, or any address of its body:
+    a jump-table target is entered in the middle and has no entry in the profile)."""
+    return tuple(route for route in record.routes if route.executed or route.body_executed)
+
+
+def _plural(count: int, word: str) -> str:
+    """`1 value`, `13 values`, `4,243,040 calls`: the block is read at a glance, and `1 values` is
+    not; the recordings run for hours, so the call counts are long."""
+    return f"{count:,} {word}" + ("" if count == 1 else "s")
+
+
+def _scenes_text(record: facts.FunctionFacts) -> str:
+    """The scenes the function was reached in, with the routes that say so, in reading order."""
+    scenes: dict[str, list[str]] = {}
+    for route in _reached_routes(record):
+        scenes.setdefault(scene_of(str(route.route)), []).append(str(route.route))
+    parts: list[str] = []
+    for scene, names in scenes.items():
+        shown = ", ".join(names[:MAX_FACTS_ROUTES])
+        rest = f", +{len(names) - MAX_FACTS_ROUTES} more" if len(names) > MAX_FACTS_ROUTES else ""
+        parts.append(f"{scene} ({shown}{rest})")
+    return f"  scenes it runs in: {', '.join(parts)}"
+
+
+def _callers_text(record: facts.FunctionFacts) -> str:
+    """Who called it while the recordings played, by name, a named caller before a placeholder one.
+    These are the calls at the recorded indirect sites only: a caller reached by a direct `bl` is
+    not among them, and a call count of 0 never means it was never called."""
+    counts: dict[str, int] = {}
+    for route in _reached_routes(record):
+        for caller in route.callers:
+            counts[caller.name] = counts.get(caller.name, 0) + caller.count
+    if not counts:
+        return "  runtime callers: none seen (only indirect call sites are recorded)"
+    names = sorted(counts, key=lambda name: (placeholder(name), -counts[name], name))[:MAX_FACTS_CALLERS]
+    listed = ", ".join(f"{name} ({_plural(counts[name], 'call')})" for name in names)
+    more = f" (+{len(counts) - len(names)} more)" if len(counts) > len(names) else ""
+    return f"  runtime callers, with the calls they made: {listed}{more}"
+
+
+UNNAMED_RAM = ("EWRAM", "IWRAM", "OAM", "PALETTE", "RAM", "SRAM", "VRAM")   # region names, not symbols
+
+
+def _symbol_text(record: facts.FunctionFacts) -> str:
+    """The bn6f RAM symbols the function wrote, widest first, with how many distinct values the
+    replayed calls put in each. A bare region name ("IWRAM", or the end-file marker of a write
+    past the last symbol) says no more than "it wrote somewhere", so it sorts below a real one."""
+    written = record.facts.memory_writes if record.facts else ()
+    writes = sorted(written, key=lambda write: (write.symbol in UNNAMED_RAM
+                                                or write.symbol.startswith("end_file_"),
+                                                -write.bytes, write.symbol))[:MAX_FACTS_SYMBOLS]
+    if not writes:
+        return ""
+    listed = ", ".join(f"{write.symbol} ({write.bytes} bytes, "
+                        f"{_plural(write.distinct_values, 'value')})" for write in writes)
+    more = f" (+{len(written) - len(writes)} more)" if len(written) > len(writes) else ""
+    return f"  RAM symbols it wrote: {listed}{more}"
+
+
+def _io_text(record: facts.FunctionFacts) -> str:
+    """The I/O registers it wrote, grouped by register: the value and how many probes wrote it."""
+    grouped: dict[str, list[rt.IOWrite]] = {}
+    for write in (record.facts.io_writes if record.facts else ()):
+        grouped.setdefault(write.name, []).append(write)
+    if not grouped:
+        return "  I/O it wrote: none seen (write-only registers are never listed)"
+    shown = sorted(grouped.items(), key=lambda item: (-sum(w.matched for w in item[1]), item[0]))
+    parts: list[str] = []
+    for name, writes in shown[:MAX_FACTS_IO]:
+        first = writes[0]
+        probes = sum(write.matched for write in writes)
+        parts.append(f"{name} = 0x{first.value:08X} ({first.size} bytes, in {_plural(probes, 'probe')})")
+    more = f" (+{len(shown) - MAX_FACTS_IO} more)" if len(shown) > MAX_FACTS_IO else ""
+    return f"  I/O it wrote: {', '.join(parts)}{more}"
+
+
+def _register_range(stats: facts.RegisterStats) -> str:
+    """A register over the replayed calls as a range: one value when every call passed the same one."""
+    if stats.lowest is None or stats.highest is None:
+        return "not seen"
+    if stats.distinct <= 1:
+        return f"0x{stats.lowest:08X} ({_plural(stats.samples, 'call')}, one value)"
+    return (f"0x{stats.lowest:08X}..0x{stats.highest:08X} ({_plural(stats.samples, 'call')}, "
+            f"{_plural(stats.distinct, 'value')})")
+
+
+def _registers_text(record: facts.FunctionFacts, which: str) -> str:
+    """The argument registers at the replayed entries, or the values r0 returned with."""
+    stats = record.arguments if which == "arguments" else record.returns
+    if not stats:
+        return ""
+    listed = ", ".join(f"{row.reg} = {_register_range(row)}" for row in stats)
+    return f"  {which}: {listed}"
+
+
+def _written_text(record: facts.FunctionFacts) -> str:
+    """Which of the argument registers the function left alone: it says what it does with them."""
+    if record.facts is None:
+        return ""
+    written = {row.removeprefix("writes ") for row in record.facts.registers_written}
+    left = [row.reg for row in record.arguments if row.reg not in written]
+    return f"  argument registers left unchanged: {', '.join(left)}" if left else ""
+
+
+def runtime_facts_text(record: facts.FunctionFacts | None, name: FunctionName) -> str:
+    """The short block the proposer and the checker are shown (at most FACTS_LINES lines): what the
+    original game was observed doing, read from one `wf facts` record. A function no recording ever
+    reached says so instead -- that silence is information, but it argues for nothing either way."""
+    if record is None:
+        return f"Runtime facts: none recorded for {name} (build/facts has no record of it)."
+    if not record.reached:
+        return (f"{FACTS_HEADER}\n  never executed by the recordings: no route reached it and no call "
+                "of it was captured, so what it does is not observed at all -- say so in "
+                "open_questions rather than reading a purpose into it.")
+    reached = _reached_routes(record)
+    calls = "; no calls at the recorded indirect call sites" if record.calls == 0 \
+        else f"; {_plural(record.calls, 'call')} at the recorded indirect call sites"
+    lines = [FACTS_HEADER, _scenes_text(record),
+             f"  reached by {len(reached)} of {len(record.routes)} recorded routes{calls}"]
+    lines.append(_callers_text(record))
+    if record.facts is None:
+        lines.append(f"  arguments, writes and returns: unknown -- {record.probes} captured call(s) were "
+                     f"replayed and none returned{f' ({record.facts_error})' if record.facts_error else ''}")
+    else:
+        lines += [line for line in (_symbol_text(record), _io_text(record),
+                                    _registers_text(record, "arguments"),
+                                    _registers_text(record, "returns"),
+                                    _written_text(record)) if line]
+    lines.append(FACTS_CAVEAT)
+    return "\n".join(lines[:FACTS_LINES])
 
 
 # ── the brief the models see ───────────────────────────────────────────
@@ -777,6 +963,8 @@ def context_text(context: Context) -> str:
         data = [f"  {d.name}" + (f" — {_trim(d.comment)}" if d.comment else "") for d in context.data]
         more = "" if len(data) <= MAX_LISTED else f"\n  (+ {len(data) - MAX_LISTED} more)"
         lines.append("Data it reads or writes:\n" + "\n".join(data[:MAX_LISTED]) + more)
+    if context.facts:
+        lines.append(context.facts)
     head = "\n\n".join(lines)
     assembly = context.assembly.read_text(errors="replace") if context.assembly.exists() else "(none)"
     budget = int(CONTEXT_TOKENS * CHARS_PER_TOKEN) - len(head) - 200   # the framing around the assembly
@@ -882,10 +1070,24 @@ disagree = the code shows something else. Cite the code in the reason either way
 either: if the code does not settle it, disagree and say why."""
 
 
+def facts_rule(context: Context) -> str:
+    """What the prompts add when the run gathered facts (`--facts`): the block is observation, and
+    the name has to fit it. Nothing at all without it, so a run without facts is asked exactly as
+    it was before the block existed."""
+    if not context.facts:
+        return ""
+    return ("\n\nThe context carries a Runtime facts block: what the ORIGINAL game was observed doing "
+            "at runtime (the recorded routes, and captured calls of this function replayed in mGBA). "
+            "It is evidence, not a guess: the name, summary and interface you propose must be "
+            "consistent with it. If a fact contradicts the name you had in mind, do not propose that "
+            "name -- name what the code and the facts together support, or answer "
+            "\"proposed_name\": null and put the contradiction in open_questions.")
+
+
 def prompt_investigate(context: Context, prefixes: tuple[str, ...]) -> str:
     """The investigating model's prompt: the task, then the context (assembly last, capped)."""
     listed = ", ".join(prefixes) if prefixes else "(none yet)"
-    return f"{INVESTIGATE_TASK.format(prefixes=listed)}\n\n{context_text(context)}"
+    return f"{INVESTIGATE_TASK.format(prefixes=listed)}{facts_rule(context)}\n\n{context_text(context)}"
 
 
 def prompt_check(context: Context, proposal: Proposal, prefixes: tuple[str, ...]) -> str:
@@ -895,7 +1097,8 @@ def prompt_check(context: Context, proposal: Proposal, prefixes: tuple[str, ...]
     proposal_text = CHECK_TASK.format(name=answer.proposed_name or "(none proposed)",
                                       summary=answer.summary or "(none)",
                                       interface=answer.interface or "(none)",
-                                      details=answer.details or "(none)", prefixes=", ".join(prefixes))
+                                      details=answer.details or "(none)",
+                                      prefixes=", ".join(prefixes)) + facts_rule(context)
     return f"{proposal_text}\n\n{context_text(context)}"
 
 
