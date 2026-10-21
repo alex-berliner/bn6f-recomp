@@ -21,6 +21,9 @@ import sys
 import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import names as symnames  # noqa: E402
+
 DB = os.path.join(ROOT, "symbols/db")
 ORDER = ["name", "address", "kind", "previous_names", "status", "summary", "interface", "details", "evidence",
          "changes", "readable_c", "coverage", "related", "open_questions", "sources", "abi", "signature", "stamp"]
@@ -54,7 +57,7 @@ def insert(parts: list[tuple[str, str]], key: str, text: str) -> list[tuple[str,
 def main() -> None:
     spec = json.load(open(sys.argv[1]))
     members, entries = spec["members"], set(spec["entries"])
-    graph = json.load(open(os.path.join(ROOT, "build-abi/graph.json")))
+    graph = symnames.resolved_graph(json.load(open(os.path.join(ROOT, "build-abi/graph.json"))))
     calls = {}
     for s in graph["sites"]:
         if s["kind"] in ("call", "tail") and s.get("target") in members and s["caller"] in members:

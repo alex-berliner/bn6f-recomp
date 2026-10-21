@@ -11,6 +11,12 @@ tools/sig/ask.py merge), bn6f's assembly (tools/sig/asm.py), today's readable C 
 The calls out of the subsystem get generated wrappers: typed (`call_NAME(T a, ...)` -> result)
 where the callee's signature is confident, register form (every register its contract may read)
 where it is not.
+
+Names: every name is the symbol's name today (tools/names.py). The tables this prompt reads are
+keyed by the names the symbols had when they were written (tools/sig/subsystems.json's members, the
+graph's entries, the signatures, the bounds), and about 7000 functions and 110 data labels have been
+renamed since, so each is read through that resolver: members, the signatures and the bounds are
+looked up under any name of the symbol, and the graph is renamed on load.
 """
 from __future__ import annotations
 
@@ -22,9 +28,11 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "sig"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "abi"))
 import asm as asmsrc  # noqa: E402
+import names as symnames  # noqa: E402
 
 FINAL = os.path.join(ROOT, "build/sig/final.json")
 SUBS = os.path.join(ROOT, "tools/sig/subsystems.json")
@@ -111,12 +119,15 @@ def wrapper(name: str, s: dict, local_structs: set[str], set_by_callers: set[str
     return (f"/* {note} */\nstatic inline {rt} call_{name}({args}) {{\n{sets}    GUEST_CALL({name});\n{back}}}\n")
 
 
-_BOUNDS: dict = {}
+_BOUNDS: symnames.ByName | None = None
 
 
 def bounds_of(name: str) -> dict:
-    if not _BOUNDS:
-        _BOUNDS.update(json.load(open(os.path.join(ROOT, "build/sig/bounds.json"))))
+    """The lifter's bound of a function (build/sig/bounds.json, keyed by unit name: any name of the
+    symbol finds it, the table being older than the renames)."""
+    global _BOUNDS
+    if _BOUNDS is None:
+        _BOUNDS = symnames.ByName(json.load(open(os.path.join(ROOT, "build/sig/bounds.json"))))
     return _BOUNDS.get(name, {}).get("final", {})
 
 
@@ -210,12 +221,19 @@ def main() -> None:
     ap.add_argument("--fold", nargs="*", default=[], help="members that return to their caller's caller (they pop "
                     "the caller's frame): written inside their caller's C function, never called on their own")
     a = ap.parse_args()
-    sigs = json.load(open(FINAL))
+    # every name is the symbol's name today: the tables below are keyed by the names the symbols had
+    # when they were written (tools/names.py, current_name), and the lookups resolve either way round.
+    today = symnames.current_name
+    sigs = symnames.ByName(json.load(open(FINAL)))
     sub = next(s for s in json.load(open(SUBS))["subsystems"] if s["name"] == a.subsystem)
-    g = json.load(open(GRAPH))
-    members = [u["unit"] for u in sub["units"] if u["unit"] not in a.skip]
+    g = symnames.resolved_graph(json.load(open(GRAPH)))
+    skip = {today(n) for n in a.skip}
+    members = [today(u["unit"]) for u in sub["units"] if today(u["unit"]) not in skip]
     inside = set(members)
-    entries = a.entries if a.entries is not None else [u["unit"] for u in sub["units"] if u["entry"] and u["unit"] in inside]
+    entries = ([today(n) for n in a.entries] if a.entries is not None else
+               [today(u["unit"]) for u in sub["units"] if u["entry"] and today(u["unit"]) in inside])
+    fold = {today(n) for n in a.fold}
+    only = [today(n) for n in a.only] if a.only else None
     calls_out: list[str] = []
     for s in g["sites"]:
         if s["caller"] in inside and s["kind"] in ("call", "tail") and s.get("target") and s["target"] not in inside:
@@ -274,10 +292,10 @@ def main() -> None:
         out.append("## Struct types (copy these into the file as they are)\n```c\n" + structs_c + "```\n")
         out.append("## Generated wrappers of the functions it calls outside the subsystem (copy these as they are)\n"
                    "```c\n" + wrappers + "```\n")
-    if a.only:
-        out.append(CHUNK.format(names=", ".join(table[n]["cname"] if a.protos_json and n in table else n for n in a.only)))
+    if only:
+        out.append(CHUNK.format(names=", ".join(table[n]["cname"] if a.protos_json and n in table else n for n in only)))
     out.append("## The functions\n")
-    for n in (a.only or members):
+    for n in (only or members):
         s = sigs[n]
         ps, ret = chosen(s)
         sig = ", ".join(f"{p.get('type')} {p.get('name')} ({p.get('reg')})" for p in ps) or "none"
@@ -289,7 +307,7 @@ def main() -> None:
             + (f"FOLD: {n} ends by popping its caller's frame (`pop {{pc}}` with no push of its own), so it returns to "
                f"its caller's caller. Write its code inside the C function of its caller "
                f"({', '.join(sorted(set(c['caller'] for c in g['sites'] if c.get('target') == n)))}): where it returns, "
-               f"the caller returns. It has no C function or wrapper of its own.\n" if n in a.fold else "")
+               f"the caller returns. It has no C function or wrapper of its own.\n" if n in fold else "")
             + (f"its C function (fixed by the tool): `{table[n]['decl']}`\n" if a.protos_json and n in table else "")
             + f"signature ({s['confidence']}, {s.get('decided_by', '-')}): args {sig}; result "
             f"{ret.get('reg', 'none')} {ret.get('type', '')}\n"

@@ -39,6 +39,7 @@ import gamepaths  # noqa: E402
 import gen_structs  # noqa: E402
 sys.path.insert(0, os.path.join(ROOT, "tools", "sig"))
 import asm as asmsrc  # noqa: E402
+import names as symnames  # noqa: E402
 
 HDR = struct.Struct("<19I")
 MAGIC = 0x53364E42
@@ -369,7 +370,7 @@ def derive(g: dict, bounds: dict) -> dict[str, dict]:
     syms, inst = Symbols(), Instances()
     by_addr = {int(e["addr"], 16) & ~1: n for n, e in g["entries"].items()}
     caps = read_captures(by_addr)
-    readable = readable_signatures()
+    readable = symnames.ByName(readable_signatures())      # the port's adapters are named today's way
     passes = own_args_unchanged(g)
     T, tainted = narrow(g, bounds)
     sigs: dict[str, dict] = {}
@@ -494,7 +495,7 @@ def main() -> None:
     ap.add_argument("--bounds", default=os.path.join(ROOT, "build/sig/bounds.json"), help="tools/sig/bounds.py")
     a = ap.parse_args()
     g = json.load(open(a.graph))
-    bounds = json.load(open(a.bounds))
+    bounds = symnames.ByName(json.load(open(a.bounds)))     # keyed by unit name: any name of it finds it
     sigs = derive(g, bounds)
     json.dump(sigs, open(a.out, "w"), indent=0)
     c = collections.Counter(s["confidence"] for s in sigs.values())

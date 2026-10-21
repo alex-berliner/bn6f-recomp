@@ -16,6 +16,12 @@ Grouping, deterministic:
 Per subsystem: its units in address order, which are entry points (called from outside it, a
 target of calls the routes saw from outside, or with no known caller) and which are internal,
 how many are readable, captured (build-snapshots/NAME) and executed by a route (coverage .prof).
+
+The units are named the way their symbols are named today (tools/names.py): the export it reads is a
+build output, older than the renames, and a unit's name is what every later reader keys that function
+under. Subsystem names keep the first word of the name the group was given when it was planned
+(build-wf-state/subsystem-jobs.json keys its jobs by them), so the unit names under a subsystem name
+may move; the readers resolve either way round (tools/sig/subsys_prompt.py, tools/sig/sysfarm.py).
 """
 from __future__ import annotations
 
@@ -25,6 +31,7 @@ import glob
 import json
 import os
 import re
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # git-ignored outputs (coverage profiles) live in the main checkout; a worktree may lack them
@@ -32,6 +39,8 @@ MAIN = os.path.dirname(os.path.realpath(os.path.join(ROOT, ".git"))) if os.path.
     os.path.normpath(os.path.join(ROOT, open(os.path.join(ROOT, ".git")).read().split("gitdir:")[1].strip(), "../../.."))
 CAP = 60
 HUB = 12
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import names as symnames  # noqa: E402
 
 
 def load_units(g: dict) -> tuple[dict, dict]:
@@ -39,15 +48,16 @@ def load_units(g: dict) -> tuple[dict, dict]:
     units: dict[str, dict] = {}
     of: dict[str, str] = {}
     for name, e in g["entries"].items():
-        u = units.setdefault(e["unit"], {"addr": None, "src": None, "entries": [], "readable": 0})
+        name, unit = symnames.current_name(name), symnames.current_name(e["unit"])
+        u = units.setdefault(unit, {"addr": None, "src": None, "entries": [], "readable": 0})
         u["entries"].append(name)
-        of[name] = e["unit"]
+        of[name] = unit
         u["readable"] += bool(e.get("readable"))
         a = int(e["addr"], 16)
-        if name == e["unit"]:
+        if name == unit:
             u["own"] = a
         u["addr"] = u.get("own", min(a, u["addr"] if u["addr"] is not None else a))
-        if e.get("src") and (name == e["unit"] or not u["src"]):
+        if e.get("src") and (name == unit or not u["src"]):
             u["src"] = e["src"].split(":")[0]
     return units, of
 
@@ -142,11 +152,12 @@ def main() -> None:
     ap.add_argument("--graph", default=os.path.join(ROOT, "build-abi/graph.json"))
     ap.add_argument("--out", default=os.path.join(ROOT, "tools/sig/subsystems.json"))
     args = ap.parse_args()
-    g = json.load(open(args.graph))
+    g = symnames.resolved_graph(json.load(open(args.graph)))
     units, of = load_units(g)
     edges = call_edges(g, of)
     root = group(units, edges)
-    snaps = set(os.listdir(os.path.join(ROOT, "build-snapshots"))) if os.path.isdir(os.path.join(ROOT, "build-snapshots")) else set()
+    snaps = {symnames.current_name(d) for d in os.listdir(os.path.join(ROOT, "build-snapshots"))} \
+        if os.path.isdir(os.path.join(ROOT, "build-snapshots")) else set()
     cov = coverage()
     callers = collections.defaultdict(set)
     for a, b in edges:

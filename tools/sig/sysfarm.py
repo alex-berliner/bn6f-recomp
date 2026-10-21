@@ -72,6 +72,7 @@ LARGE = ("minimax/MiniMax-M3", "hyper/qwen3.8-flash", "zai/glm-5.3", "hyper/glm-
 ROUNDS = 5
 PROMPT_TAG = "sig-subsystem-1"
 sys.path.insert(0, os.path.join(ROOT, "tools"))
+import names as symnames  # noqa: E402  # tools/names.py: the symbol names the tables were written with
 
 
 def now() -> str:
@@ -183,12 +184,18 @@ FOLDS: dict[str, list[str]] = {}
 
 
 def members_of(name: str, tree: str) -> tuple[list[str], list[str], list[str], dict]:
-    """(members to convert, entry points, skipped members, graph)."""
+    """(members to convert, entry points, skipped members, graph).
+
+    Every name is today's (tools/names.py): the tables this reads (tools/sig/subsystems.json's
+    members, build/sig/final.json, the ABI export) are keyed by the names the symbols had when they
+    were written, and the C the members replace, bn6f's labels and the port's lifted names are today's.
+    """
+    today = symnames.current_name
     sub = next(s for s in json.load(open(os.path.join(tree, "tools/sig/subsystems.json")))["subsystems"]
                if s["name"] == name)
-    final = json.load(open(os.path.join(SIG, "final.json")))
-    units = [u["unit"] for u in sub["units"]]
-    g = json.load(open(os.path.join(tree, "build-abi/graph.json")))
+    final = symnames.ByName(json.load(open(os.path.join(SIG, "final.json"))))
+    units = [today(u["unit"]) for u in sub["units"]]
+    g = symnames.resolved_graph(json.load(open(os.path.join(tree, "build-abi/graph.json"))))
     callers = {}
     for site in g["sites"]:
         if site.get("target"):
@@ -201,7 +208,7 @@ def members_of(name: str, tree: str) -> tuple[list[str], list[str], list[str], d
     skip = [u for u in units if u.startswith("dead_") or (u in unwind and u not in fold)]
     members = [u for u in units if u not in skip]
     FOLDS[name] = fold
-    entries = {u["unit"] for u in sub["units"] if u["entry"] and u["unit"] in members}
+    entries = {today(u["unit"]) for u in sub["units"] if u["entry"] and today(u["unit"]) in members}
     # anything bn6f names outside the members' own code (a table elsewhere, a call the routes never made)
     seen_inside = {e["target"] for e in g["edges"] if e.get("site_unit") in members}
     words = re.compile(r"\b(" + "|".join(map(re.escape, members)) + r")\b")
@@ -315,7 +322,7 @@ def check(job: str, tree: str, file: str, entries: list[str], members: list[str]
     if os.path.exists(table_path) and read().get(job, {}).get("mode") == "chunked":
         path = os.path.join(tree, "cport/src/game", file)
         code = open(path).read()
-        g = json.load(open(os.path.join(tree, "build-abi/graph.json")))
+        g = symnames.resolved_graph(json.load(open(os.path.join(tree, "build-abi/graph.json"))))
         covered = ({m for m in members if m not in entries}
                    | set(re.findall(r"^Next (\w+)\(void\)", code, re.M)))
         unit_entries: dict[str, set[str]] = {}

@@ -19,10 +19,14 @@ import glob
 import json
 import os
 import re
+import sys
 
 import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import names as symnames  # noqa: E402
+
 DB = os.path.join(ROOT, "symbols/db")
 TSV = os.path.join(ROOT, "symbols/signatures.tsv")
 
@@ -119,7 +123,7 @@ def replace_block(text: str, key: str, new: str) -> str:
     return body[:m.start()] + new + body[m.start():] if m else body + new
 
 
-BOUNDS: dict = {}
+BOUNDS: symnames.ByName | None = None
 
 
 def main() -> None:
@@ -127,8 +131,9 @@ def main() -> None:
     ap.add_argument("--final", default=os.path.join(ROOT, "build/sig/final.json"))
     ap.add_argument("--only", nargs="*")
     a = ap.parse_args()
+    global BOUNDS
     final = json.load(open(a.final))
-    BOUNDS.update(json.load(open(os.path.join(ROOT, "build/sig/bounds.json"))))
+    BOUNDS = symnames.ByName(json.load(open(os.path.join(ROOT, "build/sig/bounds.json"))))
     by_addr = {int(r["addr"], 16): n for n, r in final.items()}
     written = 0
     for path in sorted(glob.glob(os.path.join(DB, "*.yaml"))):

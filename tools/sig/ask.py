@@ -19,6 +19,12 @@ skipped). Tokens go to build/sig/usage.jsonl.
   - its types agree with the captured calls (a pointer where they saw pointers, an integer where
     they saw integers, the bn6f struct they pointed at).
 Otherwise `unsure`, with both proposals and the reasons. Mechanically confident signatures stay.
+
+Names: a symbol's name moves (symbols/db `previous_names`, tools/names.py). The tables this reads are
+keyed by the names the symbols had when they were written, so every name is resolved to the name the
+table it is looked up in holds: the subsystems' order, a signature's `unit`, the bounds, and a model's
+answer for a function that has since been renamed (that answer is the same function's signature, so it
+is kept, under the name the table holds).
 """
 from __future__ import annotations
 
@@ -38,6 +44,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "sig"))
 import asm as asmsrc  # noqa: E402
 import llm  # noqa: E402
+import names as symnames  # noqa: E402
 
 SIG = os.path.join(ROOT, "build/sig/signatures.json")
 SUBS = os.path.join(ROOT, "tools/sig/subsystems.json")
@@ -79,7 +86,7 @@ Answer with one ```json block: a list with one object per function, in order:
 
 def load() -> tuple[dict, dict, list]:
     sigs = json.load(open(SIG))
-    g = json.load(open(GRAPH))
+    g = symnames.resolved_graph(json.load(open(GRAPH)))
     subs = json.load(open(SUBS))["subsystems"]
     return sigs, g, subs
 
@@ -190,17 +197,17 @@ def run(args) -> None:
         MODEL_DIR = os.path.join(ROOT, f"build/sig/model-r{args.round}")
         load_decided()
     sigs, g, subs = load()
-    bounds = json.load(open(os.path.join(ROOT, "build/sig/bounds.json")))
+    bounds = symnames.ByName(json.load(open(os.path.join(ROOT, "build/sig/bounds.json"))))
     for n, s in sigs.items():
         s["lower_ret"] = bounds.get(n, {}).get("ceiling", {}).get("ret", "?")
-    order = [u["unit"] for sub in subs for u in sub["units"]
+    order = [symnames.current_name(u["unit"]) for sub in subs for u in sub["units"]
              if not args.subsystem or sub["name"] in args.subsystem]
     by_unit: dict[str, list[str]] = {}
     for n, s in sigs.items():
-        by_unit.setdefault(s["unit"], []).append(n)
+        by_unit.setdefault(symnames.current_name(s["unit"]), []).append(n)
     names = [n for u in order for n in sorted(by_unit.get(u, []))]
     if args.names:
-        want = set(args.names)
+        want = {symnames.current_name(x) for x in args.names}
         names = [n for n in names if n in want] + [n for n in args.names if n not in set(names) and n in sigs]
     if not args.all and not args.names:
         names = [n for n in names if sigs[n]["confidence"] == "unsure"]
@@ -342,17 +349,23 @@ def choose(s: dict, m: dict | None) -> dict:
 
 def merge(_args) -> None:
     sigs = json.load(open(SIG))
-    g = json.load(open(GRAPH))
+    g = symnames.resolved_graph(json.load(open(GRAPH)))
     calls = callees(g)
-    bounds = json.load(open(os.path.join(ROOT, "build/sig/bounds.json")))
+    bounds = symnames.ByName(json.load(open(os.path.join(ROOT, "build/sig/bounds.json"))))
+    keys = symnames.ByName(sigs)          # today's name -> the name this table holds that symbol under
     answers: dict[str, tuple[str, dict]] = {}
     dirs = [MODEL_DIR] + sorted(glob.glob(os.path.join(ROOT, "build/sig/model-r*")))   # later rounds win
     files = [os.path.join(d, f) for d in dirs if os.path.isdir(d) for f in sorted(os.listdir(d))]
     for path in files:
         d = json.load(open(path))
+        # a batch asked about the functions under the names of the day; an answer for a function since
+        # renamed is that same function's signature, and is kept under the name this table holds
+        asked = {keys.key_of(symnames.current_name(n)) for n in d.get("names") or []}
         for a in d["answers"]:
-            if isinstance(a, dict) and a.get("name") in d["names"]:
-                answers[a["name"]] = (d["model"], a)
+            name = a.get("name") if isinstance(a, dict) else None
+            key = keys.key_of(symnames.current_name(name)) if isinstance(name, str) else None
+            if key is not None and key in asked:
+                answers[key] = (d["model"], a)
     # what each callee takes: the agreed model signature, else the mechanical one when confident
     for n, s in sigs.items():
         if n in answers and s["confidence"] == "unsure":
