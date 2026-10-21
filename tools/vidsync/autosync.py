@@ -982,6 +982,8 @@ def try_noencounter(D):
     if w2 is None: return None
     b.e.load(w2[1]); gate = b.e.u32(ENC_GATE_A)
     if not 0 < gate < 0x2000: return None
+    w = state_at(min(ats) - 1)                 # (again: state_at's scratch slot held the write point)
+    if w is None: return None
     ex = {f'G{d}': [[a, f'{ENC_STEPS:#x}=0x0/2,{ENC_GATE_A:#x}={max(gate + d, 1):#x}/4']] for d in range(-160, 41, 4) if d}
     r = reach_many(w, ex, D + 400, D)
     best = max(ex, key=lambda t: (r[t][0], -r[t][1]))
