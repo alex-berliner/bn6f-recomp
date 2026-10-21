@@ -40,6 +40,14 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
                        # K captured calls replayed in mGBA). No model is called. Output to
                        # build/facts (by_address/0x08XXXXXX.json per function + coverage.tsv +
                        # progress.txt); regenerable, never committed, and cached per function.
+  python -m wf check-names [--only NAME]... [--from-tsv FILE [--tsv-where K=V]...] [--count N]
+                            [--jobs J] [--model P/M] [--frames-window N]
+                       # check a function's name against the running game: a model writes claims and
+                       # one causal prediction BLIND (name + symbols/db description only), the claims
+                       # are checked against build/facts, the prediction is run through `wf intervene`
+                       # against a null control, and every batch carries swapped controls and a
+                       # calibration gate. Output to build-wf-runs/check-names-RUN (report.tsv +
+                       # NAME.json + calibration.md). Nothing under symbols/db or bn6f is written.
   python -m wf record  [--symbol NAME]... [--rename OLD NEW]... [--pending] --message-file FILE
   python -m wf vidsync-run [--start CHECKPOINT|RUN] [--run NAME] [--no-deploy] [--replay PATH] [--watch-hours H]
                        [--stall-minutes 30] [--pathcheck-minutes 60] [--no-repair]   # docs/vidsync/README.md
@@ -84,6 +92,12 @@ from wf.graphs.investigate import InvestigateState, run_investigate
 from wf.graphs.investigate_data import InvestigateDataState, run_investigate_data
 from wf.graphs.runtime_evidence import RuntimeEvidenceState, run_runtime_evidence, JUDGE_MODE_DEFAULT
 from wf.graphs.facts import FactsState, run_facts, summarise_report
+from wf.graphs.check_names import CheckNamesState, run_check_names
+from wf.tools.check_names import DEFAULT_COUNT as DEFAULT_CN_COUNT
+from wf.tools.check_names import DEFAULT_FRAMES_WINDOW as DEFAULT_CN_WINDOW
+from wf.tools.check_names import DEFAULT_JOBS as DEFAULT_CN_JOBS
+from wf.tools.check_names import DEFAULT_MODEL as DEFAULT_CN_MODEL
+from wf.tools.check_names import summarise as summarise_check_names
 from wf.tools.facts import DEFAULT_STATES as DEFAULT_FACTS_STATES
 from wf.tools.facts import DEFAULT_JOBS as DEFAULT_FACTS_JOBS
 from wf.tools.facts import DEFAULT_LIMIT as DEFAULT_FACTS_LIMIT
@@ -220,6 +234,18 @@ class FactsCommand(BaseModel):
     limit: int
 
 
+class CheckNamesCommand(BaseModel):
+    command: Literal["check-names"]
+    only: tuple[FunctionName, ...]
+    from_tsv: Path | None = None
+    tsv_where: tuple[str, ...] = ()
+    count: int
+    jobs: int
+    model: ModelSpec
+    frames_window: int
+    seed: int | None = None
+
+
 class ConvertCommand(BaseModel):
     command: Literal["convert"]
     subsystem: str
@@ -326,6 +352,7 @@ class DocsCommand(BaseModel):
 
 Command = (VerifyCommand | CaptureCommand | FarmCommand | QueueCommand | DraftsCommand
            | InvestigateCommand | InvestigateDataCommand | RuntimeEvidenceCommand | FactsCommand
+           | CheckNamesCommand
            | InterveneCommand | IntervenePilotCommand
            | ConvertCommand | RecordCommand
            | VidsyncRunCommand | VidsyncRepairCommand | VidsyncReadyCommand | VidsyncTickCommand | VidsyncStatusCommand | WaitingCommand | AnswerCommand | RetryCommand | StatusCommand | FreezeCommand | ThawCommand
@@ -357,6 +384,8 @@ def main() -> None:
             start_runtime_evidence(command)
         case FactsCommand():
             start_facts(command)
+        case CheckNamesCommand():
+            start_check_names(command)
         case ConvertCommand():
             start_convert(command)
         case RecordCommand():
@@ -576,6 +605,29 @@ def start_facts(command: FactsCommand) -> None:
     report = run_facts(start, run_id)
     print()
     print(summarise_report(report, report.seconds))
+
+
+def start_check_names(command: CheckNamesCommand) -> None:
+    """`wf check-names`: blind claims, the facts, an intervention, and the gate.
+
+    The batch is `--only` plus a `--from-tsv` selection plus `--count N` random reached names;
+    every name in it is paired with another name in it (the swapped control), and the batch's
+    calibration decides whether any level is granted at all."""
+    import random as _random
+    run_id, run_dir = new_run("check-names")
+    seed = command.seed if command.seed is not None else _random.randrange(1 << 30)
+    start = CheckNamesState(run_dir=run_dir, run_id=run_id, only=command.only,
+                            from_tsv=command.from_tsv, tsv_where=command.tsv_where,
+                            count=command.count, jobs=command.jobs, model=command.model,
+                            frames_window=command.frames_window, seed=seed)
+    print(f"{run_id}: checking names against the running game (model {command.model}, "
+          f"jobs {command.jobs}, seed {seed})")
+    print(f"  output: {run_dir}/report.tsv, {run_dir}/NAME.json, {run_dir}/calibration.md")
+    report = run_check_names(start, run_id)
+    print()
+    print(summarise_check_names(report))
+    print(f"\nreport: {run_dir / 'report.tsv'}")
+    print(f"calibration: {run_dir / 'calibration.md'}")
 
 
 def start_convert(command: ConvertCommand) -> None:
@@ -871,6 +923,32 @@ def parse_command() -> Command:
                               help=f"functions replayed at once (default {DEFAULT_FACTS_JOBS})")
     facts_parser.add_argument("--limit", type=int, default=DEFAULT_FACTS_LIMIT,
                               help=f"the first N functions by address (default {DEFAULT_FACTS_LIMIT}: all)")
+
+    check_names = commands.add_parser(
+        "check-names",
+        help="check a function's name against the running game: claims written blind, checked "
+             "against build/facts, a prediction run through wf intervene, and a calibration gate")
+    check_names.add_argument("--only", action="append", default=[],
+                             help="these functions, whatever else (name or 0x address)")
+    check_names.add_argument("--from-tsv", type=Path,
+                             help="a TSV with a `name` column: take its names (e.g. the name "
+                                  "audit at docs/reviews/2026-10-21-minimax-name-audit.tsv)")
+    check_names.add_argument("--tsv-where", action="append", default=[], metavar="KEY=VALUE",
+                             help="keep only the TSV rows whose column matches, e.g. "
+                                  "--tsv-where kind=function --tsv-where verdict=wrong")
+    check_names.add_argument("--count", type=int, default=DEFAULT_CN_COUNT,
+                             help=f"how many random reached functions to add to the batch "
+                                  f"(default {DEFAULT_CN_COUNT})")
+    check_names.add_argument("--jobs", type=int, default=DEFAULT_CN_JOBS,
+                             help=f"model calls / intervened runs in flight (default {DEFAULT_CN_JOBS})")
+    check_names.add_argument("--model", default=DEFAULT_CN_MODEL,
+                             help=f"who writes the blind claims (default {DEFAULT_CN_MODEL})")
+    check_names.add_argument("--frames-window", type=int, default=DEFAULT_CN_WINDOW,
+                             help=f"how far into a route to hunt for a function's first call "
+                                  f"(default {DEFAULT_CN_WINDOW} game frames)")
+    check_names.add_argument("--seed", type=int, default=None,
+                             help="the batch's random seed (default: from the run id; pass one "
+                                  "to repeat a batch)")
 
     convert = commands.add_parser("convert", help="a strong model converts a subsystem; stops for review")
     convert.add_argument("functions", nargs="+")
