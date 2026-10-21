@@ -31,7 +31,7 @@ ALL_ROUTES: tuple[Route, ...] = (
 # Long routes: lockstep passes on them but takes minutes, so verify leaves them out; captures replay
 # them in windows from their checkpoints (tools/import_route.py, which also sets the length).
 LONG_ROUTES: tuple[Route, ...] = (
-    _route("beastsp", 432312),   # BN6F BeastSP speedrun rebuilt from video (tools/traces/SESSIONS.md)
+    _route("beastsp", 1354318),   # BN6F BeastSP speedrun rebuilt from video (tools/traces/SESSIONS.md)
 )
 
 

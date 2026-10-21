@@ -78,7 +78,12 @@ else
 fi
 status=0
 export LS_HW="$HW" LS_ORIG="$ORIG" LS_MGBA="$MGBA" LS_BIOS="$BIOS" LS_FRAME_ADDR="$GAME_FRAME_ADDR" LS_ROM="$ROM" LS_TRACE="$TRACE"
-export LS_POKE_ORIG="$(poke_args "$ORIG" "$TRACE")" LS_POKE_TEST="$(poke_args "$ROM" "$TRACE")"
+# the --poke-at arguments go through files: a long route's (beastsp: ~1,000 writes) are over the 128 KB
+# limit on one environment variable
+# (inside $(...), as above: poke_args's nm | awk ends nm with SIGPIPE, which set -e would take for a failure)
+printf '%s\n' "$(poke_args "$ORIG" "$TRACE")" > "$OUT/poke_orig.args"
+printf '%s\n' "$(poke_args "$ROM" "$TRACE")" > "$OUT/poke_test.args"
+export LS_POKE_ORIG="$OUT/poke_orig.args" LS_POKE_TEST="$OUT/poke_test.args"
 python3 - "$OUT" "$N" "$EVERY" <<'PY' || status=$?
 import os, shlex, subprocess, sys
 out, want, every = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
@@ -98,7 +103,7 @@ def dump(rom, poke, frames, prefix):
     subprocess.run([os.environ["LS_MGBA"], rom, "--frames", os.environ["LS_HW"], "--bios", os.environ["LS_BIOS"],
                     "--input", os.environ["LS_TRACE"], "--game-frame-addr", os.environ["LS_FRAME_ADDR"],
                     "--until-game-frame", str(max(frames) + 1), "--dump-at-game", ",".join(map(str, frames)), prefix,
-                    "--quiet"] + shlex.split(poke), check=True, stdout=subprocess.DEVNULL)
+                    "--quiet"] + shlex.split(open(poke).read()), check=True, stdout=subprocess.DEVNULL)
 
 
 def timing_only(gs):
