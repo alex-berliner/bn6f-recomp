@@ -1,0 +1,44 @@
+name: sprite_setWaveRowFromFlag
+address: '0x0811727C'
+kind: function
+status: probable
+summary: Picks sprite type 0x21 or 0x23 by a t1 flag and snaps the sprite to its wave's row Y coordinate.
+interface: (no args; r5 = sprite sub-entry) -> modifies [r5] to 0x21/0x23, calls sprite_update
+details: Reads a t1 flag bit selected by sprite byte 4 from word_200A2B0. If the bit is set, stores 0x23
+  into [r5] and calls sprite_setCoordinates with x=0x19 and y=0x29 + (byte4)*0x20, placing the sprite
+  into one vertical row of a multi-row formation. Otherwise leaves y untouched and stores 0x21. Always
+  follows with sprite_update. The byte4 = 4 written by the caller selects the test bit and the Y row to
+  jump to, suggesting this is a 'promote to wave 2 / boss layout' switch.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: test of bit (1<<[r5+4]) on word_200A2B0 via t1_testFlagBit drives the 0x23 vs 0x21 branch; Y
+    coordinate formula 0x29 + [r5+4]*0x20 lays out 5 evenly-spaced rows at x=0x19; stores resulting type
+    byte (0x23 or 0x21) into [r5] before sprite_update; sub_8117238 writes [r5,#8] = 4 immediately before
+    calling, supplying the row/wave selector
+  refs:
+  - bn6f/asm/asm32.s:19235
+  - 0x08117238 sub_8117238
+  - 0x0800307C sprite_setCoordinates
+  - 0x080026C4 sprite_update
+  - 0x0803C316 t1_testFlagBit
+  reproduce: python3 tools/asmcat.py 0x0811727C
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-025128'
+open_questions:
+- Which t1 flag word_200A2B0 corresponds to (wave index, boss spawned, etc.) — needs a caller's context
+- What the bytes 0x21 vs 0x23 in [r5] mean to sprite_update / rendering (object type field?)
+- Whether byte4 / byte [r5,#8] names this 'wave' or 'row' specifically
+sources:
+- wf investigate investigate-20261021-025128
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 018e91ba
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_811727C -> sprite_setWaveRowFromFlag
+  where: bn6f 3b86ef82
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811727C

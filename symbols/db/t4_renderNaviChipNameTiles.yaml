@@ -1,0 +1,49 @@
+name: t4_renderNaviChipNameTiles
+address: '0x08137D20'
+kind: function
+status: probable
+summary: Rebuilds the per-frame navi/chip name tile graphic (up to 7 names) into BG tile block 2 at offset
+  (2,4), zeroing and refilling the name tile buffer from the navi-chip-name table.
+interface: () -> void; reads [r5+0x24] as a row index into unk_201CF00, writes byte_2017A00
+details: Zeros the 0xE0-byte (halfword-cleared) chip-name tile buffer at byte_2017A00, then calls t4_drawNaviChipNameTiles
+  to render up to 7 navi/chip name rows (indexed by [r5+0x24], pulling strings through unk_201CF00) into
+  that buffer, and finally copies the buffer into BG tile block 2 at offset (2,4) via t4_copyNaviChipNameToBg.
+  Each caller invokes it as the rebuild step before the chatbox render and sprite glyph draw trio, so
+  the function is the frame's chip-name redraw. It is called on round init, on cursor/select changes in
+  the chip submenu, and when a chatbox scene-step consumes a script byte that just picked a chip name
+  entry.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'arm: zeros 0xE0 bytes via ZeroFillByHalfword on byte_2017A00 then calls t4_drawNaviChipNameTiles(unk_201CF00,
+    byte_2017A00, 7); arm: copies the buffer to BG with t4_copyNaviChipNameToBg(2, 4, byte_2017A00); 0x0813790C:
+    battle_initRoundState calls it after clearing event flags and gathering flagged text ids; 0x08137A54:
+    chatbox_runSceneStepAndCopy calls it after indexing a script byte into unk_201CF00/battleBestTimes;
+    0x08137A0A: submenu_handleConfirmCancelCursorInput calls it after the cursor moved'
+  refs:
+  - bn6f/asm/asm36.s:16844
+  - 0x081378D4 battle_initRoundState
+  - 0x08137A1C chatbox_runSceneStepAndCopy
+  - 0x081379A0 submenu_handleConfirmCancelCursorInput
+  - 0x08137DA4 t4_copyNaviChipNameToBg
+  - 0x08137D50 t4_drawNaviChipNameTiles
+  - 0x080008C0 ZeroFillByHalfword
+  reproduce: python3 tools/asmcat.py 0x08137D20
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-025128'
+open_questions:
+- Exact width of the byte_2017A00 buffer (0xE0 halfword-zeroed) — possibly 7*0x20 bytes for the 7 rows
+  the index 7 cap from the submenu cursor path implies
+sources:
+- wf investigate investigate-20261021-025128
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 018e91ba
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_8137D20 -> t4_renderNaviChipNameTiles
+  where: bn6f 3b86ef82
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8137D20
