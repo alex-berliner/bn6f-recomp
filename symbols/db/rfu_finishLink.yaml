@@ -1,0 +1,46 @@
+name: rfu_finishLink
+address: '0x0803C94C'
+kind: function
+status: probable
+summary: 'Finishes/tears down the current RFU wireless link: if no subsystem is active, advances to link
+  phase 1, otherwise records the ended state; always clears the pending link command and returns (true,
+  0).'
+interface: () -> (r0 = 1 /* success/finished */, r1 = 0 /* status */)
+details: 'Operates on the RFU session struct at 0x200BC50 (passed in r7 by callers). Branches on IsCurSubsystemInUse:
+  the idle branch writes link-phase ID 1 (via rfu_setLinkPhase) and sets the link command to 0; the busy
+  branch calls rfu_setStateEnded to record state 9, then clears the link command. Either path returns
+  (1, 0).'
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'asm: bne loc_803C966 splits idle vs in-use subsystem branches after IsCurSubsystemInUse; asm:
+    idle branch does `bl rfu_setLinkPhase` with arg 0x1 (dword_803C978); asm: both branches call `bl rfu_setLinkCommand`
+    with r0=0 to clear the pending command; asm: busy branch calls `bl rfu_setStateEnded`, which marks
+    state 9; comment: self points at S200BC50, the known RFU work struct, tying the routine to RFU state
+    transitions'
+  refs:
+  - bn6f/asm/asm03_1_1.s:8249
+  - 0x0813D934 rfu_setLinkCommand
+  - 0x0813D9A0 rfu_setLinkPhase
+  - 0x0813D978 rfu_setStateEnded
+  reproduce: python3 tools/asmcat.py 0x0803C94C
+  result: 'proposed by minimax/MiniMax-M3, self_score 2; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-024706'
+open_questions:
+- No callers are known, so the calling convention (r7 self pointer) and the meaning of the (r0=1,r1=0)
+  return pair are inferred only from the comment
+- Whether this is a routine called on user-initiated link end, on a timeout, or on session abort is not
+  visible
+sources:
+- wf investigate investigate-20261021-024706
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 984bcba4
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_803C94C -> rfu_finishLink
+  where: bn6f b1dffb14
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803C94C

@@ -1,0 +1,45 @@
+name: battle_findPanelInAllianceDir
+address: '0x0800FA20'
+kind: function
+status: probable
+summary: From a battle object's own panel, searches a row or column in the direction its alliance indicates
+  and returns the matching panel via sub_800D120 / battle_scanPanelColumnForMatch.
+interface: (r5 = battle object) -> r0 = match row, r1 = match column; uses 0x18 sp
+details: Reads the object's Alliance field (0x13), converts it via dirOffsetFromAlliance_800F9DE into
+  a (dx,dy) or (colStep,rowStep) pair stored on the stack. If the dy component is zero it calls sub_8010368
+  then sub_800D120 with the object's PanelX/PanelY and the dx component — i.e. a horizontal scan in that
+  direction from the object's panel. Otherwise it calls sub_8010368 then battle_scanPanelColumnForMatch
+  with the same coordinates and the dy component — a vertical scan. Matches the 'find matching panel in
+  the direction of alliance' branch of battle_getTargetPanelByMode mode 3.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: ldr r0, [r5,#oBattleObject_Alliance] / bl dirOffsetFromAlliance_800F9DE gives the direction
+    offset; tst r1,r1 splits the dy==0 horizontal case (sub_800D120) from the dy!=0 vertical case (battle_scanPanelColumnForMatch);
+    object's PanelX/PanelY are the seed for both scan calls, with the chosen offset component; Only caller
+    is battle_getTargetPanelByMode at mode==3 (cmp r1,#3 / bne / bl sub_800FA20)
+  refs:
+  - bn6f/asm/asm00_2.s:2000
+  - 0x080EB402 battle_getTargetPanelByMode
+  - 0x0800D15A battle_scanPanelColumnForMatch
+  - 0x0800F9DE dirOffsetFromAlliance_800F9DE
+  - 0x0800D120 sub_800D120
+  reproduce: python3 tools/asmcat.py 0x0800FA20
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-024706'
+open_questions:
+- Whether sub_800D120 is effectively the row version of battle_scanPanelColumnForMatch
+- What sub_8010368 contributes (called before both branches, result unused here)
+sources:
+- wf investigate investigate-20261021-024706
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 984bcba4
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_800FA20 -> battle_findPanelInAllianceDir
+  where: bn6f b1dffb14
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_800FA20

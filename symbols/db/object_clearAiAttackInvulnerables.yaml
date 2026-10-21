@@ -1,0 +1,44 @@
+name: object_clearAiAttackInvulnerables
+address: '0x0810D4E8'
+kind: function
+status: probable
+summary: Clears invulnerability on every object recorded in the current AI attack's param buffer.
+interface: (no args; uses r7 = oAIAttackVars-like context) -> void
+details: Reads a pointer at oAIAttackVars_AiAttackParam from r7. If non-null, zeros that pointer and calls
+  sub_810D498 which fills a 0x20-byte stack buffer with a count and a list of oBattleObject pointers.
+  It then iterates the list calling object_clearInvulnerableTime on each, ending their post-hit i-frames.
+  Intended as a one-shot cleanup step at AI attack boundaries, after which the AiAttackParam slot is freed
+  (callers reset ExtraVars or PanelParamFlags2).
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'asm: ldr r0,[r7,#oAIAttackVars_AiAttackParam]; cmp r0,#0 — gates on the AI param pointer; asm:
+    bl sub_810D498 with sp — fills a 0x20-byte buffer (count + object pointers); asm: loop calls object_clearInvulnerableTime
+    for each entry; battle_objThinkCustom calls it once when PhaseInitialized==0 as init cleanup; sub_810D3EA
+    calls it when StepTimer==1 then zeroes PanelParamFlags2, marking AI step end'
+  refs:
+  - bn6f/asm/dat31.s:1931
+  - 0x0810D5CE battle_objThinkCustom
+  - 0x0810D3EA sub_810D3EA
+  - 0x0810D590 sub_810D590
+  - 0x0800EB08 object_clearInvulnerableTime
+  - 0x0810D498 sub_810D498
+  reproduce: python3 tools/asmcat.py 0x0810D4E8
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-024706'
+open_questions:
+- What does sub_810D498 actually format (struct of count + object pointers)?
+- Are there more callers elsewhere resetting AiAttackParam that mark attack lifecycle endpoints?
+sources:
+- wf investigate investigate-20261021-024706
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 984bcba4
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_810D4E8 -> object_clearAiAttackInvulnerables
+  where: bn6f b1dffb14
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_810D4E8

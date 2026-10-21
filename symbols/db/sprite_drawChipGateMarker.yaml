@@ -1,0 +1,46 @@
+name: sprite_drawChipGateMarker
+address: '0x0811B098'
+kind: function
+status: probable
+summary: Per-frame drawer for GUI sprite 0x68's overlay marker, queuing one OAM entry at an object's coordinates
+  plus a fixed offset.
+interface: (r5 = sprite struct) -> void; queues one sprite via sprite_queueOamEntryFromTable
+details: Called once per frame from sprite_updateGui68 when its flag bit 1 is set, after a chain of effect
+  helpers. It reads the sprite's sub-index (byte at r5+3), uses it to pick one of two coordinate-source
+  pointers from byte_811B0E0 and one of two tile-base pointers from byte_811B0EC (each is a 2-entry table
+  of 0x20 stride). It calls sprite_getCoordinates with the high/low nibbles of the first byte of that
+  source as (x_lo, y_lo), then adds the stored (x,y) offset word_811B0F8 (= -0x6d, -0x08). It looks up
+  palette index dword_811B100 (=0x403) by the tile index, then tails into sprite_queueOamEntryFromTable
+  to enqueue the OAM square. In short it overlays a small marker icon on top of an object each frame.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: ldrb r1, [r5,#3] ... ldr r0, [r0,r1] — uses sprite sub-index to pick a per-object coord source
+    from byte_811B0E0; bl sprite_getCoordinates with the nibble pair of [r0] as (x_lo, y_lo); add r0,
+    r0, word_811B0F8 (== -0x6d, -0x08) — fixed offset applied to coordinates; ldrb r2, [r2,r3] from dword_811B100
+    (==0x403) supplies the palette/attr2 field; bl sprite_queueOamEntryFromTable — tail-call enqueues
+    the resulting OAM entry
+  refs:
+  - bn6f/asm/asm32.s:27950
+  - 0x0811ADC0 sprite_updateGui68
+  - 0x08132A9E sprite_queueOamEntryFromTable
+  - 0x080030A8 sprite_getCoordinates
+  reproduce: python3 tools/asmcat.py 0x0811B098
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-024706'
+open_questions:
+- Which two objects the sub-index 0/1 entries of byte_811B0E0 and byte_811B0EC refer to (e.g. link power,
+  MegaChip gate, etc.).
+sources:
+- wf investigate investigate-20261021-024706
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 984bcba4
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_811B098 -> sprite_drawChipGateMarker
+  where: bn6f b1dffb14
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811B098
