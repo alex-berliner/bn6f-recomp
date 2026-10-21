@@ -1729,10 +1729,14 @@ def try_subchip(D):
             for W in range(w[0] + 1, D + 6):
                 off.append((ck, [[W, f'{fa:#x}={fb & ~m & 0xFF:#04x}/1,{ca:#x}=0x0/4']], until, f'{name} off@{W}'))
     res = evaluate(tasks + off)
-    ok_off = [t for t in off if res[t[3]][0] >= until]
+    if off:
+        far = max(res[t[3]][0] for t in off)
+        log(f'  subchip: switch-offs reach {far} at best')
+    # (the menu goes on to other things the sync may lose on: past PARTIAL is enough, run11h 1412103)
+    ok_off = [t for t in off if res[t[3]][0] >= D + PARTIAL]
     if ok_off:
-        t = max(ok_off, key=lambda t: (t[1][0][0], -res[t[3]][1]))       # the latest frame: the least change
-        log(f'  subchip: {len(ok_off)} switch-offs hold to {until}; take {t[3]} (mean cost {res[t[3]][1]:.3f})')
+        t = max(ok_off, key=lambda t: (res[t[3]][0], t[1][0][0], -res[t[3]][1]))   # the furthest, then the latest frame
+        log(f'  subchip: {len(ok_off)} switch-offs reach {D + PARTIAL}; take {t[3]} (to {res[t[3]][0]}, mean cost {res[t[3]][1]:.3f})')
         if res[t[3]][1] < SUBCHIP_COST: return w, [t[1][0]]
     ok = [t for t in tasks if res[t[3]][0] >= until]
     if not ok: return None
