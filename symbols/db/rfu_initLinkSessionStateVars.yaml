@@ -1,0 +1,47 @@
+name: rfu_initLinkSessionStateVars
+address: '0x08146588'
+kind: function
+status: probable
+summary: Initializes RFU link-session state variables in EWRAM to defaults before rfu_initLinkSession
+  is called.
+interface: () -> void
+details: 'Writes fixed values to five EWRAM locations in the RFU link work area: clears byte_200FE80 to
+  0, sets byte_2010160 to 0x20, sets byte_200FFE4 and byte_2010164 to 1, and stores 0xF0 as a halfword
+  in word_200FE50 (likely a state/substate field). It takes no arguments and returns nothing. It is invoked
+  by every caller immediately before rfu_initLinkSession, so it primes the per-session scratch fields.
+  The 0xF0 value matches the 0xF0/0xF8 phase offsets seen in rfu_tryStartLinkSession (e.g. ''add r0, #0xf0'').'
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: All three documented callers (rfu_initLinkSessionState, rfu_tryStartLinkSession, start_wirelessLinkSession)
+    call sub_8146588 immediately before rfu_initLinkSession, suggesting it primes session state.; Assembly
+    stores 0xF0 to word_200FE50 as a halfword, matching the 0xF0 offsets into r5 used by callers right
+    after the call.; byte_200FE80/byte_200FFE4/byte_2010160/byte_2010164 are EWRAM bytes in the 0x200FE80-0x2010164
+    RFU link region; pattern of zeroing one and setting others to 1/0x20 is typical link-state reset.;
+    rfu_initLinkSessionState uses it as part of substate setup before advancing to state 0x34.; Function
+    has no parameters and no return value used by callers; pure EWRAM initializer.
+  refs:
+  - bn6f/asm/libs.s:5228
+  - 0x0812A058 rfu_initLinkSessionState
+  - 0x08039B0A rfu_tryStartLinkSession
+  - 0x08039E2C start_wirelessLinkSession
+  reproduce: python3 tools/asmcat.py 0x08146588
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-023329'
+open_questions:
+- What each of the five EWRAM fields (byte_200FE80, byte_2010160, byte_200FFE4, byte_2010164, word_200FE50)
+  specifically represents in the RFU link session struct.
+- Why 0x20 is the chosen initial value for byte_2010160 rather than 0 or 1.
+sources:
+- wf investigate investigate-20261021-023329
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9e616d9e
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_8146588 -> rfu_initLinkSessionStateVars
+  where: bn6f 19aae262
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8146588

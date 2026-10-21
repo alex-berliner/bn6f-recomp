@@ -1,0 +1,48 @@
+name: ai_loadAttackTimings
+address: '0x08103E74'
+kind: function
+status: probable
+summary: Loads three attack-timing fields (duration, boost, cycles) from a per-AI-difficulty table.
+interface: () -> r0 = AttackDuration, r1 = AttackBoost, r2 = Cycles; preserves byte_8103EA0 as a 12-byte
+  table indexed by AI difficulty tier.
+details: Reads the calling AI's previously-fetched difficulty tier (stored at oAIAttackVars_AiDifficultyTier
+  by the caller) and uses sub_800FE28 three times to index into the 12-byte table at byte_8103EA0 at offsets
+  0, +4, and +8, returning three bytes. The table is laid out as three rows of 4 entries (A, A, A, A,
+  1E, 1A, 14, 10, 3C, 3C, 28, 28), indexed by difficulty tier, with decreasing durations and increasing
+  boost/cycle values for harder tiers. The caller stores the results into oAIAttackVars_AttackDuration
+  (halfword), oAIAttackVars_AttackBoost2, and oAIAttackVars_TimerOrCycles, fitting a per-tier attack execution
+  profile.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: sub_8103F80 writes AiDifficultyTier then InitFlag=1 before calling sub_8103E74 and stores its
+    r0/r1/r1 into AttackDuration, AttackBoost2, TimerOrCycles — exactly the three attack-timing fields
+    a per-tier profile would provide.; sub_8103E74 indexes byte_8103EA0 at offsets 0, +4, +8 (three rows
+    of 4 difficulty entries) via sub_800FE28, producing three return values r0, r1, r2.; byte_8103EA0
+    contents 0A 0A 0A 0A / 1E 1A 14 10 / 3C 3C 28 28 show tier-decreasing durations and tier-increasing
+    boost/cycle values consistent with harder AI attacking longer/more aggressively.; Three return values
+    packed into r0/r1/r2 match the three distinct fields (word, byte, byte) the caller writes back.
+  refs:
+  - bn6f/asm/asm31.s:169642
+  - 0x08103F80 sub_8103F80
+  - 0x0800FE28 sub_800FE28
+  reproduce: python3 tools/asmcat.py 0x08103E74
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-023329'
+open_questions:
+- What sub_800FE28 actually computes (presumably a tier-indexed lookup or scaling of byte_8103EA0) is
+  not visible; the exact semantics of AttackBoost2 vs TimerOrCycles mapping to the three table rows needs
+  confirmation from an oAIAttackVars definition.
+sources:
+- wf investigate investigate-20261021-023329
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9e616d9e
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_8103E74 -> ai_loadAttackTimings
+  where: bn6f 19aae262
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8103E74

@@ -1,0 +1,44 @@
+name: battle_illusionAppearPhase
+address: '0x080BD644'
+kind: function
+status: probable
+summary: 'Battle object phase 4 handler: plays animation 4 for 3 frames (with optional illusion spawn),
+  then advances to phase 8.'
+interface: () -> void; uses oBattleObject in r5, sets r0=4 (CurAnim) and r0=8 (next phase)
+details: Standard battle object phase handler keyed on oBattleObject_PhaseInitialized. On first entry
+  sets CurAnim=4, clears RelatedObject1Ptr, sets Timer=3, optionally calls battle_spawnIllusionObjects
+  when Param3==1, and marks phase 4 initialized. On each subsequent call it decrements Timer; when the
+  timer underflows, it writes 0x0008 to oBattleObject_CurPhaseAndPhaseInitialized, advancing the object
+  to phase 8.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'Phase gate: ldrb r0,[r5,#oBattleObject_PhaseInitialized]; tst r0,r0; bne loc_80BD670 — skips
+    init on re-entry; Sets CurAnim=4 and Timer=3, then if Param3==1 calls battle_spawnIllusionObjects
+    — appear anim with optional decoy; Phase advance: mov r0,#8; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized]
+    stores 0x0008 = phase 8 initialized; Frame tick: ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh
+    ...; bgt locret — decrements and exits while positive; Callee battle_resetObjectPhaseCounter_80B8E58
+    confirms this lives in the battle object phase-handler framework'
+  refs:
+  - bn6f/asm/asm31.s:12266
+  - 0x080B8E58 battle_resetObjectPhaseCounter_80B8E58
+  - 0x080BDA7C battle_spawnIllusionObjects
+  reproduce: python3 tools/asmcat.py 0x080BD644
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-023329'
+open_questions:
+- Which animation 4 corresponds to which object class (no callers observed to confirm object type)
+- Exact meaning of Param3==1 triggering illusions (set by spawner, not visible here)
+sources:
+- wf investigate investigate-20261021-023329
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9e616d9e
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80BD644 -> battle_illusionAppearPhase
+  where: bn6f 19aae262
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD644

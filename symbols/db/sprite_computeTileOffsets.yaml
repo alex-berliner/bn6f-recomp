@@ -1,0 +1,45 @@
+name: sprite_computeTileOffsets
+address: '0x0811870C'
+kind: function
+status: probable
+summary: Computes tile-offset pairs for a composite sprite from an index into a small table
+interface: (r6 = object, r7 = out record from sub_81187DC) -> fills out r7+0xc/0xe with two 16-bit tile
+  offsets
+details: Uses r6->0xf as a row index into byte_811873C (a table of paired base offsets) and r6->0x28 /
+  r6->0x2c as two multiplicands with stride 0x14 to derive final tile offsets stored at the record's +0xc
+  and +0xe fields. The record buffer is obtained via sub_81187DC, suggesting the high nibble of byte[2]
+  picks one of several pre-allocated OAM/build slots. Called immediately after sprite zeroing/shader setup,
+  consistent with per-frame sprite rebuild.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: byte_811873C holds 4 paired bytes (offsets) selected by r6->0xf doubled as word index; r6->0x28
+    and r6->0x2c each multiplied by 0x14 then added to a byte of the selected pair; Results stored as
+    halfwords at r7+0xc and r7+0xe - typical OAM tile-offset fields; Caller first calls sprite_setAlpha_8002c7a
+    and sprite_zeroColorShader then this, fitting per-frame sprite rebuild flow; sub_81187DC picks a record
+    by high nibble of byte[2], indicating a multi-slot OAM entry pool
+  refs:
+  - bn6f/asm/asm32.s:22186
+  - 0x08118550 sub_8118550
+  - 0x081187DC sub_81187DC
+  reproduce: python3 tools/asmcat.py 0x0811870C
+  result: 'proposed by minimax/MiniMax-M3, self_score 2; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-023329'
+open_questions:
+- What is the 0x14 stride exactly? Tile count? Sprite-pair stride?
+- What do r6->0x28 and r6->0x2c semantically represent (frame index, pose, direction)?
+- Which slot index does sub_81187DC select for this caller (the high nibble of r6+2)?
+- Is byte_811873C a per-form or per-element base-tile table?
+sources:
+- wf investigate investigate-20261021-023329
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9e616d9e
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_811870C -> sprite_computeTileOffsets
+  where: bn6f 19aae262
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_811870C

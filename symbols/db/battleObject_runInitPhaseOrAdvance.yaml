@@ -1,0 +1,46 @@
+name: battleObject_runInitPhaseOrAdvance
+address: '0x080E7EE0'
+kind: function
+status: probable
+summary: Initializes a battle object's panel-position-related state on first execution, then advances
+  to action 0xC if the current Param2 is 0
+interface: (r5 = battleObject*) -> void; uses r0,r1,r2,r3,r6,r7 as scratch
+details: On entry, if oBattleObject_PhaseInitialized is 0, it gathers the object's panel coordinates (PanelX,
+  PanelY), its Element, and an aggregate of oBattleObject_DamageAndStaminaDamageCounterDisabler plus oBattleObject_Z16Save,
+  then calls sub_80BCCDC to perform an initialization using a pointer built at r5+5 and the RelatedObject1Ptr.
+  It marks the phase as initialized by writing 4 to PhaseInitialized. After init, if oBattleObject_Param2
+  is 0, it sets CurAction=0xC and clears CurPhaseAndPhaseInitialized, otherwise it returns. The function
+  name reflects the conditional init-then-advance pattern.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: PhaseInitialized byte at r5 is checked and only set to 4 on first call (asm 2,18); sub_80BCCDC
+    called with PanelX, PanelY, Element and damage+Z16 aggregate (asm 5-13); RelatedObject1Ptr (r5+0x...)
+    and r5+5 are passed to the initializer (asm 12-14); On re-entry, Param2==0 forces CurAction=0xC and
+    clears CurPhaseAndPhaseInitialized (asm 21-25); No callers known — function is reached only as a phase
+    handler, purpose inferred from fields
+  refs:
+  - bn6f/asm/asm31.s:109124
+  - 0x080BCCDC sub_80BCCDC
+  reproduce: python3 tools/asmcat.py 0x080E7EE0
+  result: 'proposed by minimax/MiniMax-M3, self_score 2; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-023329'
+open_questions:
+- Which callers invoke this function — needed to know which battle object type and what action 0xC is
+- What sub_80BCCDC actually does with the panel/element/damage arguments (also undocumented)
+- What the r5+5 word (used as one of two pointers to sub_80BCCDC) actually contains
+- Why oBattleObject_Z16Save is added to the damage counter before the initializer call
+- Whether the '4' written to PhaseInitialized is a phase id or merely a non-zero marker
+sources:
+- wf investigate investigate-20261021-023329
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9e616d9e
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80E7EE0 -> battleObject_runInitPhaseOrAdvance
+  where: bn6f 19aae262
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80E7EE0

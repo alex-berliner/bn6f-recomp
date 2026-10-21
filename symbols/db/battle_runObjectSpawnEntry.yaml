@@ -1,0 +1,48 @@
+name: battle_runObjectSpawnEntry
+address: '0x080BDF0E'
+kind: function
+status: probable
+summary: Initializes a newly-spawned battle object's spawn-in animation/timer once, then ticks a short
+  timer before moving it to its next phase.
+interface: '(no explicit args; operates on the battle object in r5) -> void; clobbers r0, flags: tail-call
+  to other phase code via pop {pc}'
+details: On first entry (PhaseInitialized byte == 0) it sets CurAnim=4, calls battle_resetObjectPhaseCounter_80B8E58
+  on two child objects stored in oBattleObject_ExtraVars+8 and +0xC (likely the object's spawn helpers),
+  sets Timer=4 and marks PhaseInitialized=4. On every entry it then decrements Timer; when the countdown
+  reaches 0 it writes 8 into the combined CurPhase/PhaseInitialized halfword, advancing the object to
+  the next state-action phase. The function is dispatched through the standard battle-object phase table,
+  so the '8' written is the next phase index.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: ldrb r0, [r5,#oBattleObject_PhaseInitialized]; tst r0,r0; bne loc_80BDF2E — one-shot init gated
+    by PhaseInitialized==0; mov r0,#4; strb r0, [r5,#oBattleObject_CurAnim] — kicks a 1-frame/short spawn
+    animation; bl battle_resetObjectPhaseCounter_80B8E58 on ExtraVars+8 and +0xC — resets phase counters
+    of two sub-objects spawned with this object; mov r0,#4; strb r0, [r5,#oBattleObject_PhaseInitialized]
+    — marks init done and stores the in-phase ticks remaining; ldrh r0,[r5,#oBattleObject_Timer]; sub
+    r0,#1; ... mov r0,#8; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized] — counts down Timer
+    then transitions to phase 8
+  refs:
+  - bn6f/asm/asm31.s:13546
+  - 0x080B8E58 battle_resetObjectPhaseCounter_80B8E58
+  reproduce: python3 tools/asmcat.py 0x080BDF0E
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-023329'
+open_questions:
+- Who calls this function (no callers recorded) — needed to confirm the spawn-entry use and which object
+  type triggers it
+- What phase 8 is for this object and what the two ExtraVars+8/+0xC sub-objects represent (spawn helpers,
+  hitboxes, parts?)
+sources:
+- wf investigate investigate-20261021-023329
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9e616d9e
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80BDF0E -> battle_runObjectSpawnEntry
+  where: bn6f 19aae262
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BDF0E

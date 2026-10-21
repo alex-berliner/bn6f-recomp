@@ -1,0 +1,53 @@
+name: rfu_refreshPeerBuffers
+address: '0x081467A0'
+kind: function
+status: probable
+summary: 'Per-frame: refreshes the per-RFU-peer 13-byte buffer at unk_20098B0 and 8-byte buffer at unk_2009750
+  for every peer recorded in byte_2010288, bumping the counter at byte_2009470.'
+interface: () -> void; reads byte_2010288 as peer count, writes unk_20098B0 (16-byte stride), unk_2009750
+  (8-byte stride), and byte_2009470
+details: Loops index i = 0..byte_2010288-1. For each peer, it calls sub_81466F4(i) to obtain source data,
+  then sub_81469F0 to copy 0xD bytes into unk_20098B0[i*0x10]. It also calls get_lookupEntryField15Ptr(i)
+  to obtain a pointer and sub_81469F0 to copy 8 bytes into unk_2009750[i*8]. The two 16-byte / 8-byte
+  strides and the use of get_lookupEntryField15Ptr suggest a pair of per-peer table entries (one main
+  16-byte slot, one 8-byte companion) keyed by the same peer index. The byte at byte_2009470 is reset
+  to 0 before the loop and incremented inside it, acting as a per-frame iteration counter or handshake
+  flag. It is called immediately after clearing chatbox buffers / a chatbox dismiss poll, so the two callers
+  appear to be unrelated paths that share this periodic refresh.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: Loop bounded by ldrb from byte_2010288 (lines 0x81467A0+0x18) — peer count; sub_81469F0 called
+    with r2=0xD and unk_20098B0 dest, striding +0x10 (lines 0x81467C8..0x81467D4); get_lookupEntryField15Ptr
+    + sub_81469F0 with r2=8 and unk_2009750 dest, striding +8 (lines 0x81467D6..0x81467DE); byte_2009470
+    cleared before loop and incremented per iteration (0x81467AC, 0x81467E2); rfu_advanceLinkState calls
+    it after chatbox_pollDismiss to refresh RFU state in the same path that advances link state
+  refs:
+  - bn6f/asm/libs.s:5563
+  - 0x0803C558 chatbox_clearTextBuffers
+  - 0x0803C7B4 rfu_advanceLinkState
+  - 0x081466C4 get_lookupEntryField15Ptr
+  - 0x0814665C sub_814665C
+  - 0x081466F4 sub_81466F4
+  reproduce: python3 tools/asmcat.py 0x081467A0
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-023329'
+open_questions:
+- Exact meaning of the 0xD-byte entry written to unk_20098B0 and the 8-byte entry to unk_2009750 (peer
+  recv buffer vs status?)
+- What sub_81466F4 and sub_81469F4 do internally — only their signatures/strides are inferred here
+- Why chatbox_clearTextBuffers invokes it (is it just the frame-end hook, or specifically tied to dialog
+  dismissal?)
+sources:
+- wf investigate investigate-20261021-023329
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9e616d9e
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_81467A0 -> rfu_refreshPeerBuffers
+  where: bn6f 19aae262
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81467A0

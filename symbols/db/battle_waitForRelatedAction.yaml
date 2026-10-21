@@ -1,0 +1,43 @@
+name: battle_waitForRelatedAction
+address: '0x080D0766'
+kind: function
+status: probable
+summary: 'Per-frame sync: delays a battle object''s timer/animation until a related object''s CurAction
+  reaches a target value, then triggers CurAnim=1.'
+interface: (r5 = oBattleObject self) -> void; mutates self.Timer, self.CurAction, self.CurAnim
+details: On first entry (CurAction==0), looks up the expected action byte in byte_80D0794 indexed by self.Param1,
+  compares it against self.RelatedObject1Ptr->CurAction, and if not matched resets self.Timer and self.CurAction
+  to self.Param3 to keep waiting. Once self.Timer decrements down to self.Param3, sets self.CurAnim=1
+  as a one-shot cue. byte_80D0794 is a small table of action IDs (0x35,0x3C,0x0E,0x0A,0x0D,0x04,...).
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: cmp r0,#0; bne loc_80D0782 — only the first tick runs the sync check (CurAction gates it); ldr
+    r0,off_80D0790; ldrb r1,[r0,r1] — table byte_80D0794 lookup keyed by Param1 gives the target action;
+    RelatedObject1Ptr->CurAction is read and compared to the table byte; mismatch resets Timer+CurAction
+    to Param3 to keep waiting; At loc_80D0782, when Timer == Param3, strb sets CurAnim=1 — the sync-complete
+    animation cue; Single caller battle_updateTimerObject invokes it right after object_presentCollisionData
+    each tick before object_highlightPanel
+  refs:
+  - bn6f/asm/asm31.s:55683
+  - 0x080D072C battle_updateTimerObject
+  reproduce: python3 tools/asmcat.py 0x080D0766
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-023329'
+open_questions:
+- What each byte_80D0794 entry's action ID corresponds to in the action enum is not derived from this
+  code
+- Whether CurAnim=1 has a fixed meaning across all callers or depends on the object class
+sources:
+- wf investigate investigate-20261021-023329
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9e616d9e
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80D0766 -> battle_waitForRelatedAction
+  where: bn6f 19aae262
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80D0766

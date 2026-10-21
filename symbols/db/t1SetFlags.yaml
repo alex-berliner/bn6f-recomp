@@ -1,0 +1,45 @@
+name: t1SetFlags
+address: '0x0813D5E8'
+kind: function
+status: probable
+summary: Sets bits in the t1 status flag byte (byte_200AF85) by OR-ing the argument.
+interface: '(r0 = flag bitmask) -> none; side effect: byte_200AF85 |= r0'
+details: Loads the base pointer to the t1 state block at byte_200AF80, reads the flag byte at offset 5
+  (byte_200AF85), ORs in the caller's r0, and writes the result back. The only known caller, t1StepSequence,
+  invokes it with r0=1 when its 21-step sequence counter has completed (counter > 0x14), likely marking
+  the t1 subsystem as 'sequence done' / 'finished'. The byte at offset 1 of the same block (byte_200AF81)
+  is cleared by t1StepSequence on every tick, consistent with this being a state/counter field paired
+  with a status flag field at offset 5.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'asm: ldrb r2,[r1,#5]; orr r2,r0; strb r2,[r1,#5] is a bitwise set-flags pattern on byte_200AF85;
+    asm: r1 is loaded from the byte_200AF80 base, so +5 is the flag byte of that block; caller t1StepSequence
+    at 0x0813D7DE passes r0=1 right after its counter exceeds 0x14 (sequence complete); t1StepSequence
+    clears byte_200AF81 each tick (the counter/state byte at +1), pairing it with the +5 flag byte this
+    writes; t1 prefix matches other t1-subsystem symbols in the project'
+  refs:
+  - bn6f/asm/asm37_0.s:4031
+  - 0x0813D7B8 t1StepSequence
+  reproduce: python3 tools/asmcat.py 0x0813D5E8
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-023329'
+open_questions:
+- What other callers exist that pass flag values other than 1 (which would confirm the 'any-bit OR' interpretation
+  vs. specifically 'mark done')?
+- What is the full layout of the byte_200AF80 block — what are offsets 0,2,3,4 used for?
+- Is bit 0 specifically 'sequence complete', or is this a general flag set used with other bit values
+  elsewhere?
+sources:
+- wf investigate investigate-20261021-023329
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9e616d9e
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_813D5E8 -> t1SetFlags
+  where: bn6f 19aae262
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813D5E8

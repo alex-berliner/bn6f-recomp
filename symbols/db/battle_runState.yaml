@@ -1,0 +1,41 @@
+name: battle_runState
+address: '0x08038606'
+kind: function
+status: probable
+summary: Dispatches the current battle scene state to one of four handler routines via a jump table.
+interface: () -> none; uses byte_2011E40 as state index
+details: 'Reads a 1-byte state index from byte_2011E40, indexes into a 4-entry table at off_8038620, and
+  tail-calls the selected routine (with the +1 Thumb-bit trick on the stored addresses). The four targets
+  are init_battleScene, sub_8038674, battle_waitTimerThenAdvanceState, and sub_80386B2. It is a classic
+  state-machine trampoline: each handler is expected to update byte_2011E40 so the next call advances
+  the state. The ''r4-r7,lr'' push and ''pop {r4-r7,pc}'' make it a tail call, so no return value or stack
+  frame is involved.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'Assembly lines 0x0803860C-0x08038614: ldrb r1,[r5] then ldr r0,[r0,r1] with r0=table, r1=index
+    — a jump-table dispatch.; off_8038620 lists init_battleScene, sub_8038674, battle_waitTimerThenAdvanceState,
+    sub_80386B2 — naming convention (waitTimerThenAdvanceState) confirms this advances a state machine.;
+    pop {r4-r7,pc} (line 0x08038616) makes the call a tail call into the dispatched handler.; byte_2011E40
+    is the persistent state index read each call, so the routine that runs next is data-driven.; All four
+    callee names carry the +1 Thumb bit adjustment, consistent with a generic Thumb jump table.'
+  refs:
+  - bn6f/asm/asm03_1_1.s:20
+  reproduce: python3 tools/asmcat.py 0x08038606
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-023329'
+open_questions:
+- Who calls sub_8038606 to drive the per-frame state loop? (No callers are currently known.)
+sources:
+- wf investigate investigate-20261021-023329
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9e616d9e
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_8038606 -> battle_runState
+  where: bn6f 19aae262
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8038606

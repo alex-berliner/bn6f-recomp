@@ -1,0 +1,45 @@
+name: battle_delayThenSetAction20
+address: '0x080C1DA0'
+kind: function
+status: probable
+summary: Battle object phase that waits 30 ticks then sets CurAction=0x20 and clears the phase fields
+interface: (r5 = oBattleObject*) -> void; sets oBattleObject_PhaseInitialized, oBattleObject_Timer, oBattleObject_CurAction,
+  oBattleObject_CurPhaseAndPhaseInitialized
+details: On first entry, marks the phase as initialized (flag = 4) and sets a 30-tick timer. On subsequent
+  entries, decrements the timer; when it hits zero, writes 0x20 into CurAction and clears CurPhaseAndPhaseInitialized
+  to 0, handing control to the action-0x20 handler. The use of a fixed 30-tick delay with no input data
+  suggests a simple 'pause this frame for half a second' inter-phase, common between battle actions.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'Assembly: ldrb r0, [r5,#oBattleObject_PhaseInitialized] + tst r0,r0 + bne loc_80C1DB2 — branches
+    on first-time vs subsequent entry; Assembly: mov r0,#4; strb r0,[r5,#oBattleObject_PhaseInitialized]
+    + mov r0,#0x1e; strh r0,[r5,#oBattleObject_Timer] — initializes phase and sets 30-tick timer; Assembly:
+    ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh r0,[r5,#oBattleObject_Timer]; bgt locret_80C1DC2
+    — counts down timer each tick; Assembly: mov r0,#0x20; strb r0,[r5,#oBattleObject_CurAction] + mov
+    r0,#0; strh r0,[r5,#oBattleObject_CurPhaseAndPhaseInitialized] — on expiry, transitions to action
+    0x20 and clears phase; No known callers/callees — purpose of action 0x20 and which battle contexts
+    use this phase are unconfirmed'
+  refs:
+  - bn6f/asm/asm31.s:22833
+  reproduce: python3 tools/asmcat.py 0x080C1DA0
+  result: 'proposed by minimax/MiniMax-M3, self_score 2; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-023329'
+open_questions:
+- Which battle object's phase table contains this entry? Need a caller to see what object (player, enemy,
+  effect) and which preceding phase it follows.
+- What is action 0x20 — a generic 'finish/return' action, an animation, or a transition to another phase?
+- Is the 30-tick delay meant to match a specific animation length, and does it ever get parameterized?
+sources:
+- wf investigate investigate-20261021-023329
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9e616d9e
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80C1DA0 -> battle_delayThenSetAction20
+  where: bn6f 19aae262
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C1DA0

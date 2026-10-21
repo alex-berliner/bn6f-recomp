@@ -1,0 +1,43 @@
+name: battleObject_runCustSwallow
+address: '0x080B939E'
+kind: function
+status: probable
+summary: 'Advances the Custom Gauge''s chip-swallow phase: starts the swallow anim/timer, then transitions
+  the action once the timer expires.'
+interface: (r5 = oBattleObject*) -> void; writes CurPhase, CurAnim, Timer, CurAction, CurPhaseAndPhaseInitialized
+details: Operates on a battle object in r5. If CurPhase is zero, it sets CurPhase to 4, CurAnim to 0x12,
+  and Timer to 0xD, then returns. On subsequent calls (CurPhase != 0) it decrements Timer each frame;
+  when Timer reaches zero it writes 0xC to CurAction and clears CurPhaseAndPhaseInitialized, handing control
+  back to the battle object's main action dispatcher. This is a small state machine tick that drives a
+  short fixed-length animation before advancing to the next action.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'CurPhase gating: ldrb r0,[r5,#oBattleObject_CurPhase]; tst r0,r0; bne loc_80B93B4 sets the
+    initial entry conditions; Initialises CurPhase=4, CurAnim=0x12, Timer=0xD on first call (lines writing
+    those three fields); Per-frame tick: ldrh r0,[r5,#oBattleObject_Timer]; sub r0,#1; strh r0,[r5,#oBattleObject_Timer]
+    in loc_80B93B4; On expiry sets CurAction=0xC and clears CurPhaseAndPhaseInitialized, returning to
+    the dispatcher''s next action'
+  refs:
+  - bn6f/asm/asm31.s:2513
+  reproduce: python3 tools/asmcat.py 0x080B939E
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-023329'
+open_questions:
+- No callers are known in this view, so the exact action context (chip swallow, guard, etc.) is inferred
+  from the CurAnim=0x12 / CurAction=0xC constants and is not yet confirmed.
+- The oBattleObject field offsets (CurPhase, CurAnim, Timer, CurAction, CurPhaseAndPhaseInitialized) are
+  taken from the project's existing struct knowledge and not re-verified here.
+sources:
+- wf investigate investigate-20261021-023329
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9e616d9e
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80B939E -> battleObject_runCustSwallow
+  where: bn6f 19aae262
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80B939E

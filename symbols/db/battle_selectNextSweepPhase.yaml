@@ -1,0 +1,43 @@
+name: battle_selectNextSweepPhase
+address: '0x080BB866'
+kind: function
+status: probable
+summary: Selects the battle object's next sweep-panel phase from a row-specific lookup table.
+interface: (r5 = battle object pointer) -> r0 = selected phase, r1 = phase-table row offset; flags unchanged
+details: The function reads the object's panel Y, selects one of five bytes at byte_80BB88C, and indexes
+  it by ExtraVars plus one. If the indexed value is 0xFF, it falls back to the selected row's first value
+  with row offset zero; otherwise it retains the incremented offset. It writes the selected value to ExtraVars+4
+  and the offset to ExtraVars, advancing the sweep phase sequence. The caller invokes it before battle_sweepLinePanels,
+  both during initialization and after Timer2 expires, then plays a sound and schedules the next sweep
+  operation.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: sub_80BB710 sets ExtraVars to 3, calls this function, then calls battle_sweepLinePanels at 0x080BB720-0x080BB724.;
+    sub_80BB710 calls it again after decrementing Timer2 to zero at 0x080BB754-0x080BB75C, immediately
+    before sweeping panels.; The table access computes (PanelY-1)*5 + byte_80BB88C and indexes with ExtraVars+1
+    at 0x080BB86E-0x080BB87A.; The 0xFF branch replaces the selected table value with the row's first
+    entry and resets the offset at 0x080BB87C-0x080BB884.; The writes to ExtraVars+4 and ExtraVars at
+    0x080BB888-0x080BB88C provide the phase value and offset consumed by the sweep routine.
+  refs:
+  - bn6f/asm/asm31.s:7996
+  - 0x080BB710 sub_80BB710
+  reproduce: python3 tools/asmcat.py 0x080BB866
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-023329'
+open_questions:
+- The exact semantic meaning of ExtraVars, ExtraVars+4, and the five panel rows is not documented.
+- The table may encode panel-specific sweep order or timing rather than a general phase sequence.
+sources:
+- wf investigate investigate-20261021-023329
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9e616d9e
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80BB866 -> battle_selectNextSweepPhase
+  where: bn6f 19aae262
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BB866
