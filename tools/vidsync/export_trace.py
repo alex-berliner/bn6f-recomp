@@ -66,9 +66,36 @@ def trace_lines(keys):
     return out
 
 
+EMU_SPEC_MAX = 479    # emu_server's apply_spec: char spec[480], snprintf'd, so longer specs lose their tail
+
+
+def as_emu_applies(spec):
+    """The writes emu_server really makes for SPEC, as mgba_run's "ADDR=VALUE/SIZE,..." (the synced path was
+    built with them). emu_server cuts a spec to 479 characters and parses each comma token with strtoul: a
+    token cut short still writes (its address, what is left of its value, size 4 when '/' is lost). A write
+    below EWRAM (the BIOS) does nothing in either emulator and is left out. Only the 1292600 NaviCust poke of
+    the run10y/run11a lineage is that long: it loses 0x2005030=0x83/1."""
+    if len(spec) <= EMU_SPEC_MAX:
+        return spec
+    def strtoul(text):
+        m = re.match(r'0[xX][0-9a-fA-F]+|[1-9][0-9]*|0', text)
+        return int(m.group(0), 0) if m else 0
+    out = []
+    for token in spec[:EMU_SPEC_MAX].split(','):
+        if not token:
+            continue
+        a, _, rest = token.partition('=')
+        v, _, sz = rest.partition('/')
+        addr = strtoul(a)
+        if addr < 0x02000000:
+            continue
+        out.append(f'0x{addr:x}=0x{strtoul(v):x}/{strtoul(sz) if sz else 4}')
+    return ','.join(out)
+
+
 def poke_lines(R, end):
     pokes = sorted(R.get('pokes', []), key=lambda p: p[0])     # stable: same-frame writes keep their order
-    keep = [(g, spec) for g, spec in pokes if g < end]
+    keep = [(g, as_emu_applies(spec)) for g, spec in pokes if g < end]
     for g, spec in pokes:
         if g >= end:
             print(f'poke at game frame {g} is at or past the end ({end}): left out ({spec})', file=sys.stderr)
