@@ -949,6 +949,8 @@ def try_encounter(D):
     log(f'  encounter: {len(ok)} start it; take {t[3]} (to {res[t[3]][0]}, mean cost {res[t[3]][1]:.3f})')
     return state_at(f - 2), [t[1][0]]          # (again: state_at's scratch slot held another write point)
 
+ENC_GATE_A = syms.ENC_GATE        # LocEnemy's countdown (0x1770 when chosen, down with the walk counter's steps)
+
 def try_noencounter(D):
     """Ours starts a random battle where the video walks on (run11d 1389010: just after a save, LocEnemy's last
     ~90 frames; our step roll passed and took its battle, the video's did not and LocEnemy expired): the walk
@@ -973,6 +975,17 @@ def try_noencounter(D):
     r = reach_many(w, ex, D + 400, D)
     best = max(ex, key=lambda t: (r[t][0], -r[t][1]))
     log(f'  no encounter: ours starts a battle at {T}; walk counter 0 at {best[1:]} reaches {r[best][0]} (mean cost {r[best][1]:.3f})')
+    if r[best][0] >= D + 100: return w, ex[best]
+    # LocEnemy's countdown (it goes down with the steps) can run out at another time than the video's "LocEnemy
+    # just expired!" (run11d 1389010: ours ~30 frames later): the countdown moved too, by -160..+40 steps
+    a = int(best[1:]); w2 = state_at(a)
+    if w2 is None: return None
+    b.e.load(w2[1]); gate = b.e.u32(ENC_GATE_A)
+    if not 0 < gate < 0x2000: return None
+    ex = {f'G{d}': [[a, f'{ENC_STEPS:#x}=0x0/2,{ENC_GATE_A:#x}={max(gate + d, 1):#x}/4']] for d in range(-160, 41, 4) if d}
+    r = reach_many(w, ex, D + 400, D)
+    best = max(ex, key=lambda t: (r[t][0], -r[t][1]))
+    log(f'  no encounter: and LocEnemy\'s countdown {gate:#x} moved by {best[1:]} reaches {r[best][0]} (mean cost {r[best][1]:.3f})')
     if r[best][0] < D + 100: return None
     return w, ex[best]
 
