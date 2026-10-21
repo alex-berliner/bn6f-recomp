@@ -434,7 +434,10 @@ def video_frames(v0, v1):
     a = np.frombuffer(raw[:n * 160 * 240 * 3], np.uint8).reshape(n, 160, 240, 3)
     return {v0 + i: a[i].astype(np.float32) for i in range(n)}
 
-def slot_box(i): return (slice(103, 124), slice(4 + 16 * i, 20 + 16 * i))
+def slot_box(i):
+    # a hand of more than 5 (a NaviCust program): slots 6-8 are a second row under the first three
+    if i >= 5: return (slice(126, 147), slice(4 + 16 * (i - 5), 20 + 16 * (i - 5)))
+    return (slice(103, 124), slice(4 + 16 * i, 20 + 16 * i))
 
 PACK = syms.CHIP_PACK             # chip pack: a count byte per chip id (12 bytes) and code index (the chip's 4 codes)
 CHIPDATA = syms.CHIP_DATA         # ChipData, 44 bytes per chip id: its codes first
@@ -1749,13 +1752,17 @@ def try_hand(D, deep=None):
     def err(E, i):
         y, x = slot_box(i); a, bb = E[y, x], V[y, x]
         return float(np.abs((a - a.mean()) - (bb - bb.mean())).mean())
+    # the hand's size: 5, and the second row's slots that hold a chip in the video (run11a 1356161: a hand of
+    # 7, the video's slots 6 and 7 an F chip and Atk+10, which the video's AirHocky took: 60+40, ours 60)
+    N = 5
+    while N < 8 and V[slot_box(N)][4:16, 3:13].mean() > 110: N += 1   # (an empty slot: ~75)
     base = render(folder)
-    e0 = [err(base, i) for i in range(5)]
+    e0 = [err(base, i) for i in range(N)]
     # the folder's chips, and the pack's: the video's folder can hold chips ours does not (a folder edit that
     # went another way); one from the pack takes the place of the last chip of the shuffled folder
     pack = sorted(pack_chips() - set(folder))
     chosen, rest = [], list(folder)
-    for i in range(5):
+    for i in range(N):
         best = None
         for cand in sorted(set(rest)) + pack:
             r = list(rest)
@@ -1769,10 +1776,10 @@ def try_hand(D, deep=None):
         else: rest = rest[:-1]; pack.remove(best[1])
     order = chosen + rest
     E = render(order)
-    e1 = [err(E, i) for i in range(5)]
-    log(f'  hand at {f} (custom screen {c}): ' + ' '.join(f'{x:04x}' for x in folder[:5]) + ' -> ' + ' '.join(f'{x:04x}' for x in order[:5]) +
+    e1 = [err(E, i) for i in range(N)]
+    log(f'  hand at {f} (custom screen {c}): ' + ' '.join(f'{x:04x}' for x in folder[:N]) + ' -> ' + ' '.join(f'{x:04x}' for x in order[:N]) +
         f'; slot error {sum(e0):.1f} -> {sum(e1):.1f}')
-    if order[:5] == folder[:5] or sum(e1) >= sum(e0): return None
+    if order[:N] == folder[:N] or sum(e1) >= sum(e0): return None
     ck = ck_file(w); until = D + MARGIN
     poke = [f, folder_spec(order, pad)]
     # (not the same hand again: run10u looped 1307979 RNG write -> loss 1308978 -> this hand at 1307982, which
