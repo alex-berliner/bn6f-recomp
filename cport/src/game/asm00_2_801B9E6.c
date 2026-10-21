@@ -4121,7 +4121,7 @@ static u32 side_select_word(void) {
 static void select_player_side(u32 *out_base, u32 *out_pal_base) {
     u32 side = side_select_word();
     if (side == 1) {
-        *out_base = (u32)A_byte_203EFA0;
+        *out_base = (u32)A_eBattleState_PanelDamage;
         *out_pal_base = 0x6017280;
     } else {
         *out_base = (u32)A_byte_203EDA0;

@@ -2299,7 +2299,7 @@ static void setup_battle_scene_tiles(u32 battle_state) {
 
     /* blit the 30×20 tile-grid into VRAM using the selected tile-ID array */
     u32 tile_ids = ((variant_flag & 1) != 0)
-                 ? A_unk_2028690
+                 ? A_eBattleSceneTileIds
                  : A_unk_201C200;
     copy_bg_tiles(0, 0, 1, tile_ids, 0x1E, 0x14);
 }
@@ -6140,7 +6140,7 @@ Next sub_812B430(void) {
      * slot 0x21. */
     R0 = A_eTextScript201BA20;
     R1 = 0x21;
-    R2 = A_unk_2017C80;
+    R2 = A_eTextGfxRenderBuffer;
     R3 = 0x06007480;
     R4 = 0xA;
     R5 = 1;

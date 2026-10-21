@@ -2351,11 +2351,11 @@ Next battle_countAliveNextEntries_800AA92(void) {
 
 /* ── getNextEntryAddress_800AAAE ── */
 /* getNextEntryAddress_800AAAE(r0 = element index):
- * Computes the address of entry `r0` in the array at unk_2038170, whose
+ * Computes the address of entry `r0` in the array at eNextTable, whose
  * elements are 0x20 bytes each. Returns the address in r0 and the array
  * base in r1 (callers use r1 as the read/write base register). */
 Next getNextEntryAddress_800AAAE(void) {
-    u32 base = A_unk_2038170;
+    u32 base = A_eNextTable;
 
     R0 = base + R0 * 0x20;
     R1 = base;
@@ -3009,7 +3009,7 @@ static void copy_battle_structs(void) {
     ST32(A_ePrimaryRngSeed, LD32(A_byte_203F4A4));
 
     /* Copy four auxiliary 0x28-byte data arrays */
-    copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F510, A_byte_203EB00, 0x28);
+    copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_sBattleNaviAuxData, A_byte_203EB00, 0x28);
     copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F610, A_byte_203EB28, 0x28);
     copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F538, A_unk_2036790,  0x28);
     copy_words_battle_copyStructsIncludingBattleStats_800b2d8(A_byte_203F638, A_unk_20367B8,  0x28);

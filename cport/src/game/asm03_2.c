@@ -1658,7 +1658,7 @@ Next copyData_804747C(void) {
 /* ── chatbox_uploadWindowTileGfx_804754C ── */
 /* chatbox_uploadWindowTileGfx_804754C: upload the current text window's tile graphics.
  *
- * Copies 0x800 bytes of tile data from the staging buffer at byte_2017204
+ * Copies 0x800 bytes of tile data from the staging buffer at chatboxWindowTileStaging
  * into the second half of the BG tile block (offset 0x800 of the toolkit's
  * iBGTileIdBlocks allocation), then renders the text object passed in r5
  * with the standard text-gfx renderer into the text layer (VRAM 0x6002000).
@@ -1671,7 +1671,7 @@ Next chatbox_uploadWindowTileGfx_804754C(void) {
     u32 textObject = R5;
 
     /* Copy tile gfx from the staging buffer into BG tile block #1. */
-    R0 = A_byte_2017204;
+    R0 = A_chatboxWindowTileStaging;
     R1 = LD32(R10 + oToolkit_iBGTileIdBlocks_Ptr) + 0x800;
     R2 = 0x800;
     GUEST_CALL(CopyByEightWords); /* (src, dest, size); preserves r3-r7, r10 */
@@ -4416,11 +4416,11 @@ static inline call_battle_render_setBlurAndAnimUpdate_804C478_result call_battle
  * overwritten by the GFX queuer's results. */
 static call_battle_render_setBlurAndAnimUpdate_804C478_result setup_battle_blur(u32 toolkit)
 {
-    /* Queue an 8-word-aligned tile transfer: the effect's GFX at byte_86A1480
+    /* Queue an 8-word-aligned tile transfer: the effect's GFX at BlurEffectGFX
      * is sent to VRAM at 0x600CB00, 0x4C0 bytes. The queuer leaves the affected
      * object pointer in r5 (and r7) behind, which the rest of the code uses. */
     call_QueueEightWordAlignedGFXTransfer_result gfx =
-        call_QueueEightWordAlignedGFXTransfer(A_byte_86A1480, 0x600CB00, 0x4C0);
+        call_QueueEightWordAlignedGFXTransfer(A_BlurEffectGFX, 0x600CB00, 0x4C0);
 
     /* Reset the render info fade counter to its initial value. */
     u32 renderInfo = LD32(toolkit + oToolkit_RenderInfoPtr);

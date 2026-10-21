@@ -1,0 +1,49 @@
+name: chatboxWindowTileStaging
+address: '0x02017204'
+kind: data
+status: probable
+summary: 'Proposed name: chatboxWindowTileStaging. EWRAM staging buffer holding the chatbox window tilemap
+  before it is copied into the BG tile block for the text layer. (u8 (tilemap staging buffer, ~2048 bytes))'
+details: Lives in EWRAM at 0x02017204, sized to match a 32x32 4bpp BG tilemap. chatbox_uploadWindowTileGfx_804754C
+  passes it as the source of a CopyByEightWords call whose destination is iBGTileIdBlocks + 0x800 (the
+  BG tile block for the text/window layer) and whose size is 0x800 bytes, so the function DMA-equivalents
+  the entire window tilemap from this buffer into VRAM. No other function is documented as writing it
+  in the sites provided, so its writer (presumably the chatbox/text composer) is not shown here. It is
+  the EWRAM counterpart used to assemble the window's tiles before upload, in the same role the IWRAM
+  iBGTileIdBlocks plays for the base BG layers.
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: bn6f/asm/asm03_2.s:2743 chatbox_uploadWindowTileGfx_804754C passes byte_2017204 as r0 (src)
+    to CopyByEightWords with dest = iBGTileIdBlocks + 0x800 and size = 0x800 — so it is the source tilemap
+    of exactly one full BG tile block.; bn6f/asm/asm03_2.s:2763 off_8047578 is a 1-word table whose only
+    entry is byte_2017204, confirming it is referenced as a single staging pointer rather than indexed
+    per-row.; Function summary explicitly says it 'Uploads the current text window's tile graphics from
+    its staging buffer into the BG tile block', matching the source-of-copy role.; 0x800-byte copy size
+    is exactly one 32x32 4bpp tilemap (or two 4bpp 32x16 tile blocks), consistent with the label's 2044-byte
+    EWRAM footprint plus a small header/pad.; No other reference site is known, so the producer (the chatbox
+    text composer that fills this buffer) is not in evidence.
+  refs:
+  - bn6f/ewram.s:1953
+  - bn6f/asm/asm03_2.s:2743
+  - bn6f/asm/asm03_2.s:2763
+  reproduce: grep -n -w byte_2017204 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-223307'
+open_questions:
+- Which function actually writes/fills this staging buffer before chatbox_uploadWindowTileGfx reads it?
+- Does the 2044-byte size include a 4-byte header above the 0x800-byte tilemap, or is the extra just alignment/padding?
+- Is this buffer reused per chatbox panel, or kept as a single global window-tile staging area?
+sources:
+- wf investigate-data investigate-data-20261020-223307
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c527435
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename byte_2017204 -> chatboxWindowTileStaging
+  where: bn6f e218acab
+  tool: tools/rename_symbol.py
+previous_names:
+- byte_2017204

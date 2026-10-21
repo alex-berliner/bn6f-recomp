@@ -4236,9 +4236,9 @@ Next packBuildChipLibraryTable_8125A6C(void) {
 /* ── library_rebuildCollectedChipList_8125B3C ── */
 /* Chip collection list at dword_201F420: one u32 entry per library slot,
  * halfword chip id at +0, "how obtained" byte at +2, 0x578 bytes total
- * (list end = unk_201F998). Standard chip ids run 1..0x13F. */
+ * (list end = eCollectedChipListBuffer). Standard chip ids run 1..0x13F. */
 #define CHIP_LIST         A_dword_201F420
-#define CHIP_LIST_END     A_unk_201F998
+#define CHIP_LIST_END     A_eCollectedChipListBuffer
 #define CHIP_LIST_BYTES   0x578
 #define STANDARD_CHIP_MAX 0x13F
 

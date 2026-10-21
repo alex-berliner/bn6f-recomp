@@ -616,7 +616,7 @@ static void saveMenu_render(u32 menu_ctx) {
     ST32(status + 8, state);
 
     /* Footer lines */
-    render_text(script, 6, A_unk_2019E00, 0x6005200, 7, 1, font, 0);
+    render_text(script, 6, A_savemenuFilenameBuffer, 0x6005200, 7, 1, font, 0);
     render_text(script, 5, A_unk_201A200, 0x6005400, 5, 1, font, 0);
 }
 
@@ -4705,7 +4705,7 @@ static void load_navi_customizer_gfx(u32 base) {
     call_CopyByEightWords_battle_loadNaviCustomizerGfx(A_unk_201CF80, A_unk_30019E0, 0x100);
 
     /* Panel body: full 0x1E x 0x14 tile block. */
-    call_CopyBackgroundTiles_battle_loadNaviCustomizerGfx(0, 0, 1, A_byte_201BE80, 0x1E, 0x14);
+    call_CopyBackgroundTiles_battle_loadNaviCustomizerGfx(0, 0, 1, A_eNaviCustomizerPanelTileIds, 0x1E, 0x14);
 
     /* Per-Navi panel: the tile source comes from a 3-entry jump table indexed
      * by the Navi index stored at offset 0xF of the customizer object. */

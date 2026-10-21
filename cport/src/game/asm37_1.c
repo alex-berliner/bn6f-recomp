@@ -675,7 +675,7 @@ static inline call_QueueEightWordAlignedGFXTransfer_result call_QueueEightWordAl
  * caller of this function expects in its own r4/r7, so we pass them through.
  * Returns { r4, r5, r6, r7 } as left by QueueEightWordAlignedGFXTransfer. */
 static call_QueueEightWordAlignedGFXTransfer_result queue_beast_sp_gfx(void) {
-    return call_QueueEightWordAlignedGFXTransfer(A_dword_8619730, 0x6006C00, 0x420);
+    return call_QueueEightWordAlignedGFXTransfer(A_beastSpGfxTiles, 0x6006C00, 0x420);
 }
 
 /* init_queueBeastSpGfx() -> r4 r7 (from QueueEightWordAlignedGFXTransfer) */

@@ -3265,8 +3265,8 @@ static void beastout_loadSelectionScreenChipUseGfx_typed(void) {
     /* Stage the chip-use tile row that gets transferred below. */
     call_loadOneSpriteTileRow_80287D2();
 
-    /* Queue the staged tile row: src byte_8723034 -> VRAM 0x6009560, 0x540 bytes. */
-    call_QueueEightWordAlignedGFXTransfer_beastout_loadSelectionScreenChipUseGfx(A_byte_8723034, 0x6009560, 0x540);
+    /* Queue the staged tile row: src beastoutSelectionScreenChipUseGfx -> VRAM 0x6009560, 0x540 bytes. */
+    call_QueueEightWordAlignedGFXTransfer_beastout_loadSelectionScreenChipUseGfx(A_beastoutSelectionScreenChipUseGfx, 0x6009560, 0x540);
 
     /* Look up the selected chip in the active-chip list (kind 0xB) and read
      * its index from offset 6; each icon sheet is 0x20 bytes. */

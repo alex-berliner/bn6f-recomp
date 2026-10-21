@@ -2,29 +2,28 @@ name: rfu_connectionStateUpdate
 address: '0x081475D4'
 kind: function
 status: probable
-summary: 'Per-frame update for the RFU wireless state machine: spin-waits on a busy flag, optionally issues
-  rfu_REQ_disconnect, then dispatches on the 16-bit state at eS200BC50+8 across cases 1/3/4/9/0xB/0x22/0x34/0x40
-  to drive rfu_clearAllSlot, sub_8144EF8, sub_8145120, sub_813D934, etc.'
-interface: (r0 = context/handle passed through to sub_8144EF8, saved in r5) -> r0 = none; updates state
-  word [eS200BC50+8], flags byte_2010368/byte_2010340/byte_2010284
-details: 'First it spin-waits on byte_2010368 until it reads non-1, samples Timer2Counter_Reload into
-  sub_81453F0, and if byte_2010340 is set issues rfu_REQ_disconnect + rfu_waitREQComplete and clears the
-  flag. If the work struct at dword_2010CC0 has byte [0]==1 it sets byte_2010368=1 and calls sub_8144DB0(1).
-  It then runs sub_8147834/sub_8147A84 and switches on the 16-bit state at eS200BC50+8 (values 1,3,4,9,0xB,0x22,0x34,0x40
-  are handled; others fall through): case 3 runs sub_8144EF8(1,0,0x78,r5) and on failure sets state 4
-  and clears byte_2010284; case 4 compares byte_2010280 against the struct''s byte [2] and calls sub_813D934(0xB
-  or 0xC); case 0xB calls eStruct200FE00_setUnk04To15h then sets state 0xC; case 0x34 clears all RFU slots
-  via rfu_clearAllSlot plus sub_813D760; cases 9 and 0x40 call sub_8145120(0/1) and set state 0xA; case
-  1 sets state 2 after sub_8144E70(unk_2010350). Case 0x22 checks byte_201028C bit 0x80 and byte_200AF85,
-  calling sub_813D98C/sub_813D978 or sub_813D8D0 then sub_813D934(0).'
+summary: 'Per-frame update for the RFU wireless state machine: spin-waits on a busy flag, optionally issues rfu_REQ_disconnect,
+  then dispatches on the 16-bit state at eS200BC50+8 across cases 1/3/4/9/0xB/0x22/0x34/0x40 to drive rfu_clearAllSlot,
+  sub_8144EF8, sub_8145120, sub_813D934, etc.'
+interface: (r0 = context/handle passed through to sub_8144EF8, saved in r5) -> r0 = none; updates state word [eS200BC50+8],
+  flags byte_2010368/byte_2010340/byte_2010284
+details: 'First it spin-waits on byte_2010368 until it reads non-1, samples Timer2Counter_Reload into sub_81453F0,
+  and if byte_2010340 is set issues rfu_REQ_disconnect + rfu_waitREQComplete and clears the flag. If the work struct
+  at dword_2010CC0 has byte [0]==1 it sets byte_2010368=1 and calls sub_8144DB0(1). It then runs sub_8147834/sub_8147A84
+  and switches on the 16-bit state at eS200BC50+8 (values 1,3,4,9,0xB,0x22,0x34,0x40 are handled; others fall through):
+  case 3 runs sub_8144EF8(1,0,0x78,r5) and on failure sets state 4 and clears byte_2010284; case 4 compares byte_2010280
+  against the struct''s byte [2] and calls sub_813D934(0xB or 0xC); case 0xB calls eStruct200FE00_setUnk04To15h
+  then sets state 0xC; case 0x34 clears all RFU slots via rfu_clearAllSlot plus sub_813D760; cases 9 and 0x40 call
+  sub_8145120(0/1) and set state 0xA; case 1 sets state 2 after sub_8144E70(unk_2010350). Case 0x22 checks byte_201028C
+  bit 0x80 and byte_200AF85, calling sub_813D98C/sub_813D978 or sub_813D8D0 then sub_813D934(0).'
 evidence:
 - method: assembly-reading
   date: '2026-10-18'
   detail: ldrb on byte_2010368 with busy-wait loop loc_81475DA then disconnect via rfu_REQ_disconnect/rfu_waitREQComplete;
-    switch on ldrh [eS200BC50,#8] with 64-entry jpt_814762C and each case ending by strh of a new state
-    at [eS200BC50,#8]; case 0x34 calls rfu_clearAllSlot (known callee) then sub_813D760; case 3 calls
-    sub_8144EF8(1,0,0x78,r5) with r5 = function argument, then stores state 4; case 4 branches on byte_2010280
-    vs [dword_2010CC0]+2 to send 0xB/0xC via sub_813D934
+    switch on ldrh [eS200BC50,#8] with 64-entry jpt_814762C and each case ending by strh of a new state at [eS200BC50,#8];
+    case 0x34 calls rfu_clearAllSlot (known callee) then sub_813D760; case 3 calls sub_8144EF8(1,0,0x78,r5) with
+    r5 = function argument, then stores state 4; case 4 branches on byte_2010280 vs [dword_2010CC0]+2 to send 0xB/0xC
+    via sub_813D934
   refs:
   - bn6f/asm/libs.s:7379
   - 0x0812B574 sub_812B574
@@ -32,27 +31,25 @@ evidence:
   - 0x08144EEC eStruct200FE00_setUnk04To15h
   - 0x0814A4CC rfu_REQ_disconnect
   reproduce: python3 tools/asmcat.py 0x081475D4
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The name and summary match the code well: spin-waits on byte_2010368 (loc_81475DA), disconnects
-    via rfu_REQ_disconnect+rfu_waitREQComplete when byte_2010340 set (loc_81475EC), switches on eS200BC50+8,
-    and the proposal''s cases line up with the jump table (e.g., jpt_814762C entries 1→loc_8147748, 3→loc_814775C,
-    4→loc_8147784, 0xB→loc_8147804, 0x22→loc_81477B4, 0x34→loc_8147814, 0x40→loc_814781E). Minor detail:
-    loc_8147820 calls sub_8145120 with the loaded r0 (mov r0,#1 at loc_81477B0 / mov r0,#0 at loc_814781E),
-    which is fine; loc_814775C falls through to def_814762C on non-zero return (not just ''failure sets
-    state 4''). Name and prefix ''rfu'' are appropriate.; run wf investigate investigate-20261018-230610;
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The name
+    and summary match the code well: spin-waits on byte_2010368 (loc_81475DA), disconnects via rfu_REQ_disconnect+rfu_waitREQComplete
+    when byte_2010340 set (loc_81475EC), switches on eS200BC50+8, and the proposal''s cases line up with the jump
+    table (e.g., jpt_814762C entries 1→loc_8147748, 3→loc_814775C, 4→loc_8147784, 0xB→loc_8147804, 0x22→loc_81477B4,
+    0x34→loc_8147814, 0x40→loc_814781E). Minor detail: loc_8147820 calls sub_8145120 with the loaded r0 (mov r0,#1
+    at loc_81477B0 / mov r0,#0 at loc_814781E), which is fine; loc_814775C falls through to def_814762C on non-zero
+    return (not just ''failure sets state 4''). Name and prefix ''rfu'' are appropriate.; run wf investigate investigate-20261018-230610;
     proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
     reconcile)'
 open_questions:
 - exact game screen/flow this state machine belongs to (caller sub_812B574 is unknown)
 - meaning of sub_813D934's argument codes (0, 0xB, 0xC) and of sub_8144EF8's 0x78 parameter
 - full layout of the dword_2010CC0 work struct and the eS200BC50 state-word value table
-- 'The name and summary match the code well: spin-waits on byte_2010368 (loc_81475DA), disconnects via
-  rfu_REQ_disconnect+rfu_waitREQComplete when byte_2010340 set (loc_81475EC), switches on eS200BC50+8,
-  and the proposal''s cases line up with the jump table (e.g., jpt_814762C entries 1→loc_8147748, 3→loc_814775C,
-  4→loc_8147784, 0xB→loc_8147804, 0x22→loc_81477B4, 0x34→loc_8147814, 0x40→loc_814781E). Minor detail:
-  loc_8147820 calls sub_8145120 with the loaded r0 (mov r0,#1 at loc_81477B0 / mov r0,#0 at loc_814781E),
-  which is fine; loc_814775C falls through to def_814762C on non-zero return (not just ''failure sets
-  state 4''). Name and prefix ''rfu'' are appropriate.'
+- 'The name and summary match the code well: spin-waits on byte_2010368 (loc_81475DA), disconnects via rfu_REQ_disconnect+rfu_waitREQComplete
+  when byte_2010340 set (loc_81475EC), switches on eS200BC50+8, and the proposal''s cases line up with the jump
+  table (e.g., jpt_814762C entries 1→loc_8147748, 3→loc_814775C, 4→loc_8147784, 0xB→loc_8147804, 0x22→loc_81477B4,
+  0x34→loc_8147814, 0x40→loc_814781E). Minor detail: loc_8147820 calls sub_8145120 with the loaded r0 (mov r0,#1
+  at loc_81477B0 / mov r0,#0 at loc_814781E), which is fine; loc_814775C falls through to def_814762C on non-zero
+  return (not just ''failure sets state 4''). Name and prefix ''rfu'' are appropriate.'
 sources:
 - wf investigate investigate-20261018-230610
 changes:
@@ -64,5 +61,9 @@ changes:
   what: rename sub_81475D4 -> rfu_connectionStateUpdate
   where: bn6f cfc4da77
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c527435
+  tool: tools/symdoc.py
 previous_names:
 - sub_81475D4

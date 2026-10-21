@@ -1,0 +1,46 @@
+name: ePaletteBuffer
+address: '0x02008170'
+kind: data
+status: probable
+summary: 'Proposed name: ePaletteBuffer. A 64-byte (0x3C halfwords = 0x78 bytes destination of a palette
+  copy) EWRAM buffer used as the destination for a copied palette. (u16)'
+details: The label is referenced as the destination pointer of a halfword copy (CopyHalfwords with halfwordCount=0x3C,
+  i.e. 60 halfwords = 120 bytes — larger than the 64 bytes up to the next label, suggesting the next label
+  lies further than 64 bytes or the count is in a different unit). loadIndexedPaletteToBuffer_802E240
+  selects one entry from a pointer table off_802E25C and copies 0x3C halfwords into unk_2008170. The second
+  site is a .word entry of an unrelated table (off_802E280) that just happens to have unk_2008170 listed
+  as one of its words, indicating it is a known address rather than a field of that table. As a palette
+  destination buffer it is consistent with the project's EWRAM struct convention for buffers that live
+  for the duration of a screen/effect.
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: asm03_0.s:17827 loadIndexedPaletteToBuffer_802E240 reads it as the dest pointer for a 0x3C halfword
+    CopyHalfwords call; asm03_0.s:17853 sub_802E252 — only listed because unk_2008170 is a .word in the
+    off_802E280 table; not a real use of the buffer's contents; The src side of the copy comes from a
+    pointer table off_802E25C, selected by an index; Next EWRAM label is 64 bytes after, matching a small
+    palette-sized scratch buffer
+  refs:
+  - bn6f/ewram.s:556
+  - bn6f/asm/asm03_0.s:17827
+  - bn6f/asm/asm03_0.s:17853
+  reproduce: grep -n -w unk_2008170 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 2; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-223307'
+open_questions:
+- Which function writes the palette data consumed by this buffer (the caller chain)
+- Whether the 64-byte gap to the next label is the full buffer or the buffer is larger
+- Whether the buffer is reset/reused across frames or allocated per-palette-load
+sources:
+- wf investigate-data investigate-data-20261020-223307
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c527435
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename unk_2008170 -> ePaletteBuffer
+  where: bn6f e218acab
+  tool: tools/rename_symbol.py
+previous_names:
+- unk_2008170

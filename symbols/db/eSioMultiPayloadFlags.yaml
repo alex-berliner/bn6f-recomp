@@ -1,0 +1,45 @@
+name: eSioMultiPayloadFlags
+address: '0x0200F489'
+kind: data
+status: probable
+summary: 'Proposed name: eSioMultiPayloadFlags. A single-byte flag scratch used by sio_processMultiPayloads
+  when broadcasting per-player SIO payloads (cleared or OR''d across a 30-slot window). (u8)'
+details: byte_200F489 is a one-byte variable in EWRAM, referenced only by sio_processMultiPayloads. It
+  sits in a small table of SIO state pointers (off_81449A4..off_81449AC) that the function loads via a
+  literal pool. The function reads it with ldrb [r5] each loop iteration and passes the value (together
+  with the current player index) to copy_storeHalfwordRecord. The function's summary states mode 0 clears/flags
+  this state while non-zero modes OR/sum per-slot values across a 30-entry frame window, indicating this
+  byte is a per-frame flag accumulator for the multi-player SIO payload processing.
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: bn6f/asm/libs.s:1209 sio_processMultiPayloads reads byte_200F489 (ldrb [r5]) and feeds it to
+    copy_storeHalfwordRecord with the current player index; bn6f/asm/libs.s:1266 byte_200F489 appears
+    as a .word entry in off_81449A4, a small pointer table of SIO state used by sio_processMultiPayloads;
+    The function's description states mode 0 clears/flags this state, so the byte holds a SIO multi-player
+    payload flag
+  refs:
+  - bn6f/ewram.s:1329
+  - bn6f/asm/libs.s:1209
+  - bn6f/asm/libs.s:1266
+  reproduce: grep -n -w byte_200F489 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-223307'
+open_questions:
+- Exact semantics of the OR/sum vs clear behavior in mode 0 vs non-zero modes are not fully visible from
+  the two sites shown
+- Whether the byte is a global flag or per-slot flag is unclear since the loop reads it outside the inner
+  per-slot accumulation
+sources:
+- wf investigate-data investigate-data-20261020-223307
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 9c527435
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename byte_200F489 -> eSioMultiPayloadFlags
+  where: bn6f e218acab
+  tool: tools/rename_symbol.py
+previous_names:
+- byte_200F489

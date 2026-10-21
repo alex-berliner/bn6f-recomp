@@ -1555,7 +1555,7 @@ static u32 setup_chip_soul_visual(u32 toolkit) {
 
     if (packed_id == 0xFFFF) {
         image_src = A_dword_8733E74;
-        extra_src = A_dword_87343B4;
+        extra_src = A_chipPreviewTilesFiveRows;
     } else {
         u32 type, sub_id;
         decode_packed_id(packed_id, &type, &sub_id);
@@ -1576,7 +1576,7 @@ static u32 setup_chip_soul_visual(u32 toolkit) {
                 extra_src = A_dword_87338F4;
             } else {
                 image_src = A_dword_8733914;
-                extra_src = A_dword_8733E54;
+                extra_src = A_ChipSoulPreviewTiles;
             }
             break;
         case 3: {
@@ -1591,7 +1591,7 @@ static u32 setup_chip_soul_visual(u32 toolkit) {
         }
         default:
             image_src = A_dword_8733E74;
-            extra_src = A_dword_87343B4;
+            extra_src = A_chipPreviewTilesFiveRows;
             break;
         }
     }
@@ -3473,13 +3473,13 @@ Next battle_DecrementAllianceTimer_802E1D8(void) {
 
 /* ── loadIndexedPaletteToBuffer_802E240 ── */
 /* loadIndexedPaletteToBuffer_802E240(r0 = palette index):
- * Copies one 60-halfword palette (0x3C halfwords) into the buffer at unk_2008170.
+ * Copies one 60-halfword palette (0x3C halfwords) into the buffer at ePaletteBuffer.
  * The source palette is picked from the word-sized table at off_802E260 by index. */
 Next loadIndexedPaletteToBuffer_802E240(void) {
     u32 index = R0;
 
     u32 src = LD32(A_off_802E260 + index * 4);
-    u32 dest = A_unk_2008170;
+    u32 dest = A_ePaletteBuffer;
 
     R0 = src;
     R1 = dest;

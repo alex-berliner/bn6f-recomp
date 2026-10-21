@@ -1255,7 +1255,7 @@ static struct mapname_hud_regs render_map_name_hud_gfx(u32 toolkit, u32 r4,
                                      0);
 
     /* Repack the rendered tiles and queue them to VRAM at 0x06015000. */
-    call_sprite_repackAndQueueTiles_811F5DC(A_unk_200BEA0, A_byte_200CC20,
+    call_sprite_repackAndQueueTiles_811F5DC(A_unk_200BEA0, A_ow_RenderedMapNameGfx,
                                             0x6015000, 9);
 
     out.r4 = r4;
@@ -1351,9 +1351,9 @@ Next drawMapNamesScreen_811F050(void) {
     GUEST_CALL(renderTextGfx_8045F8C);
 
     /* Upload the rendered text from mapNamesTextWorkBuffer to the VRAM tile blocks
-     * at 0x6015400, with byte_200D220 as the tilemap destination info. */
+     * at 0x6015400, with eMapNamesScreenTilemap as the tilemap destination info. */
     R0 = A_mapNamesTextWorkBuffer;
-    R1 = A_byte_200D220;
+    R1 = A_eMapNamesScreenTilemap;
     R2 = 0x6015400;
     R3 = 6;
     GUEST_CALL(sprite_repackAndQueueTiles_811F5DC);
@@ -1400,7 +1400,7 @@ Next drawCurrentMapName_811F08C(void) {
     /* sprite_repackAndQueueTiles_811F5DC(source, sourceMap, vramDest, tileCount):
      * upload the rendered name tiles to VRAM. */
     R0 = A_byte_200C620;
-    R1 = A_byte_200C920;
+    R1 = A_eMapNameTextGfxBuffer;
     R2 = 0x6015780;
     R3 = 0xC;
     GUEST_CALL(sprite_repackAndQueueTiles_811F5DC);
