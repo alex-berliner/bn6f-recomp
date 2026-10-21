@@ -1432,11 +1432,11 @@ Next battleObject_updateBeastOutPwrAtk_80A5828(void) {
 
 /* ── owPlayer_setupPrologue_80A58E0 ── */
 /* generated wrappers of the game functions it calls (tools/abi/gen.py) */
-/* register form: generated wrapper: sub_80A5954 has no typed C interface yet */
+/* register form: generated wrapper: owPlayer_copyPositionOffset has no typed C interface yet */
 static inline void call_sub_80A5954(u32 r5, u32 r6) {
     R5 = r5;
     R6 = r6;
-    GUEST_CALL(sub_80A5954);
+    GUEST_CALL(owPlayer_copyPositionOffset);
 }
 
 typedef struct { u32 r4, r5; } call_sub_80A596C_result;
@@ -1462,7 +1462,7 @@ static inline call_sub_80A59B8_result call_sub_80A59B8(u32 r5) {
  * It saves r4-r7 and its return address on the stack (the shared continuation
  * at loc_80A58FA pops that same frame when it finishes), then runs three
  * initialisation steps:
- *   1. sub_80A5954 with the incoming r5/r6,
+ *   1. owPlayer_copyPositionOffset with the incoming r5/r6,
  *   2. owPlayer_setDirectionAnimThunk with its counter argument r4 cleared to 0,
  *   3. sub_80A59B8 with the r5 value step 2 produced.
  * Finally it copies the step 3 result into r2 and branches into the shared

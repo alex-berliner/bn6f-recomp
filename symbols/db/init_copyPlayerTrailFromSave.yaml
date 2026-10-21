@@ -1,0 +1,52 @@
+name: init_copyPlayerTrailFromSave
+address: '0x08087238'
+kind: function
+status: probable
+summary: Copies a saved player trail record from off_8086D1C into the active trail struct and sets event
+  flag 0x5E5.
+interface: (r5 = ptr to player trail struct) -> void; r5+0x5..r5+0xd filled from src[1..9], r5+0x10..
+  filled with 0x21 words from src+0x5C
+details: Loads the base pointer through off_8086D18 (taking +4 to reach the trail record at RAM 0x2000EC0).
+  Copies 9 single bytes (offsets 1..9 of the source) into the destination at offsets 5..13, matching the
+  layout hinted at by the caller's pre-set bytes (0xa, 0xf, 1). Then copies 33 words from source+0x5C
+  to dest+0x10. After copying, it calls reqBBS_setFlag_e17b0f7_8140A00, which sets event flag 0x5E5 (typically
+  the 'trail data loaded/copied' marker). The caller only invokes this branch when EVENT_5F2 is set and
+  EVENT_5E4 is clear and a sub_8086FA4 check passes and EVENT_5FF is clear, suggesting it is one path
+  of a state machine for trail restoration on entering the BeastSp area.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: sub_8086DF8 at 0x08086E50 calls it right after init_playerTrailCoords and other trail-init calls,
+    with r5 already pointing at a trail struct it pre-filled with 0xa/0xf/1; Caller guards the call with
+    EVENT_5F2 set, EVENT_5E4 clear, EVENT_5FF clear and sub_8086FA4 nonzero — typical conditional trail-restore
+    branch; Assembly copies bytes [r3+1..9] to [r5+5..13] and 0x21 words from [r3+0x5C] to [r5+0x10] of
+    the trail record at RAM 0x2000EC0; Trailing call to reqBBS_setFlag_e17b0f7_8140A00 sets event flag
+    0x5E5, marking the trail as freshly copied
+  refs:
+  - bn6f/asm/dat22.s:51
+  - 0x08086DF8 sub_8086DF8
+  - 0x08140A00 reqBBS_setFlag_e17b0f7_8140A00
+  reproduce: python3 tools/asmcat.py 0x08087238
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-005336'
+coverage:
+- beastsp
+open_questions:
+- Is the source at off_8086D1C really a saved prior-trail record, or an unrelated common struct being
+  repurposed? A second caller orcallee walking the same off_8086D1C layout would nail this down.
+- What exactly do the copied byte slots (offsets 5..13 of the trail struct) represent (frame counter,
+  animation phase, position slots)? Without a known symbol on the trail struct the meaning is inferred
+  from the caller's pre-fills only.
+sources:
+- wf investigate investigate-20261021-005336
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f c146190d
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_8087238 -> init_copyPlayerTrailFromSave
+  where: bn6f 918ff5ca
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8087238
