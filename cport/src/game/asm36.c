@@ -831,8 +831,8 @@ static void decompose_tile_block(u32 tile_block_header) {
         ST16(buf + left,  base); left  += 2; base++;
         ST16(buf + right, base); right += 2; base++;
     }
-    /* Block 1 trailer: two pairs from unk_201C500 */
-    extra = A_unk_201C500;
+    /* Block 1 trailer: two pairs from BandedTilemapBufferA */
+    extra = A_BandedTilemapBufferA;
     ST16(buf + left,  LD16(extra + 0)); left  += 2;
     ST16(buf + right, LD16(extra + 4)); right += 2;
     ST16(buf + left,  LD16(extra + 2)); left  += 2;

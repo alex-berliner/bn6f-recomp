@@ -5899,13 +5899,13 @@ Next copyOamEntry_80AA004(void) {
 /* ── palette_copyTableRow_80AA104 ── */
 /* palette_copyTableRow_80AA104(r0 = row selector, 0..2):
  * Copies one 8-byte entry (a palette row: three colors plus terminator)
- * from the table byte_80AA11C into the buffer byte_20018B0, then
+ * from the table byte_80AA11C into the buffer paletteCopyWorkBuffer, then
  * returns 0 with the flags set by "mov r0, #0" (N/Z clear, C/V unchanged).
  * r4-r7 are untouched by this routine and by CopyBytes. */
 Next palette_copyTableRow_80AA104(void) {
     /* Each entry in byte_80AA11C is 8 bytes: R0 selects which one. */
     R0 = A_byte_80AA11C + (R0 << 3);
-    R1 = A_byte_20018B0;
+    R1 = A_paletteCopyWorkBuffer;
     R2 = 8;
     GUEST_CALL(CopyBytes); /* CopyBytes(src = R0, dest = R1, byteCount = R2) */
 

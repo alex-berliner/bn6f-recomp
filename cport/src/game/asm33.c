@@ -2099,7 +2099,7 @@ Next sub_812453C(void) {
 /* sub_8124588(r5 = background state struct):
  * Refills a 15x12-tile region of tile block 2 (a 32x32-tile background block).
  * If the flag byte at struct+0xE is nonzero, the tile ids come from the table
- * at unk_201EBDC (via CopyBackgroundTiles); otherwise call_sub_3005EBA is used,
+ * at submenuSubchipTileIds (via CopyBackgroundTiles); otherwise call_sub_3005EBA is used,
  * which picks the tile source itself (tile ids = 0). */
 Next sub_8124588(void) {
     u32 state = R5;
@@ -2110,7 +2110,7 @@ Next sub_8124588(void) {
         R0 = 0xF;              /* j */
         R1 = 0xC;              /* i */
         R2 = 2;                /* tile block 32x32 */
-        R3 = A_unk_201EBDC;    /* tile ids */
+        R3 = A_submenuSubchipTileIds;    /* tile ids */
         R4 = 0xB;              /* j size */
         R5 = 6;                /* i size */
         GUEST_CALL(CopyBackgroundTiles);
@@ -2272,7 +2272,7 @@ static void update_background_strips(u32 toolkit_r10) {
 
     /* Strip at i=5: real tiles while event flag 0x1709 is set. */
     if (test_event_flag_from_immediate(EVENT_1709))
-        copy_background_tiles_sub_812475C(0x15, 5, 2, (const u16 *)A_unk_201ECAC, 8, 2);
+        copy_background_tiles_sub_812475C(0x15, 5, 2, (const u16 *)A_middleStripTilemap, 8, 2);
     else
         clear_background_tiles(0x15, 5, 2, 0, 8, 2);
 
@@ -3362,7 +3362,7 @@ Next chatbox_flagResolve_8125254(void) {
 }
 
 /* ── initRefs_buildAndDecompressTable_8125280 ── */
-/* initRefs_buildAndDecompressTable_8125280: assemble the "init references" table in RAM at unk_2029000 from
+/* initRefs_buildAndDecompressTable_8125280: assemble the "init references" table in RAM at iBackgroundTilemapCopyBuffer from
  * the ROM pointer table at off_8125310, then decompress-and-copy the two data
  * blobs that follow it.
  *
@@ -3372,7 +3372,7 @@ Next chatbox_flagResolve_8125254(void) {
  * A final 0 word terminates the assembled table. r4-r7 are preserved. */
 Next initRefs_buildAndDecompressTable_8125280(void) {
     u32 src = A_off_8125310;  /* init-ref entries in ROM */
-    u32 dst = A_unk_2029000;  /* assembled table in RAM */
+    u32 dst = A_iBackgroundTilemapCopyBuffer;  /* assembled table in RAM */
 
     for (u32 entry = 0; entry < 0x50 / 16; entry++) {
         R0 = LD32(src);
@@ -3392,7 +3392,7 @@ Next initRefs_buildAndDecompressTable_8125280(void) {
     ST32(dst, 0);
 
     /* decompress the assembled table, then the blob described by it */
-    R0 = A_unk_2029000;
+    R0 = A_iBackgroundTilemapCopyBuffer;
     GUEST_CALL(decompAndCopyData);
     R0 = A_byte_8125368;
     GUEST_CALL(decompAndCopyData);

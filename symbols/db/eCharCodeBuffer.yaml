@@ -1,0 +1,53 @@
+name: eCharCodeBuffer
+address: '0x02026A00'
+kind: data
+status: probable
+summary: 'Proposed name: eCharCodeBuffer. A 32-byte EWRAM buffer of halfword character codes, pre-filled
+  with 0xE5E5 and 0xE6-terminated, used by the byte-string-to-char-code converter and as the sprite-resource
+  pointer for type-0x23 GUI objects. (u16)'
+details: 'Lives in EWRAM at 0x02026A00 for 32 bytes (16 halfwords). convertByteStringToCharCodes uses
+  it as a scratch buffer: it HalfwordFills the region with 0xE5E5, writes a 0xE6 byte terminator scaled
+  by index*2, then iterates a 0-terminated byte string at [r0], multiply-adding 8 per byte, presumably
+  to look up character codes via the unk_2026A00+2 origin. sub_803C1BC writes four 0-words to its argument,
+  then reuses unk_2026A00+2 to walk pairs of halfwords comparing against 0xE6 and 0xE5, suggesting it
+  walks the same buffer. object_initType23Sprite passes unk_2026A00 as the second arg to initGuiSprite_8002770
+  along with sprite index 0x14, then sets animation, palette and coordinates to (0x20, 0x50) — consistent
+  with it being a small GUI sprite-data table (a gui_data sprite record, given the helpers involved).'
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: bn6f/asm/asm03_1_1.s:6928 convertByteStringToCharCodes HalfwordFills the region with 0xE5E5
+    then writes 0xE6 terminator at r1+r2*1; r7 = unk_2026A00+2 used to walk/expose the buffer; bn6f/asm/asm03_1_1.s:6969
+    sub_803C1BC clears four words of an object then walks unk_2026A00+2 halfwords comparing them against
+    0xE6 (terminator) and 0xE5 (space); bn6f/asm/asm03_1_1.s:6946 off_803C1A4 pins unk_2026A00 as the
+    buffer base for convertByteStringToCharCodes; bn6f/asm/asm32.s:28324 object_initType23Sprite passes
+    unk_2026A00 in r1 to initGuiSprite_8002770 with sprite index 0x14, calling it a GUI sprite data blob
+    of 0x20 bytes; bn6f/asm/asm32.s:28351 off_811B3AC pins unk_2026A00 as the per-type sprite-data pointer
+    shared by all type-0x23 objects
+  refs:
+  - bn6f/ewram.s:2355
+  - bn6f/asm/asm03_1_1.s:6928
+  - bn6f/asm/asm32.s:28324
+  - bn6f/asm/asm03_1_1.s:6946
+  - bn6f/asm/asm32.s:28351
+  reproduce: grep -n -w unk_2026A00 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-194825'
+open_questions:
+- What exactly is at unk_2026A00+2 — the same halfword buffer reused, or a different sub-region?
+- Is convertByteStringToCharCodes writing char codes into unk_2026A00 or only using it as a comparison/sentinel
+  table?
+- Why does sub_803C1BC also reuse unk_2026A00 — is the first argument the same buffer, cleared and re-filled?
+sources:
+- wf investigate-data investigate-data-20261020-194825
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 96780ce4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename unk_2026A00 -> eCharCodeBuffer
+  where: bn6f 02b38e39
+  tool: tools/rename_symbol.py
+previous_names:
+- unk_2026A00

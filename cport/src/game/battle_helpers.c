@@ -122,7 +122,7 @@ Next battle_getFlags(void) {
  * Flags c/v reflect the final address addition (ADDS). */
 Next getLocOfActiveChips_8027E1C(void) {
     u32 entry = R0 * 0xC;          /* each active-chip entry is 12 bytes */
-    u32 base  = A_unk_20365C0;
+    u32 base  = A_activeChipEntries;
 
     R1 = base;
     R0 = base + entry;

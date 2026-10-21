@@ -1,0 +1,48 @@
+name: ePackEntriesTilemap
+address: '0x0202E10C'
+kind: data
+status: probable
+summary: 'Proposed name: ePackEntriesTilemap. EWRAM u16[28] tilemap buffer for the 2-column x 14-row ''pack
+  entries'' strip filled by battle_fillChipPackEntries_81204C4 and copied into BG tile block 2 in battle_renderChipPackScreenTilemap.
+  (table of u16)'
+details: Lives in EWRAM at 0x0202E10C with 56 bytes (28 halfwords) before the next label. battle_renderChipPackScreenTilemap
+  fills it by calling battle_fillChipPackEntries_81204C4 (which writes the 2x14 strip) and then reads
+  from it as the tile_ids argument of CopyBackgroundTiles, twice in the same function. The second CopyBackgroundTiles
+  call recovers its address via the 4-entry lookup table at off_812D4EC. No other known site references
+  it, and it is sized to one 2-column x 14-row tilemap strip of u16 tile ids.
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: 'asm34.s:140 first use: r2 = &byte_202E10C is passed to battle_fillChipPackEntries_81204C4 with
+    size 2x0xe (chip-pack entries strip); asm34.s:150 second use: r3 = &byte_202E10C (loaded via off_812D4EC)
+    is passed as tile_ids to CopyBackgroundTiles with r4/r5 = 2/0xe; asm34.s:194 off_812D4EC is a 4-word
+    lookup {0x216, &byte_202E10C, 0x34F, &byte_202E144} whose middle entry is this label''s address; Shape:
+    56 bytes = 28 u16, matching exactly the 2-column x 14-row tilemap strip sizes used by every CopyBackgroundTiles
+    call in this function; No writes or reads from any other known function, consistent with a transient
+    per-render tilemap buffer'
+  refs:
+  - bn6f/ewram.s:2500
+  - bn6f/asm/asm34.s:140
+  - bn6f/asm/asm34.s:150
+  - bn6f/asm/asm34.s:194
+  reproduce: grep -n -w byte_202E10C bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-194825'
+open_questions:
+- Whether other chip-pack-screen render paths (e.g. in-battle vs folder-menu variants) reuse the same
+  buffer or a separate one labeled byte_202E144, and what byte_202E144 specifically holds
+- Whether byte_202E10C is zeroed/cleared elsewhere or left for battle_fillChipPackEntries_81204C4 to overwrite
+  entirely (size 28 u16 matches the full buffer, so overwrite is likely)
+sources:
+- wf investigate-data investigate-data-20261020-194825
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 96780ce4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename byte_202E10C -> ePackEntriesTilemap
+  where: bn6f 02b38e39
+  tool: tools/rename_symbol.py
+previous_names:
+- byte_202E10C

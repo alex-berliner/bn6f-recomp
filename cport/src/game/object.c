@@ -123,11 +123,11 @@ Next sub_800B8D8(void) {
  * - Objects on a non-inverted network queue the freeze dispatch (0x40).
  * - Objects recognized by sub_800B8D8 (player side) set battle flag 4.
  * - The object's per-alliance entry in the freeze counter table
- *   (dword_200F3B8) is cleared, and the object moves to the UPDATE state.
+ *   (eFreezeCounterByAlliance) is cleared, and the object moves to the UPDATE state.
  *
  * Flags on return match the original's last flag-setting instructions:
  * C from the index shift (lsl r0, r0, #2), N/Z from MOV r0, #CUR_STATE_UPDATE.
- * R0 = CUR_STATE_UPDATE, R1 = &dword_200F3B8, R2 = 0 on return. */
+ * R0 = CUR_STATE_UPDATE, R1 = &eFreezeCounterByAlliance, R2 = 0 on return. */
 Next object_timefreezeBegin(void) {
     /* Only queue the freeze dispatch when the network is not inverted. */
     R0 = LD8(R5 + oBattleObject_Alliance);
@@ -145,11 +145,11 @@ Next object_timefreezeBegin(void) {
         GUEST_CALL(battle_setFlags);
     }
 
-    /* Clear dword_200F3B8[alliance]; the <<2 index shift sets the C flag. */
+    /* Clear eFreezeCounterByAlliance[alliance]; the <<2 index shift sets the C flag. */
     u32 alliance = LD8(R5 + oBattleObject_Alliance);
     R0 = alliance << 2;
     cpu.c = (alliance >> 30) & 1;
-    R1 = A_dword_200F3B8;
+    R1 = A_eFreezeCounterByAlliance;
     R2 = 0;
     ST32(R1 + R0, 0);
 
@@ -797,9 +797,9 @@ static u32 process_battle_panels(void) {
         team_base += 8;
     }
 
-    /* ── Section 2: walk byte_203F6B0 event table, collect consecutive
+    /* ── Section 2: walk battlePanelRuns event table, collect consecutive
      *             matching panel-encounter pairs, then clear them ── */
-    u32 ev = A_byte_203F6B0;
+    u32 ev = A_battlePanelRuns;
     while (LD8(ev) != 0xFF) {
         u32 panel_id = LD8(ev);
         s32 steps    = LD8(ev + 2);

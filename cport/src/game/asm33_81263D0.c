@@ -3135,7 +3135,7 @@ static inline call_HalfwordFill_result call_HalfwordFill(u32 r0, u32 r1, u32 r2)
     return (call_HalfwordFill_result){ R2 };
 }
 
-/* Build a 4-row interleaved tile-pair table in the staging buffer (unk_201C040).
+/* Build a 4-row interleaved tile-pair table in the staging buffer (SpriteStagingTileIds).
  * First fills 0x170 halfwords with the blank tile 0x7200, then overwrites with
  * incrementing tile IDs starting at 0x7201 in two interleaved half-rows per
  * outer iteration (max 4).  The row budget [r5+0x1E] − 2*[r5+0x24] gates how
@@ -3146,7 +3146,7 @@ static void build_tilemap(u32 object) {
     u16 skip       = LD16(object + 0x24);
     u32 remaining  = (u32)total_rows - (u32)(skip << 1);
 
-    u32 base = A_unk_201C040;
+    u32 base = A_SpriteStagingTileIds;
     call_HalfwordFill(base, 0x170, 0x7200);
 
     if (total_rows == 0)
@@ -3199,7 +3199,7 @@ Next sub_8128AB0(void) {
 }
 
 /* ── sub_8128B34 ── */
-/* sub_8128B34: copy the 23x8 tile block at unk_201C040 into background tile
+/* sub_8128B34: copy the 23x8 tile block at SpriteStagingTileIds into background tile
  * block 2 (a 32x32 tile block), at position j=4, i=3.
  * CopyBackgroundTiles takes its size arguments in r4/r5 (game's own convention);
  * r4-r7 must still be preserved for the caller. */
@@ -3210,7 +3210,7 @@ Next sub_8128B34(void) {
     R0 = 4;             /* j */
     R1 = 3;             /* i */
     R2 = 2;             /* tileBlock32x32 */
-    R3 = A_unk_201C040; /* tileIds */
+    R3 = A_SpriteStagingTileIds; /* tileIds */
     R4 = 0x17;          /* j_size */
     R5 = 8;             /* i_size */
     GUEST_CALL(CopyBackgroundTiles);

@@ -8630,7 +8630,7 @@ Next keyItemMenu_renderDescription_81179E4(void) {
 /* ── folder_DrawSelectedChipCodeCounts_8117A14 ── */
 /* Folder screen, selected-entry redraw: render the four code letters of the
  * chip shown at *entry (chip id halfword at +2) into the 0x200-byte tile
- * buffer at unk_2016300, then draw the per-code "copies in folder" tallies
+ * buffer at folder_ChipCodeCountTileBuffer, then draw the per-code "copies in folder" tallies
  * by scanning the folder, and queue the finished tiles to VRAM at 0x6013B40.
  *
  * The drawing callees keep the tile-buffer write cursor in guest r6: each one
@@ -8641,7 +8641,7 @@ Next keyItemMenu_renderDescription_81179E4(void) {
  * preserved outputs of this function: the original saves/restores them, so
  * the entry values are passed in and handed back untouched. */
 
-#define CODE_TILE_BUFFER      A_unk_2016300
+#define CODE_TILE_BUFFER      A_folder_ChipCodeCountTileBuffer
 #define CODE_TILE_BUFFER_SIZE 0x200u      /* 0x20 << 4 in the original */
 #define CODE_TILE_VRAM_DEST   0x6013B40u
 

@@ -1,0 +1,46 @@
+name: folder_ChipCodeCountTileBuffer
+address: '0x02016300'
+kind: data
+status: probable
+summary: 'Proposed name: folder_ChipCodeCountTileBuffer. 256-byte tile buffer used by the folder screen
+  to render the selected chip''s four code letters plus per-code ''copies in folder'' tallies before queueing
+  them to VRAM. (u8)'
+details: Lives in EWRAM at 0x02016300, 256 bytes wide. folder_DrawSelectedChipCodeCounts_8117A14 zeroes
+  it via ZeroFillByEightWords(0x80 words), then calls folder_CountChipsOfCodeOrSkipEntry_8117AA0 twice
+  (once per chip code letter) to fill in the per-code 'copies in folder' counts, and finally hands it
+  to QueueEightWordAlignedGFXTransfer to upload as a 0x200-byte block to VRAM at 0x6013B40. The buffer
+  is cleared and rebuilt every call, so it is a scratch tile buffer rather than persistent state.
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: asm32.s:20295 folder_DrawSelectedChipCodeCounts_8117A14 clears 0x200 bytes via ZeroFillByEightWords
+    with unk_2016300 as the destination; asm32.s:20295 folder_DrawSelectedChipCodeCounts_8117A14 calls
+    getChip8021DA8 right after clearing, using the buffer as the working tile area; asm32.s:20329 folder_DrawSelectedChipCodeCounts_8117A14
+    writes per-code tallies via folder_CountChipsOfCodeOrSkipEntry_8117AA0 into the buffer; asm32.s:20329
+    folder_DrawSelectedChipCodeCounts_8117A14 passes unk_2016300 as the source of a 0x200-byte QueueEightWordAlignedGFXTransfer
+    to VRAM 0x6013B40; asm32.s:20337 the only entry of table off_8117A7C points at unk_2016300, used as
+    the GFX upload source
+  refs:
+  - bn6f/ewram.s:1885
+  - bn6f/asm/asm32.s:20295
+  - bn6f/asm/asm32.s:20329
+  - bn6f/asm/asm32.s:20337
+  reproduce: grep -n -w unk_2016300 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-194825'
+open_questions:
+- Confirm by site at asm32.s:20295 that getChip8021DA8 actually writes into the buffer (not just consumed
+  for the code-letter bytes the function tiles in).
+sources:
+- wf investigate-data investigate-data-20261020-194825
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 96780ce4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename unk_2016300 -> folder_ChipCodeCountTileBuffer
+  where: bn6f 02b38e39
+  tool: tools/rename_symbol.py
+previous_names:
+- unk_2016300

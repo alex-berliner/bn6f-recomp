@@ -1775,7 +1775,7 @@ static void update_object_animation(u32 obj) {
         if (counter_at_check & 2) {
             cell = LD8(obj + OBJ_PREV_FRAME);
         }
-        u32 src = A_dword_872E994 + (0xA - cell) * TILE_ROW_SIZE;
+        u32 src = A_blankBattleObjectGFXTransferChunks + (0xA - cell) * TILE_ROW_SIZE;
         queue_gfx_transfer_sub_801CB38(src, VRAM_OBJ_TILE_ALT, TILE_ROW_SIZE);
     } else {
         queue_gfx_transfer_sub_801CB38(A_dword_872D914, VRAM_OBJ_TILE_ALT, TILE_ROW_SIZE);
@@ -2741,7 +2741,7 @@ static void load_background_tileset(u32 scene) {
         page -= 2;
 
     /* Queue one 32-byte row from the page table into the tile transfer buffer. */
-    u32 src = (page - 1) * 0x20 + A_byte_86E1CD8;
+    u32 src = (page - 1) * 0x20 + A_battleOrderBgTileIdBlocks;
     call_QueueEightWordAlignedGFXTransfer(src, A_iGfxTransferBuffer, 0x20);
 
     /* Blit a 6×2 grid of 32×32 tile blocks into VRAM block 3. */
@@ -2768,7 +2768,7 @@ Next battle_loadBgTileset_801DE82(void) {
 Next custGauge_Init_801DED0(void) {
     GUEST_CALL(ClearCustGauge);
 
-    R0 = A_dword_86E489C; /* source: custom gauge tile data in ROM */
+    R0 = A_custGaugeGfxTiles; /* source: custom gauge tile data in ROM */
     R1 = 0x600C440;       /* destination: VRAM */
     R2 = 0x380;           /* transfer size */
     GUEST_CALL(QueueEightWordAlignedGFXTransfer);

@@ -3025,10 +3025,10 @@ static void copy_battle_structs(void) {
     ST32(A_dword_203CDF0 + 4, LD32(A_byte_203F694));
     ST32(A_dword_203CFA0,     LD32(A_dword_203F560));
     ST32(A_dword_203CFA0 + 4, LD32(A_dword_203F660));
-    ST32(A_dword_203F7E0,     LD32(A_dword_203F564));
-    ST32(A_dword_203F7E0 + 4, LD32(A_byte_203F664));
+    ST32(A_battleAllianceLists,     LD32(A_dword_203F564));
+    ST32(A_battleAllianceLists + 4, LD32(A_byte_203F664));
 
-    R2 = A_dword_203F7E0; /* register form: the trailing LDR r2,[pc] pool reads leave R2 at this address for the caller */
+    R2 = A_battleAllianceLists; /* register form: the trailing LDR r2,[pc] pool reads leave R2 at this address for the caller */
 }
 
 /* battle_copyStructsIncludingBattleStats_800b2d8() */

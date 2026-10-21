@@ -2,48 +2,45 @@ name: rfu_niSendPacket
 address: '0x08147E44'
 kind: function
 status: probable
-summary: Calls rfu_NI_setSendData to queue a packet (size=r1+2, from byte_2010390) to the linked peer;
-  on rejection writes 2 to *r0, and if the peer's state word at eS200BC50+8 is 0x31 writes 4; sets byte_20101B4=0x83.
-interface: (r0 = status out ptr (u8*), r1 = size base) -> *r0 = 2 if send rejected, 4 if peer state ==
-  0x31, else unchanged; byte_20101B4 = 0x83 on queued send; returns void
-details: 'Builds the target id as 1 << byte_20103E0 (a connection-slot bitmask, formed by shifting 0x1000000
-  and truncating to a byte) and calls rfu_NI_setSendData with size = r1+2 and buffer byte_2010390, so
-  the payload lives in a fixed RAM buffer with a 2-byte header. If the RFU call returns nonzero (error),
-  the out status is set to 2. On success it checks word_200BC58 (field 0x8 of struct eS200BC50): if it
-  equals 0x31 the status becomes 4, and in either success case it sets byte_20101B4 to 0x83, likely a
-  ''send pending/in use'' flag for the wireless link module.'
+summary: Calls rfu_NI_setSendData to queue a packet (size=r1+2, from byte_2010390) to the linked peer; on rejection
+  writes 2 to *r0, and if the peer's state word at eS200BC50+8 is 0x31 writes 4; sets byte_20101B4=0x83.
+interface: (r0 = status out ptr (u8*), r1 = size base) -> *r0 = 2 if send rejected, 4 if peer state == 0x31, else
+  unchanged; byte_20101B4 = 0x83 on queued send; returns void
+details: 'Builds the target id as 1 << byte_20103E0 (a connection-slot bitmask, formed by shifting 0x1000000 and
+  truncating to a byte) and calls rfu_NI_setSendData with size = r1+2 and buffer byte_2010390, so the payload lives
+  in a fixed RAM buffer with a 2-byte header. If the RFU call returns nonzero (error), the out status is set to
+  2. On success it checks word_200BC58 (field 0x8 of struct eS200BC50): if it equals 0x31 the status becomes 4,
+  and in either success case it sets byte_20101B4 to 0x83, likely a ''send pending/in use'' flag for the wireless
+  link module.'
 evidence:
 - method: assembly-reading
   date: '2026-10-19'
-  detail: 'lsl/lsr #24 around 1<<byte_20103E0 builds a one-hot target id passed as r0 to rfu_NI_setSendData
-    (lines 4-12); add r1, r3, #2 then masked to 8 bits is the size argument; byte_2010390 is the data
-    pointer (lines 10-16); nonzero rfu result branches to loc_8147E8C storing 2 into [r4], the failure
-    path (lines 17-19, 34-36); word_200BC58 == 0x31 check stores 4 into [r4] before byte_20101B4 = 0x83
-    on the success path (lines 20-31); only callee is rfu_NI_setSendData, confirming this is a wireless
-    send wrapper'
+  detail: 'lsl/lsr #24 around 1<<byte_20103E0 builds a one-hot target id passed as r0 to rfu_NI_setSendData (lines
+    4-12); add r1, r3, #2 then masked to 8 bits is the size argument; byte_2010390 is the data pointer (lines 10-16);
+    nonzero rfu result branches to loc_8147E8C storing 2 into [r4], the failure path (lines 17-19, 34-36); word_200BC58
+    == 0x31 check stores 4 into [r4] before byte_20101B4 = 0x83 on the success path (lines 20-31); only callee is
+    rfu_NI_setSendData, confirming this is a wireless send wrapper'
   refs:
   - bn6f/asm/libs.s:8466
   - 0x08147F50 sub_8147F50
   - 0x0814AB50 rfu_NI_setSendData
   reproduce: python3 tools/asmcat.py 0x08147E44
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The proposal correctly identifies the RFU send flow (calls rfu_NI_setSendData with size=r1+2, buffer=byte_2010390,
-    writes 2/4 to *r0, sets byte_20101B4=0x83), but misreads the status logic: the asm sets *r4=2 only
-    when rfu_NI_setSendData returns 0 (loc_8147E8C, after `beq`), i.e. on send rejected - opposite of
-    the proposal''s ''returns nonzero -> set 2''. Also the size calc uses lsl/lsr to u8, not a ''size
-    base'' as r1. The name and rfu prefix are fine.; run wf investigate investigate-20261019-030611; proposed
-    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The proposal
+    correctly identifies the RFU send flow (calls rfu_NI_setSendData with size=r1+2, buffer=byte_2010390, writes
+    2/4 to *r0, sets byte_20101B4=0x83), but misreads the status logic: the asm sets *r4=2 only when rfu_NI_setSendData
+    returns 0 (loc_8147E8C, after `beq`), i.e. on send rejected - opposite of the proposal''s ''returns nonzero
+    -> set 2''. Also the size calc uses lsl/lsr to u8, not a ''size base'' as r1. The name and rfu prefix are fine.;
+    run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
 open_questions:
 - what byte_2010390 contains and who fills it (needs the caller sub_8147F50 or the buffer's writers)
 - meaning of the 0x31 value in eS200BC50 field 0x8 and why it selects status 4
 - exact rfu_NI_setSendData argument semantics (id/size/data assumed)
 - what byte_20101B4 = 0x83 gates downstream
 - 'The proposal correctly identifies the RFU send flow (calls rfu_NI_setSendData with size=r1+2, buffer=byte_2010390,
-  writes 2/4 to *r0, sets byte_20101B4=0x83), but misreads the status logic: the asm sets *r4=2 only when
-  rfu_NI_setSendData returns 0 (loc_8147E8C, after `beq`), i.e. on send rejected - opposite of the proposal''s
-  ''returns nonzero -> set 2''. Also the size calc uses lsl/lsr to u8, not a ''size base'' as r1. The
-  name and rfu prefix are fine.'
+  writes 2/4 to *r0, sets byte_20101B4=0x83), but misreads the status logic: the asm sets *r4=2 only when rfu_NI_setSendData
+  returns 0 (loc_8147E8C, after `beq`), i.e. on send rejected - opposite of the proposal''s ''returns nonzero ->
+  set 2''. Also the size calc uses lsl/lsr to u8, not a ''size base'' as r1. The name and rfu prefix are fine.'
 sources:
 - wf investigate investigate-20261019-030611
 changes:
@@ -55,5 +52,9 @@ changes:
   what: rename sub_8147E44 -> rfu_niSendPacket
   where: bn6f 1189566c
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 96780ce4
+  tool: tools/symdoc.py
 previous_names:
 - sub_8147E44

@@ -1328,7 +1328,7 @@ static inline void call_sub_80028C0(u32 r0) {
 /* Sprite update pass over the battle object list.
  *
  * byte_2036778: number of object slots to visit.
- * dword_2039A10: address of an array of object pointers.
+ * object_PtrPairs: address of an array of object pointers.
  *
  * For each object, status byte at offset 0:
  *   bit 1 set -> fully drawn: project/cull (transform at +0x34), ensure gfx resident,
@@ -1375,7 +1375,7 @@ static void update_sprites(void) {
     u32 save_r8 = R8, save_r9 = R9, save_r12 = R12;
 
     s32 remaining = (s32)LD8(A_byte_2036778);
-    u32 slot = A_dword_2039A10;
+    u32 slot = A_object_PtrPairs;
 
     while (--remaining >= 0) {
         u32 obj = LD32(slot);

@@ -1283,7 +1283,7 @@ Next ow_renderMapNameHudGfx(void) {
  * 1. protectedZennyOrZero_803D06C yields a pointer (the current map's name/script data) that
  *    the scene state keeps at +8.
  * 2. The map name table text is rendered as graphics into the tile block at
- *    0x6015240 via the scratch text buffer unk_200C0E0.
+ *    0x6015240 via the scratch text buffer eMapNameDisplayTileBuffer.
  * 3. sprite_repackAndQueueTiles_811F5DC copies the rendered name into the byte_200CF20 buffer. */
 Next updateMapNameDisplay_811F014(void) {
     /* r4-r7 are used as call arguments below but must be preserved for the
@@ -1301,7 +1301,7 @@ Next updateMapNameDisplay_811F014(void) {
     /* Render the map name text (script 0xF1, palette 7, one line) into VRAM. */
     R0 = A_TextScriptMapNames;      /* TextScriptMapNames */
     R1 = 0xF1;
-    R2 = A_unk_200C0E0;
+    R2 = A_eMapNameDisplayTileBuffer;
     R3 = 0;
     R4 = 7;
     R5 = 1;
@@ -1310,7 +1310,7 @@ Next updateMapNameDisplay_811F014(void) {
     GUEST_CALL(renderTextGfx_8045F8C);
 
     /* Copy the rendered name tiles into the map-name buffer byte_200CF20. */
-    R0 = A_unk_200C0E0;
+    R0 = A_eMapNameDisplayTileBuffer;
     R1 = A_byte_200CF20;
     R2 = 0x6015240;
     R3 = 7;
@@ -1326,7 +1326,7 @@ Next updateMapNameDisplay_811F014(void) {
 /* ── drawMapNamesScreen_811F050 ── */
 /* drawMapNamesScreen_811F050: redraw the map-name text screen.
  * Calls gameState_getProtectedBugfrags_803D0F4 and stores its result into the toolkit's unk_200A220
- * struct, renders the "map names" text script into the unk_200C2A0 buffer,
+ * struct, renders the "map names" text script into the mapNamesTextWorkBuffer buffer,
  * then uploads the rendered tiles/tilemap to VRAM at 0x6015400. */
 Next drawMapNamesScreen_811F050(void) {
     /* The original saves/restores r4-r7 around the calls; our callees
@@ -1338,11 +1338,11 @@ Next drawMapNamesScreen_811F050(void) {
     u32 unk200a220 = LD32(R10 + oToolkit_Unk200a220_Ptr);
     ST32(unk200a220 + 8, R0);
 
-    /* Render text script #0xF2 (map names) into the unk_200C2A0 buffer:
+    /* Render text script #0xF2 (map names) into the mapNamesTextWorkBuffer buffer:
      * 6 rows starting at row 0, using the font data at dword_86A5D60. */
     R0 = A_TextScriptMapNames;    /* TextScriptMapNames */
     R1 = 0xF2;
-    R2 = A_unk_200C2A0;
+    R2 = A_mapNamesTextWorkBuffer;
     R3 = 0;
     R4 = 6;
     R5 = 1;
@@ -1350,9 +1350,9 @@ Next drawMapNamesScreen_811F050(void) {
     R7 = 0;
     GUEST_CALL(renderTextGfx_8045F8C);
 
-    /* Upload the rendered text from unk_200C2A0 to the VRAM tile blocks
+    /* Upload the rendered text from mapNamesTextWorkBuffer to the VRAM tile blocks
      * at 0x6015400, with byte_200D220 as the tilemap destination info. */
-    R0 = A_unk_200C2A0;
+    R0 = A_mapNamesTextWorkBuffer;
     R1 = A_byte_200D220;
     R2 = 0x6015400;
     R3 = 6;

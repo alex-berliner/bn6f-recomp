@@ -1,0 +1,48 @@
+name: eOverworldMapTilemap
+address: '0x02026404'
+kind: data
+status: probable
+summary: 'Proposed name: eOverworldMapTilemap. 508-byte (256-halfword) overworld tilemap buffer redrawn
+  around the player by the camera (table of u16)'
+details: Lives in EWRAM at 0x02026404 and spans 508 bytes, matching a 34-row × ~30-halfword-tile region
+  of the overworld tilemap. ow_refreshMapTilemap passes the address straight to ow_blitTilemapBlockAndRedraw,
+  and sub_8094720 zeroes the whole 0x1000/4-byte block before calling the same blit routine — strongly
+  suggesting it is a tilemap scratch buffer the game re-fills each refresh. The neighbouring entry off_8094774
+  points at unk_2025404 and off_809477C at eMapTilesState200be70, so this slot is one of several per-state
+  overworld map buffers.
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: asm27.s:48 ow_refreshMapTilemap ldr r0,=unk_2026404 then calls ow_blitTilemapBlockAndRedraw
+    — buffer refilled on refresh; asm27.s:58 sub_8094720 passes unk_2026404 to ZeroFillByWord with size
+    0x1000 / 0x400=4=0x40 word chunks, matching the 508-byte size exactly; asm27.s:62 same site then blits
+    the buffer via ow_blitTilemapBlockAndRedraw — confirms it is a tilemap destination; asm27.s:109 the
+    off_8094778 table entry is one of a series of overworld map buffers (unk_2025404 sibling, eMapTilesState200be70
+    neighbour); 508-byte extent given by symbol definition matches a partial overworld tilemap redraw
+    window
+  refs:
+  - bn6f/ewram.s:2347
+  - bn6f/asm/asm27.s:48
+  - bn6f/asm/asm27.s:109
+  - bn6f/asm/asm27.s:58
+  - bn6f/asm/asm27.s:62
+  reproduce: grep -n -w unk_2026404 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-194825'
+open_questions:
+- Which exact window (rows × halfwords) of the map tilemap this 508-byte slice corresponds to
+- Whether sub_8094720 is the area-load handler (its descriptive name would confirm the tilemap role)
+- Which function actually writes tile halfwords into it before ow_blitTilemapBlockAndRedraw is called
+sources:
+- wf investigate-data investigate-data-20261020-194825
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 96780ce4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename unk_2026404 -> eOverworldMapTilemap
+  where: bn6f 02b38e39
+  tool: tools/rename_symbol.py
+previous_names:
+- unk_2026404

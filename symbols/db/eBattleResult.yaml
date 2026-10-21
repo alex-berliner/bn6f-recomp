@@ -1,0 +1,46 @@
+name: eBattleResult
+address: '0x0200F3B0'
+kind: data
+status: probable
+summary: 'Proposed name: eBattleResult. Byte written when a battle finishes; -1 (0xFF) on a comm-failure
+  loss path and 0xEE after the LowHP-alert timer expires, consumed by the next-state dispatcher. (u8)'
+details: It lives in EWRAM at 0x0200F3B0 and is only written by battle_finishBattle_8007850 — a known
+  battle-state transition routine. The function writes 0xFF on the comm-failure path (return code 4 from
+  eStruct203F7D8_getUnk01) and 0xEE after the LowHP-alert timer at oBattleState_LowHPAlertTimers crosses
+  0xB4, then continues into the shared post-battle dispatcher at loc_8007862. It is referenced via off_800793C
+  in the table that the dispatcher jumps through, so it acts as a stamped battle-result code for the following
+  state.
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: asm00_1.s:10031 writes 0xFF to dword_200F3B0 after eStruct203F7D8_getUnk01 returns 4 (the comm-failure
+    branch) before falling into the common tail; asm00_1.s:10157 writes 0xEE to dword_200F3B0 once the
+    LowHP-alert timer field exceeds 0xB4, again before the common tail; asm00_1.s:10168 dword_200F3B0
+    is the target of off_800793C, a .word entry in the post-battle jump table that also contains battle_initForMatchStart
+    and battle_dispatchPhase
+  refs:
+  - bn6f/ewram.s:1227
+  - bn6f/asm/asm00_1.s:10031
+  - bn6f/asm/asm00_1.s:10157
+  - bn6f/asm/asm00_1.s:10168
+  reproduce: grep -n -w dword_200F3B0 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-194825'
+open_questions:
+- Whether off_800793C is itself a pointer (the .word stores the address of dword_200F3B0) or whether dword_200F3B0
+  is read indirectly there — the evidence only shows it as a .word target, not a read site
+- Whether the byte is the entire cell or only the first byte of the 8-byte slot (no read site confirms
+  width)
+sources:
+- wf investigate-data investigate-data-20261020-194825
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 96780ce4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename dword_200F3B0 -> eBattleResult
+  where: bn6f 02b38e39
+  tool: tools/rename_symbol.py
+previous_names:
+- dword_200F3B0

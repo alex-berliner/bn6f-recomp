@@ -1,0 +1,47 @@
+name: eMapNameDisplayTileBuffer
+address: '0x0200C0E0'
+kind: data
+status: probable
+summary: 'Proposed name: eMapNameDisplayTileBuffer. EWRAM tile-gfx scratch buffer (192 bytes) that updateMapNameDisplay
+  feeds into renderTextGfx and then sprite_repackAndQueueTiles to draw the current map''s name into BG
+  VRAM. (u8)'
+details: Lives in EWRAM, 192 bytes long. updateMapNameDisplay_811F014 loads its address from the local
+  literal pool at off_811F044 and passes it as the destination tile buffer to renderTextGfx_8045F8C (rendering
+  map-name string 0xf1, width 7) and again to sprite_repackAndQueueTiles_811F5DC, which repacks 4bpp tiles
+  for DMA into BG VRAM at 0x6015240. The buffer is purely a temporary render target; nothing else in the
+  project's known code reads it, and it is rewritten each time the map-name display refreshes.
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: asm32.s:35848 updateMapNameDisplay_811F014 loads r2 = unk_200C0E0 and calls renderTextGfx_8045F8C
+    with it as the render destination.; asm32.s:35855 updateMapNameDisplay_811F014 passes unk_200C0E0
+    in r0 to sprite_repackAndQueueTiles_811F5DC alongside VRAM dest 0x6015240 and width 7.; asm32.s:35863
+    updateMapNameDisplay_811F014 ends with the literal-pool entry off_811F044 -> unk_200C0E0, confirming
+    it is a load-address constant for this function.; Neighbor byte_200CF20 is paired with unk_200C0E0
+    in the sprite-repack call as the palette/source half of the tile repack, consistent with a graphics
+    render buffer.
+  refs:
+  - bn6f/ewram.s:1057
+  - bn6f/asm/asm32.s:35848
+  - bn6f/asm/asm32.s:35855
+  - bn6f/asm/asm32.s:35863
+  reproduce: grep -n -w unk_200C0E0 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-194825'
+open_questions:
+- Whether other text-rendering sites (outside updateMapNameDisplay) also reuse this buffer as a generic
+  tile-gfx scratch area.
+- Exact layout of the 192 bytes — how much is raw 4bpp tile data vs. packed tiles vs. color table.
+sources:
+- wf investigate-data investigate-data-20261020-194825
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 96780ce4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename unk_200C0E0 -> eMapNameDisplayTileBuffer
+  where: bn6f 02b38e39
+  tool: tools/rename_symbol.py
+previous_names:
+- unk_200C0E0

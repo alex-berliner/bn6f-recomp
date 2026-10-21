@@ -1822,7 +1822,7 @@ static void init_cgb_sound(u32 sound_buf) {
     ST32(state_ptr, tag + 1);
 
     /* Install patched sound-driver handlers in the game's function-pointer table */
-    u32 fp = A_off_3005570;
+    u32 fp = A_iSoundDriverFunctionTable;
     ST32(fp + 0x20, (A_t3_condScriptVmStep | 1));
     ST32(fp + 0x44, (A_battle_aiData_processStreamByte_814E7CC | 1));
     ST32(fp + 0x4C, (A_battle_aiData_readNextByteIntoVersion_814E7E0 | 1));

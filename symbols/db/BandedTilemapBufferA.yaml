@@ -1,0 +1,47 @@
+name: BandedTilemapBufferA
+address: '0x0201C500'
+kind: data
+status: probable
+summary: 'Proposed name: BandedTilemapBufferA. EWRAM destination buffer that decomposeTileBlock fills
+  with the de-interleaved tile-ID half, then gfx_fillAllBandedTilemaps writes out as a 32x32 banded BG2
+  tilemap. (table of u16)'
+details: Lives at 0x0201C500 in EWRAM, 512 bytes (256 halfwords) — exactly one 32x32 = 32*32/2 halfword
+  row pair band of BG2 tilemap entries. decomposeTileBlock_8132FD0 indexes it as a u16 array (r2 << 0,
+  no scaling), reading pairs then writing them out interleaved into the per-row tilemap, so it stores
+  the de-interleaved left/right tile-ID halves prior to blit. gfx_fillAllBandedTilemaps_81330AC lists
+  it in off_8133130 as the destination for a banded fill call whose descriptor immediately follows the
+  pointer, matching the use as a tilemap staging buffer. The paired nearby EWRAM block unk_201C4F0 (0x30
+  bytes earlier) is the analogous buffer used by the previous descriptor in the same table.
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: asm36.s:6389 decomposeTileBlock_8132FD0 loads the pointer from off_81330A0 and indexes it with
+    ldrh r1,[r0,r2] at r2 +=4 (halfword stride), reading pairs to interleave into [r7,r4] as the per-row
+    tilemap; asm36.s:6437 off_81330A0 is the .word entry word unk_201C500 inside decomposeTileBlock_8132FD0,
+    the per-call buffer pointer; asm36.s:6493 gfx_fillAllBandedTilemaps_81330AC references unk_201C500
+    as off_8133130's .word target, with a banded-fill descriptor (tile-base high/low, size 0x20, banded
+    flag) sitting right after it
+  refs:
+  - bn6f/ewram.s:2049
+  - bn6f/asm/asm36.s:6389
+  - bn6f/asm/asm36.s:6437
+  - bn6f/asm/asm36.s:6493
+  reproduce: grep -n -w unk_201C500 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-194825'
+open_questions:
+- Exact width per row of the banded fill (descriptor's size field reads as 0x2 in two bytes; confirm it
+  is 32 entries per row * 16 rows = 512 bytes)
+sources:
+- wf investigate-data investigate-data-20261020-194825
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 96780ce4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename unk_201C500 -> BandedTilemapBufferA
+  where: bn6f 02b38e39
+  tool: tools/rename_symbol.py
+previous_names:
+- unk_201C500

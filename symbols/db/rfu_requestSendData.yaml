@@ -2,26 +2,24 @@ name: rfu_requestSendData
 address: '0x081471D8'
 kind: function
 status: probable
-summary: RFU wrapper that issues a 3-byte-offset sendData via rfu_NI_setSendData; on success stores 4
-  (pending) at [r0], sets 0x80 in word_200BC58, writes 0x83 to byte_20101B4; on failure stores 2 and the
-  result code at [r0+2].
-interface: (r0 = status struct ptr, r1 = payload byte/count base (sent as r1+3 to setSendData)) -> r0
-  = 0; writes status byte [r0] (4 = busy/sent, 2 = failed) and byte [r0+2] = result code
-details: Loads the current link slot/ID from byte_2010280 and passes it as the first arg to rfu_NI_setSendData
-  together with byte_20101E0 (send buffer) and (r1+3) as length. If setSendData returns nonzero (failure),
-  it stores 2 at [r4] and the truncated result code at [r4+2], leaving the caller to retry. On success
-  it stores 4 at [r4] (request pending), sets bit 0x80 in the halfword at eS200BC50+8 (a busy/requested
-  flag in some RFU state block), and writes 0x83 to byte_20101B4 (a state/phase byte, likely 'send in
-  progress'). The caller sub_81472F8 invokes it from many sites, consistent with a state machine that
-  retries the send until it completes.
+summary: RFU wrapper that issues a 3-byte-offset sendData via rfu_NI_setSendData; on success stores 4 (pending)
+  at [r0], sets 0x80 in word_200BC58, writes 0x83 to byte_20101B4; on failure stores 2 and the result code at [r0+2].
+interface: (r0 = status struct ptr, r1 = payload byte/count base (sent as r1+3 to setSendData)) -> r0 = 0; writes
+  status byte [r0] (4 = busy/sent, 2 = failed) and byte [r0+2] = result code
+details: Loads the current link slot/ID from byte_2010280 and passes it as the first arg to rfu_NI_setSendData together
+  with byte_20101E0 (send buffer) and (r1+3) as length. If setSendData returns nonzero (failure), it stores 2 at
+  [r4] and the truncated result code at [r4+2], leaving the caller to retry. On success it stores 4 at [r4] (request
+  pending), sets bit 0x80 in the halfword at eS200BC50+8 (a busy/requested flag in some RFU state block), and writes
+  0x83 to byte_20101B4 (a state/phase byte, likely 'send in progress'). The caller sub_81472F8 invokes it from many
+  sites, consistent with a state machine that retries the send until it completes.
 evidence:
 - method: assembly-reading
   date: '2026-10-19'
-  detail: 'bl rfu_NI_setSendData with (byte_2010280, byte_20101E0, r1+3) — it is a direct wrapper of the
-    librfu NI send call; beq loc_814721C after testing the setSendData result splits success/failure paths;
-    failure path: mov r0,#2; strb r0,[r4]; strb r1,[r4,#2] stores the error code for the caller; success
-    path: sets 0x80 bit at word_200BC58 and byte 0x83 at byte_20101B4, marking send-busy state; six call
-    sites in sub_81472F8 show it is polled repeatedly, i.e. part of a send state machine'
+  detail: 'bl rfu_NI_setSendData with (byte_2010280, byte_20101E0, r1+3) — it is a direct wrapper of the librfu
+    NI send call; beq loc_814721C after testing the setSendData result splits success/failure paths; failure path:
+    mov r0,#2; strb r0,[r4]; strb r1,[r4,#2] stores the error code for the caller; success path: sets 0x80 bit at
+    word_200BC58 and byte 0x83 at byte_20101B4, marking send-busy state; six call sites in sub_81472F8 show it is
+    polled repeatedly, i.e. part of a send state machine'
   refs:
   - bn6f/asm/libs.s:6884
   - 0x081472F8 sub_81472F8
@@ -29,21 +27,21 @@ evidence:
   - 0x0814732C sub_81472F8
   - 0x0814AB50 rfu_NI_setSendData
   reproduce: python3 tools/asmcat.py 0x081471D8
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The proposal''s description of failure/success is inverted. The asm at 0x081471FC shows `beq loc_814721C`
-    is taken on r1==0, and loc_814721C (0x0814721C) stores 2 (failed) and r1 (result) into [r4+2]. The
-    fall-through path (cmp !=0) stores 4 (success/pending), sets 0x80 in word_200BC58, and writes 0x83
-    to byte_20101B4. So the body description needs flipping, but the name `rfu_requestSendData` and overall
-    purpose are accurate.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
-    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The proposal''s
+    description of failure/success is inverted. The asm at 0x081471FC shows `beq loc_814721C` is taken on r1==0,
+    and loc_814721C (0x0814721C) stores 2 (failed) and r1 (result) into [r4+2]. The fall-through path (cmp !=0)
+    stores 4 (success/pending), sets 0x80 in word_200BC58, and writes 0x83 to byte_20101B4. So the body description
+    needs flipping, but the name `rfu_requestSendData` and overall purpose are accurate.; run wf investigate investigate-20261019-030611;
+    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
+    reconcile)'
 open_questions:
-- exact meaning of byte_2010280 (slot ID vs. target bitmap) and the layout of the eS200BC50/byte_20101B4
-  RFU state structures
+- exact meaning of byte_2010280 (slot ID vs. target bitmap) and the layout of the eS200BC50/byte_20101B4 RFU state
+  structures
 - what data byte_20101E0 contains and what the r1 argument counts (payload type vs. size offset)
-- The proposal's description of failure/success is inverted. The asm at 0x081471FC shows `beq loc_814721C`
-  is taken on r1==0, and loc_814721C (0x0814721C) stores 2 (failed) and r1 (result) into [r4+2]. The fall-through
-  path (cmp !=0) stores 4 (success/pending), sets 0x80 in word_200BC58, and writes 0x83 to byte_20101B4.
-  So the body description needs flipping, but the name `rfu_requestSendData` and overall purpose are accurate.
+- The proposal's description of failure/success is inverted. The asm at 0x081471FC shows `beq loc_814721C` is taken
+  on r1==0, and loc_814721C (0x0814721C) stores 2 (failed) and r1 (result) into [r4+2]. The fall-through path (cmp
+  !=0) stores 4 (success/pending), sets 0x80 in word_200BC58, and writes 0x83 to byte_20101B4. So the body description
+  needs flipping, but the name `rfu_requestSendData` and overall purpose are accurate.
 sources:
 - wf investigate investigate-20261019-030611
 changes:
@@ -55,5 +53,9 @@ changes:
   what: rename sub_81471D8 -> rfu_requestSendData
   where: bn6f 1189566c
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 96780ce4
+  tool: tools/symdoc.py
 previous_names:
 - sub_81471D8

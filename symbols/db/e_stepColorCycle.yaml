@@ -2,45 +2,41 @@ name: e_stepColorCycle
 address: '0x08006518'
 kind: function
 status: probable
-summary: 'Per-frame step of an entity''s palette color cycle: looks up the cycle entry from byte_80065BC
-  using [r5+0xd], calls sub_8002378 to write palette slots 0x14 and 0x15 (with arg from [r5+0x10] and
-  [r5+0x14]), raises the 0x40 update flag in dword_20096D0, increments [r5+0xd] modulo 16, and dirties
-  renderInfo halfwords +6/+8/+0xa while storing a replicated-nibble color derived from [r5+6] into renderInfo+2.'
-interface: (r5 = effect/entity struct; no args in r0-r3) -> r0 = 0 after palette calls; writes palette
-  slots 0x14/0x15 via sub_8002378, dword_20096D0 = 0x40, renderInfo +6/+8/+0xA |= 0x40, renderInfo +2
-  = color from [r5+6]>>4
-details: Reads the entity's color index at [r5+0xD], doubles it to index a 16-entry halfword table at
-  byte_80065BC, and passes the entry to sub_8002378 twice as slot 0x14 (arg r4 = [r5+0x10]) and slot 0x15
-  (arg r4 = [r5+0x14]), each filling 16 entries. It then stores 0x40 into dword_20096D0 (likely a palette/flush
-  request flag). The index at [r5+0xD] is incremented and wrapped modulo 16, so successive calls step
-  through all 16 table entries. Finally it ORs 0x40 into three renderInfo halfword fields (+6, +8, +0xA),
-  apparently dirty/update flags, and stores ([r5+6]>>4) replicated into the low bytes of renderInfo+2
-  as a derived color. r5 is never set inside, so the caller must hold the entity pointer in r5, consistent
-  with an update-handler dispatched from an entity loop.
+summary: 'Per-frame step of an entity''s palette color cycle: looks up the cycle entry from byte_80065BC using [r5+0xd],
+  calls sub_8002378 to write palette slots 0x14 and 0x15 (with arg from [r5+0x10] and [r5+0x14]), raises the 0x40
+  update flag in dword_20096D0, increments [r5+0xd] modulo 16, and dirties renderInfo halfwords +6/+8/+0xa while
+  storing a replicated-nibble color derived from [r5+6] into renderInfo+2.'
+interface: (r5 = effect/entity struct; no args in r0-r3) -> r0 = 0 after palette calls; writes palette slots 0x14/0x15
+  via sub_8002378, dword_20096D0 = 0x40, renderInfo +6/+8/+0xA |= 0x40, renderInfo +2 = color from [r5+6]>>4
+details: Reads the entity's color index at [r5+0xD], doubles it to index a 16-entry halfword table at byte_80065BC,
+  and passes the entry to sub_8002378 twice as slot 0x14 (arg r4 = [r5+0x10]) and slot 0x15 (arg r4 = [r5+0x14]),
+  each filling 16 entries. It then stores 0x40 into dword_20096D0 (likely a palette/flush request flag). The index
+  at [r5+0xD] is incremented and wrapped modulo 16, so successive calls step through all 16 table entries. Finally
+  it ORs 0x40 into three renderInfo halfword fields (+6, +8, +0xA), apparently dirty/update flags, and stores ([r5+6]>>4)
+  replicated into the low bytes of renderInfo+2 as a derived color. r5 is never set inside, so the caller must hold
+  the entity pointer in r5, consistent with an update-handler dispatched from an entity loop.
 evidence:
 - method: assembly-reading
   date: '2026-10-18'
-  detail: 'sub_8006518+4..: index [r5+0xD]*2 selects halfword from byte_80065BC, passed to sub_8002378
-    with slot 0x14 then 0x15, count 0x10; ldrb [r5,#0xD]; add #1; cmp #0x10; bge — index cycles 0..0xF,
-    proving palette cycling; orr #0x40 into renderInfo fields +6/+8/+0xA and strh of ([r5+6]>>4)|(v<<8)|(v<<16)
-    to +2 — marks palettes/render state dirty with a derived color; callee sub_8002378 known: fills a
-    slot of software palette table ePalette20097a0 only when r1/r2 nonzero; dword_20096D0 = 0x40 stored
-    each call — a global request/flag, semantics unconfirmed'
+  detail: 'sub_8006518+4..: index [r5+0xD]*2 selects halfword from byte_80065BC, passed to sub_8002378 with slot
+    0x14 then 0x15, count 0x10; ldrb [r5,#0xD]; add #1; cmp #0x10; bge — index cycles 0..0xF, proving palette cycling;
+    orr #0x40 into renderInfo fields +6/+8/+0xA and strh of ([r5+6]>>4)|(v<<8)|(v<<16) to +2 — marks palettes/render
+    state dirty with a derived color; callee sub_8002378 known: fills a slot of software palette table ePalette20097a0
+    only when r1/r2 nonzero; dword_20096D0 = 0x40 stored each call — a global request/flag, semantics unconfirmed'
   refs:
   - bn6f/asm/asm00_1.s:7198
   - 0x08002378 sub_8002378
   reproduce: python3 tools/asmcat.py 0x08006518
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary and role are essentially correct: it reads index [r5+0xd], indexes into byte_80065BC,
-    calls sub_8002378 twice for palette slots 0x14 and 0x15 with the two r4 values from [r5+0x10] and
-    [r5+0x14], stores 0x40 to dword_20096D0, increments the index modulo 16, ORs 0x40 into renderInfo+6/+8/+0xa,
-    and writes a derived color byte into renderInfo+2. However, the proposed name `e_stepColorCycle` is
-    fine functionally but no callers are known (callees listed as none), so the `e_` entity prefix is
-    reasonable. The summary''s mention of ''fills 16 entries'' is not directly shown — sub_8002378''s
-    contract isn''t given; the r2=0x10 is just an argument to that callee. The renderInfo+2 store is replicated
-    nibbles of [r5+6]>>4 into a halfword, not ''low bytes'' of [r5+6]>>4 — minor inaccuracy.; run wf investigate
-    investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash
-    (tools/investigate_land.py reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The summary
+    and role are essentially correct: it reads index [r5+0xd], indexes into byte_80065BC, calls sub_8002378 twice
+    for palette slots 0x14 and 0x15 with the two r4 values from [r5+0x10] and [r5+0x14], stores 0x40 to dword_20096D0,
+    increments the index modulo 16, ORs 0x40 into renderInfo+6/+8/+0xa, and writes a derived color byte into renderInfo+2.
+    However, the proposed name `e_stepColorCycle` is fine functionally but no callers are known (callees listed
+    as none), so the `e_` entity prefix is reasonable. The summary''s mention of ''fills 16 entries'' is not directly
+    shown — sub_8002378''s contract isn''t given; the r2=0x10 is just an argument to that callee. The renderInfo+2
+    store is replicated nibbles of [r5+6]>>4 into a halfword, not ''low bytes'' of [r5+6]>>4 — minor inaccuracy.;
+    run wf investigate investigate-20261018-212108; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
 coverage:
 - battles1
 - battles2
@@ -57,19 +53,17 @@ coverage:
 - story8
 - story9
 open_questions:
-- 'No caller known: which entity/effect type uses this handler and what r5 struct is (fields +6, +0xD,
-  +0x10, +0x14)'
+- 'No caller known: which entity/effect type uses this handler and what r5 struct is (fields +6, +0xD, +0x10, +0x14)'
 - Exact meaning of sub_8002378 args r1/r2/r4 (color value vs palette-data pointer/offset; blend amount?)
 - Meaning of dword_20096D0=0x40 and of the 0x40 bits in renderInfo +6/+8/+0xA
 - Purpose of the 16-entry table byte_80065BC contents (color list?)
-- 'The summary and role are essentially correct: it reads index [r5+0xd], indexes into byte_80065BC, calls
-  sub_8002378 twice for palette slots 0x14 and 0x15 with the two r4 values from [r5+0x10] and [r5+0x14],
-  stores 0x40 to dword_20096D0, increments the index modulo 16, ORs 0x40 into renderInfo+6/+8/+0xa, and
-  writes a derived color byte into renderInfo+2. However, the proposed name `e_stepColorCycle` is fine
-  functionally but no callers are known (callees listed as none), so the `e_` entity prefix is reasonable.
-  The summary''s mention of ''fills 16 entries'' is not directly shown — sub_8002378''s contract isn''t
-  given; the r2=0x10 is just an argument to that callee. The renderInfo+2 store is replicated nibbles
-  of [r5+6]>>4 into a halfword, not ''low bytes'' of [r5+6]>>4 — minor inaccuracy.'
+- 'The summary and role are essentially correct: it reads index [r5+0xd], indexes into byte_80065BC, calls sub_8002378
+  twice for palette slots 0x14 and 0x15 with the two r4 values from [r5+0x10] and [r5+0x14], stores 0x40 to dword_20096D0,
+  increments the index modulo 16, ORs 0x40 into renderInfo+6/+8/+0xa, and writes a derived color byte into renderInfo+2.
+  However, the proposed name `e_stepColorCycle` is fine functionally but no callers are known (callees listed as
+  none), so the `e_` entity prefix is reasonable. The summary''s mention of ''fills 16 entries'' is not directly
+  shown — sub_8002378''s contract isn''t given; the r2=0x10 is just an argument to that callee. The renderInfo+2
+  store is replicated nibbles of [r5+6]>>4 into a halfword, not ''low bytes'' of [r5+6]>>4 — minor inaccuracy.'
 sources:
 - wf investigate investigate-20261018-212108
 changes:
@@ -81,5 +75,9 @@ changes:
   what: rename sub_8006518 -> e_stepColorCycle
   where: bn6f f9d9fc39
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 96780ce4
+  tool: tools/symdoc.py
 previous_names:
 - sub_8006518

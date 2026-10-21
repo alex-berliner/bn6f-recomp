@@ -1,0 +1,49 @@
+name: rfuPerSlotRecvBuffers
+address: '0x02010230'
+kind: data
+status: probable
+summary: 'Proposed name: rfuPerSlotRecvBuffers. Per-peer RFU receive buffers indexed by player slot (4
+  entries × 16 bytes), cleared via SWI_CpuSet and configured through rfu_setRecvBuffer / rfu_resetRecvSlots
+  during wireless link setup. (struct)'
+details: 'Lives in EWRAM at 0x02010230 and spans 64 bytes, holding four 16-byte per-peer slots (lsl r4,
+  #4 indexing in rfu_startLinkTransfer and sub_8148A80 confirms 16-byte stride). rfu_startLinkTransfer
+  zeroes the whole block with SWI_CpuSet (0x10 word fill across the 0x100 length), then per connected
+  peer writes the recv-buffer pointer via rfu_setRecvBuffer. sub_8146E60/sub_8146E78 pass it to rfu_resetRecvSlots
+  and sub_8146F90 with size 0xc, matching a 12-byte header per slot. rfu_uniPollPeerValueChanges iterates
+  the array using its base as the fourth entry of an offset table.'
+evidence:
+- method: caller-analysis
+  date: '2026-10-20'
+  detail: 'asm/libs.s:9513 (rfu_startLinkTransfer) — CpuSet clears 0x100 bytes at unk_2010230 with r5=0x1000020
+    (32-bit fill of 0x10 word); asm/libs.s:9609 (rfu_startLinkTransfer) — lsl r2, r4, #4 + unk_2010230
+    then rfu_setRecvBuffer(0x10, r4, ..., 0xe) → 16-byte per-slot stride, slot index = r4; asm/libs.s:6570
+    (sub_8146E60) — calls rfu_resetRecvSlots(byte_20101E0, unk_2010230, 0xc) → 12 bytes of per-slot header;
+    asm/libs.s:10324 (rfu_uniPollPeerValueChanges) — unk_2010230 loaded via off_8148C3C and indexed per
+    peer slot for current/last-value compare; asm/libs.s:10191 (sub_8148A80) — lsl r0, r4, #4 then add
+    r0, unk_2010230 matches the same 16-byte-per-slot access pattern'
+  refs:
+  - bn6f/ewram.s:1433
+  - bn6f/asm/libs.s:9513
+  - bn6f/asm/libs.s:9609
+  - bn6f/asm/libs.s:10324
+  - bn6f/asm/libs.s:9680
+  reproduce: grep -n -w unk_2010230 bn6f/ewram.s
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate-data investigate-data-20261020-194825'
+open_questions:
+- Exact layout of the 16 bytes per slot (header bytes consumed by rfu_resetRecvSlots's 0xc count vs. payload)
+  is inferred from the callers, not from a struct definition.
+- Whether all four slots are always populated or only those for currently connected peers.
+sources:
+- wf investigate-data investigate-data-20261020-194825
+changes:
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 96780ce4
+  tool: tools/symdoc.py
+- date: '2026-10-20'
+  what: rename unk_2010230 -> rfuPerSlotRecvBuffers
+  where: bn6f 02b38e39
+  tool: tools/rename_symbol.py
+previous_names:
+- unk_2010230

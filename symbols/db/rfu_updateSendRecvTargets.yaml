@@ -2,25 +2,24 @@ name: rfu_updateSendRecvTargets
 address: '0x081462D8'
 kind: function
 status: probable
-summary: 'Wireless link maintenance: toggles per-peer send-target bits and stops receiving from peers
-  whose local counters exceed the global timeout counter in eStruct200FE00'
+summary: 'Wireless link maintenance: toggles per-peer send-target bits and stops receiving from peers whose local
+  counters exceed the global timeout counter in eStruct200FE00'
 interface: () -> r0 = destroyed; touches rfu peer table dword_2010CB0[4] and eStruct200FE00
-details: 'Does nothing unless the halfword at eStruct200FE00+0x18 (a rolling counter) is nonzero. Reads
-  mode flags from dword_2010CC0: flag byte +4 enables the send-target pass, +5 the receive pass. Send
-  pass: for each of the 4 entries in dword_2010CB0, checks bit 0x8000 of the entry''s first halfword,
-  scans bits 0-3 of byte +0x1A, and for entries whose halfword at +2 exceeds eStruct200FE00+0x18 builds
-  a bitmask, XORs it with the entry''s +0x1A bits, and calls rfu_changeSendTarget(mask, peerIndex, xorMask).
-  Receive pass: for each entry with bit 0x8000 of halfword +0x34 set and halfword +0x36 greater than the
-  counter, calls rfu_NI_stopReceivingData(peerIndex). All loops cap at 4 peers (max wireless group size).'
+details: 'Does nothing unless the halfword at eStruct200FE00+0x18 (a rolling counter) is nonzero. Reads mode flags
+  from dword_2010CC0: flag byte +4 enables the send-target pass, +5 the receive pass. Send pass: for each of the
+  4 entries in dword_2010CB0, checks bit 0x8000 of the entry''s first halfword, scans bits 0-3 of byte +0x1A, and
+  for entries whose halfword at +2 exceeds eStruct200FE00+0x18 builds a bitmask, XORs it with the entry''s +0x1A
+  bits, and calls rfu_changeSendTarget(mask, peerIndex, xorMask). Receive pass: for each entry with bit 0x8000 of
+  halfword +0x34 set and halfword +0x36 greater than the counter, calls rfu_NI_stopReceivingData(peerIndex). All
+  loops cap at 4 peers (max wireless group size).'
 evidence:
 - method: assembly-reading
   date: '2026-10-19'
-  detail: 'sub_81462D8: gate on ldrh [eStruct200FE00,#0x18]; cmp 0 beq exit — timeout/counter field; loop
-    over dword_2010CB0[0..3] with bit 0x8000 of halfword +0 tested as an ''in use'' flag; compares halfword
-    [entry+2] against eStruct200FE00+0x18, then bl rfu_changeSendTarget with xor''d byte +0x1A bits —
-    send re-target; second flag at [dword_2010CC0,#5] gates a loop calling rfu_NI_stopReceivingData(peer)
-    on entries with +0x34/+0x36 counter past the global counter; only callees are rfu_changeSendTarget
-    and rfu_NI_stopReceivingData — exclusively RFU link management'
+  detail: 'sub_81462D8: gate on ldrh [eStruct200FE00,#0x18]; cmp 0 beq exit — timeout/counter field; loop over dword_2010CB0[0..3]
+    with bit 0x8000 of halfword +0 tested as an ''in use'' flag; compares halfword [entry+2] against eStruct200FE00+0x18,
+    then bl rfu_changeSendTarget with xor''d byte +0x1A bits — send re-target; second flag at [dword_2010CC0,#5]
+    gates a loop calling rfu_NI_stopReceivingData(peer) on entries with +0x34/+0x36 counter past the global counter;
+    only callees are rfu_changeSendTarget and rfu_NI_stopReceivingData — exclusively RFU link management'
   refs:
   - bn6f/asm/libs.s:4739
   - 0x081453F0 sub_81453F0
@@ -29,25 +28,24 @@ evidence:
   - 0x0814AF5C rfu_NI_stopReceivingData
   - 0x0814ADF4 rfu_changeSendTarget
   reproduce: python3 tools/asmcat.py 0x081462D8
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The code matches the proposal in structure: it checks the counter at eStruct200FE00+0x18 (line 6),
-    iterates up to 4 peers using dword_2010CB0 (lines 13-39), reads flag bytes +4 and +5 from dword_2010CC0
-    (lines 8, 41), calls rfu_changeSendTarget (line 32) with mask and xorMask derived from peer entries,
-    and calls rfu_NI_stopReceivingData (line 53) when entry +0x36 exceeds the counter. However the XOR
-    is applied to byte +0x1A which holds bits 0-3 only, not bits 0-3 of a halfword, and the mask is built
-    as bit-overwrites rather than a timed-out list. A clearer name capturing both targets is preferable.;
-    run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3,
-    accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The code
+    matches the proposal in structure: it checks the counter at eStruct200FE00+0x18 (line 6), iterates up to 4 peers
+    using dword_2010CB0 (lines 13-39), reads flag bytes +4 and +5 from dword_2010CC0 (lines 8, 41), calls rfu_changeSendTarget
+    (line 32) with mask and xorMask derived from peer entries, and calls rfu_NI_stopReceivingData (line 53) when
+    entry +0x36 exceeds the counter. However the XOR is applied to byte +0x1A which holds bits 0-3 only, not bits
+    0-3 of a halfword, and the mask is built as bit-overwrites rather than a timed-out list. A clearer name capturing
+    both targets is preferable.; run wf investigate investigate-20261019-010606; proposed by Hyper glm-5.3-flash,
+    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
 open_questions:
 - Exact meaning of eStruct200FE00+0x18 (frame counter vs packet sequence) and the flags at dword_2010CC0+4/+5
 - Precise parameter semantics of rfu_changeSendTarget (bitmap vs index) to name the two passes more precisely
 - Purpose of caller sub_81453F0 would confirm whether this runs per-frame in the wireless comm task loop
-- 'The code matches the proposal in structure: it checks the counter at eStruct200FE00+0x18 (line 6),
-  iterates up to 4 peers using dword_2010CB0 (lines 13-39), reads flag bytes +4 and +5 from dword_2010CC0
-  (lines 8, 41), calls rfu_changeSendTarget (line 32) with mask and xorMask derived from peer entries,
-  and calls rfu_NI_stopReceivingData (line 53) when entry +0x36 exceeds the counter. However the XOR is
-  applied to byte +0x1A which holds bits 0-3 only, not bits 0-3 of a halfword, and the mask is built as
-  bit-overwrites rather than a timed-out list. A clearer name capturing both targets is preferable.'
+- 'The code matches the proposal in structure: it checks the counter at eStruct200FE00+0x18 (line 6), iterates up
+  to 4 peers using dword_2010CB0 (lines 13-39), reads flag bytes +4 and +5 from dword_2010CC0 (lines 8, 41), calls
+  rfu_changeSendTarget (line 32) with mask and xorMask derived from peer entries, and calls rfu_NI_stopReceivingData
+  (line 53) when entry +0x36 exceeds the counter. However the XOR is applied to byte +0x1A which holds bits 0-3
+  only, not bits 0-3 of a halfword, and the mask is built as bit-overwrites rather than a timed-out list. A clearer
+  name capturing both targets is preferable.'
 sources:
 - wf investigate investigate-20261019-010606
 changes:
@@ -59,5 +57,9 @@ changes:
   what: rename sub_81462D8 -> rfu_updateSendRecvTargets
   where: bn6f 54bc3514
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 96780ce4
+  tool: tools/symdoc.py
 previous_names:
 - sub_81462D8

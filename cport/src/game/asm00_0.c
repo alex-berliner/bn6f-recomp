@@ -636,9 +636,9 @@ Next FillByEightWords(void) {
 }
 
 /* ── clearWord_e200AC1C ── */
-/* clearWord_e200AC1C: clear the word at dword_200AC1C (set it to 0). */
+/* clearWord_e200AC1C: clear the word at eGfxTransferQueueCount (set it to 0). */
 Next clearWord_e200AC1C(void) {
-    ST32(A_dword_200AC1C, 0);
+    ST32(A_eGfxTransferQueueCount, 0);
     RETURN_TO_CALLER();
 }
 

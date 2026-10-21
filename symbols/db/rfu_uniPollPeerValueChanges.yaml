@@ -2,59 +2,55 @@ name: rfu_uniPollPeerValueChanges
 address: '0x08148BCC'
 kind: function
 status: probable
-summary: 'Wireless link watchdog: per active peer slot, compares current received value to last seen,
-  tallies match/increment/decrement/other into per-slot counters, stores new value, and once all masked
-  peers have reported, either sets connection state to 1, transitions to 0x83, or increments a mismatch
-  counter.'
-interface: () -> void; writes per-slot change counters (word_2010400/2010410/2010420/2010428), byte_20101B0
-  change flags, and state byte byte_20101B4 (=1 or 0x83 on transition)
-details: 'Loops over 4 peer slots; a slot is active if its bit is set in the mask byte_2010292 and its
-  off_2010CA0 entry has a nonzero field 0x12. For active slots with fresh data (acknowledged via rfu_UNI_clearRecvNewDataFlag)
-  it compares the peer''s current value (unk_2010230 + slot*0x10, field 0xC) with the previously seen
-  copy in byte_2010220[slot]: equal bumps word_2010400[i] and word_2010420[i], prev+1==cur resets word_2010420[i]
-  to 0, prev-1==cur bumps unk_2010410[i], any other change bumps word_2010428[i]; the new value is stored
-  back. Each processed slot sets its bit in byte_20101B0. Epilogue: when every masked slot is flagged
-  in byte_20101B0 and matches the previously-flagged set in byte_20101D0, it either increments a mismatch
-  counter byte_2010434 or, if byte_20103F8 is clear, sets the connection state byte byte_20101B4 to 1,
-  otherwise bumps byte_20101D4 and sets it to 0x83. The early-out on byte_20101B4==0x8f shows byte_20101B4
-  is a link/state value this routine feeds.'
+summary: 'Wireless link watchdog: per active peer slot, compares current received value to last seen, tallies match/increment/decrement/other
+  into per-slot counters, stores new value, and once all masked peers have reported, either sets connection state
+  to 1, transitions to 0x83, or increments a mismatch counter.'
+interface: () -> void; writes per-slot change counters (word_2010400/2010410/2010420/2010428), byte_20101B0 change
+  flags, and state byte byte_20101B4 (=1 or 0x83 on transition)
+details: 'Loops over 4 peer slots; a slot is active if its bit is set in the mask byte_2010292 and its off_2010CA0
+  entry has a nonzero field 0x12. For active slots with fresh data (acknowledged via rfu_UNI_clearRecvNewDataFlag)
+  it compares the peer''s current value (unk_2010230 + slot*0x10, field 0xC) with the previously seen copy in byte_2010220[slot]:
+  equal bumps word_2010400[i] and word_2010420[i], prev+1==cur resets word_2010420[i] to 0, prev-1==cur bumps unk_2010410[i],
+  any other change bumps word_2010428[i]; the new value is stored back. Each processed slot sets its bit in byte_20101B0.
+  Epilogue: when every masked slot is flagged in byte_20101B0 and matches the previously-flagged set in byte_20101D0,
+  it either increments a mismatch counter byte_2010434 or, if byte_20103F8 is clear, sets the connection state byte
+  byte_20101B4 to 1, otherwise bumps byte_20101D4 and sets it to 0x83. The early-out on byte_20101B4==0x8f shows
+  byte_20101B4 is a link/state value this routine feeds.'
 evidence:
 - method: assembly-reading
   date: '2026-10-19'
   detail: 'loc_8148BE0..8148CA2: 4-iteration slot loop masked by byte_2010292 bit test and off_2010CA0[i]->field
-    0x12; bl rfu_UNI_clearRecvNewDataFlag (8148C10) acknowledges new UNI receive data per slot before
-    comparing values; prev==cur / prev+1==cur / prev-1==cur / else branches update word_2010400/2010410/2010420/2010428
-    per slot, then store cur into byte_2010220[i]; epilogue compares byte_20101B0 & byte_2010292 against
-    mask and byte_20101D0, then writes 1 or 0x83 to byte_20101B4; entry test ''cmp r0,#0x8f; bne'' on
-    byte_20101B4 shows it is a state machine value this routine updates'
+    0x12; bl rfu_UNI_clearRecvNewDataFlag (8148C10) acknowledges new UNI receive data per slot before comparing
+    values; prev==cur / prev+1==cur / prev-1==cur / else branches update word_2010400/2010410/2010420/2010428 per
+    slot, then store cur into byte_2010220[i]; epilogue compares byte_20101B0 & byte_2010292 against mask and byte_20101D0,
+    then writes 1 or 0x83 to byte_20101B4; entry test ''cmp r0,#0x8f; bne'' on byte_20101B4 shows it is a state
+    machine value this routine updates'
   refs:
   - bn6f/asm/libs.s:10176
   - 0x08148738 sub_8148738
   - 0x0814B094 rfu_UNI_clearRecvNewDataFlag
   reproduce: python3 tools/asmcat.py 0x08148BCC
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The overall flow matches: it loops over 4 slots, skips inactive ones, classifies prev/cur relationships
-    against prev+1/prev-1/equal/other, stores new value, sets bit in byte_20101B0, and advances state
-    at the end. However, the proposal says equal bumps both word_2010400[i] AND word_2010420[i], which
-    is wrong — looking at loc_8148C4C/0x92, the equal case simply writes 0 (not ''bump'') into word_2010420;
-    the bumping of both word_2010400 and word_2010420 actually happens in the prev+1==cur branch (loc_8148C4C
-    fallthrough to off_8148C6C/0x70). The epilogue also slightly misreads: the check at loc_8148CD6 tests
-    that byte_20101B0 fully covers the mask, and only then does the state transition occur — the summary
-    lumps this in confusingly.; run wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash,
-    revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The overall
+    flow matches: it loops over 4 slots, skips inactive ones, classifies prev/cur relationships against prev+1/prev-1/equal/other,
+    stores new value, sets bit in byte_20101B0, and advances state at the end. However, the proposal says equal
+    bumps both word_2010400[i] AND word_2010420[i], which is wrong — looking at loc_8148C4C/0x92, the equal case
+    simply writes 0 (not ''bump'') into word_2010420; the bumping of both word_2010400 and word_2010420 actually
+    happens in the prev+1==cur branch (loc_8148C4C fallthrough to off_8148C6C/0x70). The epilogue also slightly
+    misreads: the check at loc_8148CD6 tests that byte_20101B0 fully covers the mask, and only then does the state
+    transition occur — the summary lumps this in confusingly.; run wf investigate investigate-20261019-030611; proposed
+    by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
 open_questions:
-- Caller sub_8148738 is unlabelled, so the exact role of byte_20101B4's state values (1 vs 0x83 vs 0x8f)
-  in the wireless flow is unclear
-- What game value unk_2010230+slot*0x10 field 0xC holds (progress counter, sync tick?) and the meaning
-  of the four change counters is not shown
-- 'The overall flow matches: it loops over 4 slots, skips inactive ones, classifies prev/cur relationships
-  against prev+1/prev-1/equal/other, stores new value, sets bit in byte_20101B0, and advances state at
-  the end. However, the proposal says equal bumps both word_2010400[i] AND word_2010420[i], which is wrong
-  — looking at loc_8148C4C/0x92, the equal case simply writes 0 (not ''bump'') into word_2010420; the
-  bumping of both word_2010400 and word_2010420 actually happens in the prev+1==cur branch (loc_8148C4C
-  fallthrough to off_8148C6C/0x70). The epilogue also slightly misreads: the check at loc_8148CD6 tests
-  that byte_20101B0 fully covers the mask, and only then does the state transition occur — the summary
-  lumps this in confusingly.'
+- Caller sub_8148738 is unlabelled, so the exact role of byte_20101B4's state values (1 vs 0x83 vs 0x8f) in the
+  wireless flow is unclear
+- What game value unk_2010230+slot*0x10 field 0xC holds (progress counter, sync tick?) and the meaning of the four
+  change counters is not shown
+- 'The overall flow matches: it loops over 4 slots, skips inactive ones, classifies prev/cur relationships against
+  prev+1/prev-1/equal/other, stores new value, sets bit in byte_20101B0, and advances state at the end. However,
+  the proposal says equal bumps both word_2010400[i] AND word_2010420[i], which is wrong — looking at loc_8148C4C/0x92,
+  the equal case simply writes 0 (not ''bump'') into word_2010420; the bumping of both word_2010400 and word_2010420
+  actually happens in the prev+1==cur branch (loc_8148C4C fallthrough to off_8148C6C/0x70). The epilogue also slightly
+  misreads: the check at loc_8148CD6 tests that byte_20101B0 fully covers the mask, and only then does the state
+  transition occur — the summary lumps this in confusingly.'
 sources:
 - wf investigate investigate-20261019-030611
 changes:
@@ -66,5 +62,9 @@ changes:
   what: rename sub_8148BCC -> rfu_uniPollPeerValueChanges
   where: bn6f 1189566c
   tool: tools/rename_symbol.py
+- date: '2026-10-20'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 96780ce4
+  tool: tools/symdoc.py
 previous_names:
 - sub_8148BCC
