@@ -1,0 +1,46 @@
+name: t3_runConnectIdleOrAdvance
+address: '0x08039D9A'
+kind: function
+status: probable
+summary: 't3 (RFU/link) state tick: if the t3 state handler is idle and RFU bit 0x80 is clear, advance
+  the phase byte to 0x24, then redraw the connected-players list.'
+interface: (r5 = t3 state cell) -> void; runs t3_runStateHandler, may set [r5,#1] = 0x24, then rfu_drawConnectedPlayerEntries
+details: Called as a periodic tick. It first defers to t3_runStateHandler; only if that handler returns
+  zero (no state change pending) and the chatbox/event flag bit 0x80 in eFlags2009F38 is clear does it
+  overwrite the lower byte of the t3 state cell with 0x24, presumably advancing the protocol to the next
+  phase. It then always redraws the connected-player entries via rfu_drawConnectedPlayerEntries, keeping
+  the RFU submenu display in sync.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: bl t3_runStateHandler is the first action and bne short-circuits on nonzero (state handler consumed
+    the tick); chatbox_mask_eFlags2009F38 with r0=0x80 gates the state write, so 0x80 marks an RFU-busy
+    condition; mov r0,#0x24 / strb r0,[r5,#1] assigns a new state code on the same cell t3_runStateHandler
+    writes; bl rfu_drawConnectedPlayerEntries runs unconditionally after the state logic to refresh the
+    player list; r5 is the same t3 state pointer used by the renamed callers (t3_runStateHandler itself
+    writes [r5+1])
+  refs:
+  - bn6f/asm/asm03_1_1.s:2443
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x0803A104 rfu_drawConnectedPlayerEntries
+  - 0x0803A558 t3_runStateHandler
+  reproduce: python3 tools/asmcat.py 0x08039D9A
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-004112'
+open_questions:
+- What phase 0x24 actually represents (some BN6 t3 phase table would confirm)
+- Why bit 0x80 specifically gates advancement (which RFU event flag it maps to in the broader protocol)
+- Who calls this and on what cadence — no in-project caller is currently known
+sources:
+- wf investigate investigate-20261021-004112
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2318a6c6
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_8039D9A -> t3_runConnectIdleOrAdvance
+  where: bn6f 7b640af0
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8039D9A

@@ -1,0 +1,48 @@
+name: pet_initCurNaviStatsRoundControl
+address: '0x0813CD3E'
+kind: function
+status: probable
+summary: Initializes the selected navi's NaviStats round-control byte (offset 0x12) to 0 with a 3-byte
+  write, used as the first step before clearing adjacent round/battle state bytes.
+interface: () -> void; writes 0 to offset 0x12 of the current PET navi's NaviStats record via SetCurPETNaviStatsByte(r0=0,
+  r1=0x12, r2=3)
+details: The function takes no arguments and unconditionally calls SetCurPETNaviStatsByte with r0=0, r1=0x12,
+  r2=3. The 3-byte write at offset 0x12 covers bytes 0x12, 0x13 and 0x14 of the NaviStats record. It is
+  called from three near-identical wrappers that each immediately follow up with pet_clearCurNaviStatsByte19
+  (or its byte-specific variants) to zero byte 0x13, suggesting this routine initializes a multi-byte
+  round/battle counter block to a known 'no round active' state before per-mode cleanups.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'Assembly: mov r0,#0; mov r1,#0x12; mov r2,#3; bl SetCurPETNaviStatsByte zeroes bytes 0x12-0x14
+    of the NaviStats record.; Caller pet_resetCurNaviStatsByte19 runs this then clears byte 0x13 with
+    the ''byte 0x13'' variant, mode 2.; sub_813CD22 runs this then clears byte 0x13 with mode 3.; sub_813CD30
+    runs this then clears byte 0x13 with mode 4.; All three callers are stacked consecutively and structurally
+    identical, indicating they are mode-specific entrypoints sharing the same init prefix.'
+  refs:
+  - bn6f/asm/asm37_0.s:3142
+  - 0x0813CD14 pet_resetCurNaviStatsByte19
+  - 0x0813CD22 sub_813CD22
+  - 0x0813CD30 sub_813CD30
+  - 0x0801379E SetCurPETNaviStatsByte
+  reproduce: python3 tools/asmcat.py 0x0813CD3E
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-004112'
+open_questions:
+- What mode values 2/3/4 of pet_clearCurNaviStatsByte19 mean and which battle/round state each represents.
+- Why three separate wrappers exist rather than one parameterized function.
+- Whether byte 0x14 (covered by the 3-byte write) carries independent meaning or is just zeroed as a side
+  effect.
+sources:
+- wf investigate investigate-20261021-004112
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2318a6c6
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_813CD3E -> pet_initCurNaviStatsRoundControl
+  where: bn6f 7b640af0
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813CD3E

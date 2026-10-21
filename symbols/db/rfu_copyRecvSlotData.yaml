@@ -1,0 +1,41 @@
+name: rfu_copyRecvSlotData
+address: '0x08146E48'
+kind: function
+status: probable
+summary: Copies a peer's received wireless data block into the shared wireless buffer at the slot's index
+  offset.
+interface: (r0 = *mut SlotInfo, r1 = *const u8 dest in shared buffer) -> ()
+details: Reads the source pointer from slot+0xc and a byte length from slot+0x14, then forwards (dest,
+  src, length) to CopyWords. It is used by rfu_clearDisconnectedSlots after clearing a disconnected slot's
+  stored struct, to refill the shared wireless data buffer (byte_2010290) by copying this slot's data
+  block into the position computed from the global index (byte_2010328) shifted by slot+0x14>>2.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: asm reads src=*[r0+0xc], len=*[r0+14], then CopyWords(*r1, src, len); only callee CopyWords
+    is a memcpy-style helper; caller ZeroFillByWord first clears [r6+0xc] then calls this with r9=address
+    in shared buffer; r9 is built from off_8146E44=byte_2010328 * (slot+0x14>>2)<<2, i.e. slot-indexed
+    into shared buffer; off_8146E40=byte_2010290 is the shared wireless buffer base the caller is rebuilding
+  refs:
+  - bn6f/asm/libs.s:6545
+  - 0x08146D98 rfu_clearDisconnectedSlots
+  - 0x0800093C CopyWords
+  reproduce: python3 tools/asmcat.py 0x08146E48
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-004112'
+open_questions:
+- exact layout of SlotInfo (fields +0xc src ptr, +0x14 length/index)
+- whether length on +0x14 is bytes or already words for CopyWords
+sources:
+- wf investigate investigate-20261021-004112
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2318a6c6
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_8146E48 -> rfu_copyRecvSlotData
+  where: bn6f 7b640af0
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_8146E48

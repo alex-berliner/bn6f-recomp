@@ -1,0 +1,44 @@
+name: battle_refreshRfuAndSubmenuIfFlag
+address: '0x080493FE'
+kind: function
+status: probable
+summary: 'Per-frame battle UI refresh: redraws the wireless-connect player list and the submenu slot icons,
+  plus sets an inter-frame byte when flag 0x80 is clear.'
+interface: () -> void
+details: Called repeatedly each battle/UI tick. Reads eFlags2009F38 with mask 0x80 via chatbox_mask_eFlags2009F38;
+  if that bit is clear it writes 0x24 to r5+1 (a small per-frame control byte on the caller's structure).
+  It then unconditionally calls rfu_drawConnectedPlayerEntries to redraw the RFU player list, and submenu_queueSlotIcons
+  to redraw the four submenu slot icons. The saved r4-r7 plus the r5 write imply the caller passes a structure
+  in r5; the body has no return value.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'asm: bl chatbox_mask_eFlags2009F38 with r0=0x80 then bne over the r5+1 store; asm: mov r0,#0x24
+    ; strb r0,[r5,#1] when flag is unset; asm: bl rfu_drawConnectedPlayerEntries after the flag check;
+    asm: bl submenu_queueSlotIcons after rfu draw; Callees'' summaries: redraws 0..4 RFU connect lines
+    and copies 0x20-word palettes plus tiles into VRAM per slot'
+  refs:
+  - bn6f/asm/asm03_2.s:5423
+  - 0x08045F3C chatbox_mask_eFlags2009F38
+  - 0x0803A104 rfu_drawConnectedPlayerEntries
+  - 0x08049BC0 submenu_queueSlotIcons
+  reproduce: python3 tools/asmcat.py 0x080493FE
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-004112'
+open_questions:
+- Which field at r5+1 the 0x24 is being written into, and what other field/accessor on the r5 struct would
+  clarify the owner
+- Whether the r5 structure is a battle state, a UI frame controller, or a per-tick dispatcher
+sources:
+- wf investigate investigate-20261021-004112
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2318a6c6
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80493FE -> battle_refreshRfuAndSubmenuIfFlag
+  where: bn6f 7b640af0
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80493FE

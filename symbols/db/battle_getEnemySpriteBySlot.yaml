@@ -1,0 +1,49 @@
+name: battle_getEnemySpriteBySlot
+address: '0x0802AF38'
+kind: function
+status: probable
+summary: Returns the cached decompressed enemy sprite pointer for slot r5[5] from an object's slot table
+  at r5+0x30 (slot×4 stride).
+interface: () -> r0 = pointer to enemy sprite struct (from r5[5] in r5+0x30[x4]); uses r5, returns via
+  mov pc,lr
+details: Reads the object's byte at r5+5, multiplies by 4, adds 0x30, and returns the word stored there.
+  r5 is an enclosing battle/overworld object that holds a small array of enemy sprite pointers in a table
+  laid out at offset 0x30 with stride 4, indexed by a slot index byte. Callers either just got back from
+  battle_spawnEnemyDecompressSprite (which fills the slot) and use the returned pointer for fresh-spawn
+  bookkeeping, or fetch it later to read live position bytes (offsets 0x12, 0x13) and toggle flag 0x80000
+  on the sprite. The function is small enough to be a pure struct-field resolver tailed with mov pc,lr.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'asm: ldrb r0,[r5,#5]; lsl r0,#2; add r0,#0x30; ldr r0,[r5,r0] — fetch a pointer from a small
+    table at r5+0x30 indexed by r5[5]*4; sub_802AC10 stores the pointer from battle_spawnEnemyDecompressSprite
+    into [r5, r5[5]*4+0x30], then immediately calls sub_802AF38 to retrieve it; ow_chatboxWaitStep reads
+    r0[0x12] and r0[0x13] after the call — the typical x,y position fields of a spawned enemy sprite struct;
+    battle_panelTargetCursorUpdate uses the call right before object_setFlag80000, acting on the just-fetched
+    sprite''s flag; no callees; tail-return via mov pc,lr confirms this is a pure struct field accessor,
+    not logic'
+  refs:
+  - bn6f/asm/asm03_0.s:10824
+  - 0x0802AC6E battle_panelTargetCursorUpdate
+  - 0x0802AE14 ow_chatboxWaitStep
+  - 0x0802AC10 sub_802AC10
+  reproduce: python3 tools/asmcat.py 0x0802AF38
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-004112'
+open_questions:
+- Is the r5 object an enemy-array container (like battle_fieldObjects) or a generic object carrying a
+  spawned-enemy handle array?
+- What's the maximum slot count — can r5[5] index out of range safely given caller discipline?
+sources:
+- wf investigate investigate-20261021-004112
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2318a6c6
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_802AF38 -> battle_getEnemySpriteBySlot
+  where: bn6f 7b640af0
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802AF38

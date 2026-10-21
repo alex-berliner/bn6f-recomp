@@ -1,0 +1,45 @@
+name: navicust_getPlacementCursorStep
+address: '0x0813B928'
+kind: function
+status: probable
+summary: Returns the current 0..3 cursor-rotation step held in a global byte, used to rotate the held
+  Navi Customizer part on L/R input.
+interface: () -> r0 = current placement-cursor rotation step (0..3)
+details: 'Loads the byte at byte_20096D8 and returns it. Has no side effects. The two callers in navicust_handlePlacementCursorInput
+  use the result, +/- 1 then & 3, to compute the next cursor step on L (r4 & 0x200) or R (r4 & 0x100)
+  button presses, then persist it via storeWorkByte_813B920 into r5''s #0xe slot. No other callers were
+  observed, so the mapping from the raw value to a meaning (which step corresponds to which orientation)
+  is not visible here.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'assembly: ldr r1, off_813B930 / ldrb r0, [r1] / mov pc, lr — trivial getter of byte_20096D8;
+    call site 0x08136160 (L path): bl sub_813B928 ; sub r0,#1 ; and r0,#3 ; bl storeWorkByte_813B920 ;
+    strb r0,[r5,#0xe] — minus 1, store back; call site 0x0813618C (R path): bl sub_813B928 ; add r0,#1
+    ; and r0,#3 ; bl storeWorkByte_813B920 ; strb r0,[r5,#0xe] — plus 1, store back; value always masked
+    to 2 bits, consistent with a 0..3 cyclic step counter; global storage at byte_20096D8 across L/R uses
+    indicates a persistent cursor step rather than per-frame'
+  refs:
+  - bn6f/asm/asm37_0.s:316
+  - 0x0813612C navicust_handlePlacementCursorInput
+  reproduce: python3 tools/asmcat.py 0x0813B928
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-004112'
+open_questions:
+- Which orientation (N/E/S/W) corresponds to each of the 4 step values? A callee or other use of byte_20096D8
+  would show the mapping.
+- Why a global byte rather than the struct field at r5+0xe that stores the result? Perhaps this getter
+  exists for a context without an r5 handle.
+sources:
+- wf investigate investigate-20261021-004112
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2318a6c6
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_813B928 -> navicust_getPlacementCursorStep
+  where: bn6f 7b640af0
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_813B928

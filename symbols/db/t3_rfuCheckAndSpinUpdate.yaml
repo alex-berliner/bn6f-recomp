@@ -1,0 +1,48 @@
+name: t3_rfuCheckAndSpinUpdate
+address: '0x0812B574'
+kind: function
+status: probable
+summary: If state at EWRAM 0x200BC30 is 4, runs the RFU wireless connection update with the dword_814FE94
+  context; otherwise calls sub_8148224.
+interface: () -> void
+details: Reads the first byte/word of the record at EWRAM 0x200BC30 (via eStruct200BC30_getJumpOffset00).
+  If equal to 4, loads the 32-bit value at dword_814FE94 into r0 and calls rfu_connectionStateUpdate,
+  performing the per-frame RFU wireless state-machine update. Otherwise falls through to sub_8148224.
+  Called from two t3-style text/chatbox flow handlers that both run before the chatbox script plays or
+  before the next state branch is taken.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: cmp r0,#4 / beq loc_812B584 dispatches on the state value; ldr r0,off_812B58C / bl rfu_connectionStateUpdate
+    loads dword_814FE94 into r0 only in the ==4 branch; fall-through 'bl sub_8148224' is the non-4 path;
+    t3_runScript2fSetState calls it just before running chatbox script 0x2f, consistent with a per-frame
+    RFU poll; sub_812A27C uses it as a precondition before jumping into one of three state handlers via
+    a dispatch table
+  refs:
+  - bn6f/asm/asm33.s:17494
+  - 0x0812B590 t3_runScript2fSetState
+  - 0x0812A27C sub_812A27C
+  - 0x0803EA60 eStruct200BC30_getJumpOffset00
+  - 0x081475D4 rfu_connectionStateUpdate
+  - 0x08148224 sub_8148224
+  reproduce: python3 tools/asmcat.py 0x0812B574
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-004112'
+open_questions:
+- What sub_8148224 does in the non-4 branch (no caller known).
+- Why the state must equal 4 before the RFU update runs (likely 'we are connected/linked').
+- What the two callers really do with the result — they only seem to use it as a side-effecting gate before
+  advancing chatbox/state.
+sources:
+- wf investigate investigate-20261021-004112
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2318a6c6
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_812B574 -> t3_rfuCheckAndSpinUpdate
+  where: bn6f 7b640af0
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_812B574

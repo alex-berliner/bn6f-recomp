@@ -3,49 +3,48 @@ address: '0x0812B874'
 kind: function
 status: probable
 summary: 'Per-frame step of the battle custom-screen state machine: conditionally calls sub_803C604, dispatches
-  one of seven state handlers from a thumb tail-call table, ticks battle_runFrameUpdate(0x12), and refreshes
-  the chip-cursor OAM/tile.'
-interface: '(r0 = unused/jump-offset seed, r5 = screen-state struct: +2 = state id, +3 = substate) ->
-  r0 = result of battle_runFrameUpdate(0x12); no meaningful return'
-details: Reads the first byte of the EWRAM record at 0x200BC30; if it equals 8 and the struct's state
-  (r5+2) is not 0x14 with substate 4, calls sub_803C604. It then dispatches through a 6-entry thumb handler
-  table at 0x812B8C0 indexed by r5+2 (mov lr,pc / bx r0 tail-call style). After the handler, it calls
-  battle_runFrameUpdate with message id 0x12 unless state==0x14/substate==4. Finally, unless the 0x200BC30
-  byte is 0, it calls the chip-cursor OAM/tile uploader with (0xDA, 2). The state==0x14/sub==4 special
-  case skips the extra update calls, suggesting that pair marks a finished/idle screen phase.
+  one of seven state handlers from a thumb tail-call table, ticks battle_runFrameUpdate(0x12), and refreshes the
+  chip-cursor OAM/tile.'
+interface: '(r0 = unused/jump-offset seed, r5 = screen-state struct: +2 = state id, +3 = substate) -> r0 = result
+  of battle_runFrameUpdate(0x12); no meaningful return'
+details: Reads the first byte of the EWRAM record at 0x200BC30; if it equals 8 and the struct's state (r5+2) is
+  not 0x14 with substate 4, calls sub_803C604. It then dispatches through a 6-entry thumb handler table at 0x812B8C0
+  indexed by r5+2 (mov lr,pc / bx r0 tail-call style). After the handler, it calls battle_runFrameUpdate with message
+  id 0x12 unless state==0x14/substate==4. Finally, unless the 0x200BC30 byte is 0, it calls the chip-cursor OAM/tile
+  uploader with (0xDA, 2). The state==0x14/sub==4 special case skips the extra update calls, suggesting that pair
+  marks a finished/idle screen phase.
 evidence:
 - method: assembly-reading
   date: '2026-10-18'
-  detail: ldr r0, off_812B8BC; ldrb r1,[r5,#2]; mov lr,pc; bx r0 — 6-entry state dispatch table at 812B8C0;
-    callee battleObject_setupCustomChipCursorState_803C59C (custom-screen OAM + chip-cursor tile upload)
-    called with 0xDA,2 — ties this to the custom screen; bl battle_runFrameUpdate with r0=0x12 runs the
-    per-frame battle-scene update after the state handler; state 0x14/substate 4 skips sub_803C604 and
-    battle_runFrameUpdate — an idle/terminal phase of the screen; gate on EWRAM 0x200BC30 first byte (==8
-    before, !=0 after) mirrors the record-driven dispatch seen in eStruct200BC30_getJumpOffset00
+  detail: ldr r0, off_812B8BC; ldrb r1,[r5,#2]; mov lr,pc; bx r0 — 6-entry state dispatch table at 812B8C0; callee
+    battleObject_setupCustomChipCursorState_803C59C (custom-screen OAM + chip-cursor tile upload) called with 0xDA,2
+    — ties this to the custom screen; bl battle_runFrameUpdate with r0=0x12 runs the per-frame battle-scene update
+    after the state handler; state 0x14/substate 4 skips sub_803C604 and battle_runFrameUpdate — an idle/terminal
+    phase of the screen; gate on EWRAM 0x200BC30 first byte (==8 before, !=0 after) mirrors the record-driven dispatch
+    seen in eStruct200BC30_getJumpOffset00
   refs:
   - bn6f/asm/asm33.s:17606
   - 0x0803C59C battleObject_setupCustomChipCursorState_803C59C
   - 0x0812B25C battle_runFrameUpdate
   - 0x0803EA60 eStruct200BC30_getJumpOffset00
   reproduce: python3 tools/asmcat.py 0x0812B874
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The proposal''s mechanics match the code closely: the conditional sub_803C604 call gated on the
-    0x200BC30 byte==8 and skipping state 0x14/substate 4, the 7-entry (not 6) handler table at 0x812B8C0,
-    the battle_runFrameUpdate(0x12) skip logic, and the chip-cursor uploader gated on byte!=0 all check
-    out. However, the prefix ''battle_'' for the name is reasonable but the summary''s claim of a ''6-entry
-    thumb handler table'' is wrong (it''s 7). A simpler summary suffices.; run wf investigate investigate-20261018-235109;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The proposal''s
+    mechanics match the code closely: the conditional sub_803C604 call gated on the 0x200BC30 byte==8 and skipping
+    state 0x14/substate 4, the 7-entry (not 6) handler table at 0x812B8C0, the battle_runFrameUpdate(0x12) skip
+    logic, and the chip-cursor uploader gated on byte!=0 all check out. However, the prefix ''battle_'' for the
+    name is reasonable but the summary''s claim of a ''6-entry thumb handler table'' is wrong (it''s 7). A simpler
+    summary suffices.; run wf investigate investigate-20261018-235109; proposed by Hyper glm-5.3-flash, revised
+    by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py reconcile)'
 open_questions:
-- No callers known, so how r5's struct is set up and which states 0-5 correspond to which custom-screen
-  phases is unconfirmed
-- Exact meaning of the 0x200BC30 record byte and the magic values 8, 0x14/4, and 0xDA need the state handlers
-  (sub_812B8DC etc.) to be read
-- 'The proposal''s mechanics match the code closely: the conditional sub_803C604 call gated on the 0x200BC30
-  byte==8 and skipping state 0x14/substate 4, the 7-entry (not 6) handler table at 0x812B8C0, the battle_runFrameUpdate(0x12)
-  skip logic, and the chip-cursor uploader gated on byte!=0 all check out. However, the prefix ''battle_''
-  for the name is reasonable but the summary''s claim of a ''6-entry thumb handler table'' is wrong (it''s
-  7). A simpler summary suffices.'
+- No callers known, so how r5's struct is set up and which states 0-5 correspond to which custom-screen phases is
+  unconfirmed
+- Exact meaning of the 0x200BC30 record byte and the magic values 8, 0x14/4, and 0xDA need the state handlers (sub_812B8DC
+  etc.) to be read
+- 'The proposal''s mechanics match the code closely: the conditional sub_803C604 call gated on the 0x200BC30 byte==8
+  and skipping state 0x14/substate 4, the 7-entry (not 6) handler table at 0x812B8C0, the battle_runFrameUpdate(0x12)
+  skip logic, and the chip-cursor uploader gated on byte!=0 all check out. However, the prefix ''battle_'' for the
+  name is reasonable but the summary''s claim of a ''6-entry thumb handler table'' is wrong (it''s 7). A simpler
+  summary suffices.'
 sources:
 - wf investigate investigate-20261018-235109
 changes:
@@ -57,5 +56,9 @@ changes:
   what: rename sub_812B874 -> battle_runCustomScreenFrame
   where: bn6f cfc4da77
   tool: tools/rename_symbol.py
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2318a6c6
+  tool: tools/symdoc.py
 previous_names:
 - sub_812B874

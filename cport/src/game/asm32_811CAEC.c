@@ -3305,9 +3305,9 @@ static inline u32 call_GetBattleEffects(void) {
 }
 
 typedef struct { u32 r1; } call_sub_8144D30_result;
-/* register form: generated wrapper: sub_8144D30 has no typed C interface yet */
+/* register form: generated wrapper: eEnableTimer5 has no typed C interface yet */
 static inline call_sub_8144D30_result call_sub_8144D30(void) {
-    GUEST_CALL(sub_8144D30);
+    GUEST_CALL(eEnableTimer5);
     return (call_sub_8144D30_result){ R1 };
 }
 
@@ -3353,7 +3353,7 @@ static style_result_t compute_style_override(u32 chip_value, u32 in_r3) {
         /* Check battle-effects flag bit 3 (effect active). */
         u32 effects = call_GetBattleEffects(); /* reads r10, returns r0 */
         if ((effects & 8) == 0) {
-            /* No active effect: query alternate table via sub_8144D30, then default. */
+            /* No active effect: query alternate table via eEnableTimer5, then default. */
             call_sub_8144D30();
             res.r0 = LD32(A_byte_8120BCC + 0x14);
             return res;

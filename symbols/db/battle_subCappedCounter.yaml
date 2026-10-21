@@ -1,0 +1,47 @@
+name: battle_subCappedCounter
+address: '0x0802E04E'
+kind: function
+status: probable
+summary: Subtracts a (scaled) amount from a battle entity's counter at field 0x28, clamping to zero.
+interface: (r0 = entity index, r1 = amount in field 0x28 units, 256 per game unit) -> void; clamps at
+  0
+details: 'Looks up the entity via getEntryPtr_2036120_1D0_802E070, reads its 16-bit counter at +0x28,
+  subtracts r1, and if the result would underflow saturates at 0 before storing it back. It is the saturated-subtraction
+  twin of battle_addCappedCounter: battle_addCounterAmount selects which path to take using bit 7 of the
+  encoded argument. The two callsites each pass an amount already shifted by 8 (matching the 256-per-unit
+  scaling used by the counter field), and the second callsite in sub_80E45F8 subtracts a fixed value (0x4000)
+  tied to entity alliance.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'assembly: getEntryPtr resolves the entity at +0x28, sub then bge clamps to 0 on underflow;
+    assembly: ''sub r0, r0, r1'' mirrors the add-in-capped form of battle_addCappedCounter; call site
+    0x802EEBC (battle_addCounterAmount): bit 7 branch shifts arg<<8 then calls this as the subtract counterpart;
+    call site 0x802E9CC (sub_802E95C): identical add-vs-sub dispatch on bit 7 with scaled amount; call
+    site 0x080E460C (sub_80E45F8): uses the same signed-encoded pattern to subtract a fixed 0x4000 from
+    the entity''s counter'
+  refs:
+  - bn6f/asm/asm03_0.s:17519
+  - 0x0802EEA2 battle_addCounterAmount
+  - 0x0802E95C sub_802E95C
+  - 0x080E45F8 sub_80E45F8
+  - 0x0802E070 getEntryPtr_2036120_1D0_802E070
+  reproduce: python3 tools/asmcat.py 0x0802E04E
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-004112'
+open_questions:
+- Whether the clamp-at-zero behavior truly saturates or simply leaves the negative and prevents the underflow
+  in some other way; full semantics of counter field 0x28 (HP vs other resource) are not shown here.
+sources:
+- wf investigate investigate-20261021-004112
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 2318a6c6
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_802E04E -> battle_subCappedCounter
+  where: bn6f 7b640af0
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_802E04E
