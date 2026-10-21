@@ -1683,6 +1683,7 @@ def try_subchip(D):
         log(f'  subchip: not taken (cost {res[t[3]][1]:.3f}, {len(ok)} of {len(tasks)} hold)'); return None
     return w, [t[1][0]]
 
+HAND_DONE = set()
 def try_hand(D, deep=None):
     """The first hand of a battle is the shuffled folder's first 5 chips, and one order of 5 out of 30 is too
     rare to reach with secondary RNG writes. Write the folder order instead: after the shuffle (a big jump of
@@ -1771,6 +1772,11 @@ def try_hand(D, deep=None):
     if order[:5] == folder[:5] or sum(e1) >= sum(e0): return None
     ck = ck_file(w); until = D + MARGIN
     poke = [f, folder_spec(order, pad)]
+    # (not the same hand again: run10u looped 1307979 RNG write -> loss 1308978 -> this hand at 1307982, which
+    # dropped the RNG write and lost at 1308544 -> the RNG write again, eight times)
+    if (f, poke[1]) in HAND_DONE:
+        log(f'  hand: this hand was written at {f} before; not again'); return None
+    HAND_DONE.add((f, poke[1]))
     res = evaluate([(ck, [poke], until, 'H')] * 2)['H']
     log(f'  hand: the sync gets to {res[0]} (mean cost {res[1]:.3f})')
     # a clearly better hand is right even when the battle still goes another way after it (the enemies' moves
