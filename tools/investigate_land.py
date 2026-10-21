@@ -1624,6 +1624,9 @@ def land(run_dir: str, count: int, dry: bool) -> None:
     print(f"candidates: {len(rows)} rows, {sum(1 for r in rows if r.status == 'probable' and r.check == 'agree')} "
           f"probable+agree; {len(skipped)} dropped or skipped (land_skipped.tsv); taking {len(chosen)}")
     pairs: list[tuple[str, str]] = []
+    if not chosen:
+        print("nothing to land: no candidate passes the checks (no entries written, no record run)")
+        return
     for row, candidate in chosen:
         proposed = PROPOSED_PREFIX.match(str(candidate.get("summary") or ""))
         summary_name = proposed.group(1) if proposed else None
