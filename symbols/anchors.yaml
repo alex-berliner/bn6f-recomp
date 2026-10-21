@@ -1,0 +1,121 @@
+# Hardware anchors wf intervene observes every frame on baseline (original ROM)
+# and patched ROM, then diffs. ROM RAM anchors are TBD: every RAM address under
+# intervention must be confirmed by a `null` intervention (which must produce no
+# difference) before being added here, so the list stays causal rather than
+# correlated. RAM candidates get the workflow's note attached until they pass.
+#
+# The anchors below are read every game frame; an entry's "every" field, if
+# present, makes it sampled every Nth game frame instead (useful for the slow
+# anchors, e.g. screen images).
+
+hardware:
+
+  # ── the GBA's visible machine state, in memory order ────────────────
+
+  - name: oam
+    description: Object Attribute Memory (0x07000000-0x07000400, 1 KB; 128 sprites * 8 bytes).
+    base: 0x07000000
+    size: 0x400
+
+  - name: palette
+    description: Background + object palettes (0x05000000-0x05000400, 1 KB; 256 entries * 2 bytes).
+    base: 0x05000000
+    size: 0x400
+
+  - name: vram_bg
+    description: "Background VRAM (0x06000000-0x06010000, 64 KB; hashed per 2 KB block for diffing)."
+    base: 0x06000000
+    size: 0x10000
+    block_size: 0x800
+
+  - name: vram_obj
+    description: "Object VRAM (0x06010000-0x06018000, 32 KB; hashed per 2 KB block for diffing)."
+    base: 0x06010000
+    size: 0x8000
+    block_size: 0x800
+
+  - name: display_io
+    description: |
+      The GBA display registers the game's drawing code touches most often
+      (a `null` intervention must show no difference here; this anchors the
+      determinism of the observed replay). Each row's `address` is the I/O
+      register's 16-bit value at 0x04000000+offset.
+    registers:
+      - { name: DISPCNT,    address: 0x04000000 }
+      - { name: DISPSTAT,   address: 0x04000004 }   # read; only writes count as differences
+      - { name: VCOUNT,     address: 0x04000006 }   # read; same
+      - { name: BG0CNT,     address: 0x04000008 }
+      - { name: BG1CNT,     address: 0x0400000C }
+      - { name: BG2CNT,     address: 0x04000010 }
+      - { name: BG3CNT,     address: 0x04000014 }
+      - { name: BG0HOFS,    address: 0x04000018 }
+      - { name: BG0VOFS,    address: 0x0400001C }
+      - { name: BG1HOFS,    address: 0x04000020 }
+      - { name: BG1VOFS,    address: 0x04000024 }
+      - { name: BG2HOFS,    address: 0x04000028 }
+      - { name: BG2VOFS,    address: 0x0400002C }
+      - { name: BG3HOFS,    address: 0x04000030 }
+      - { name: BG3VOFS,    address: 0x04000034 }
+      - { name: MOSAIC,     address: 0x0400004C }
+      - { name: BLDCNT,     address: 0x04000050 }
+      - { name: BLDALPHA,   address: 0x04000052 }
+      - { name: BLDY,       address: 0x04000054 }
+      - { name: WININ,      address: 0x04000048 }
+      - { name: WINOUT,     address: 0x0400004A }
+
+  - name: dma_control
+    description: |
+      The DMA channels' control registers (write: starts a copy, so an
+      intervention that touches none of these but still moves VRAM was DMA'd).
+    registers:
+      - { name: DMA0CNT,    address: 0x040000B8 }
+      - { name: DMA1CNT,    address: 0x040000C4 }
+      - { name: DMA2CNT,    address: 0x040000D0 }
+      - { name: DMA3CNT,    address: 0x040000DC }
+
+  - name: sound_io
+    description: "The game sound the GBA exposes through 0x04000060-0x040000A8 (the SOUNDCNT_* and FIFO registers; their activity is what an audio function is expected to perturb)."
+    registers:
+      - { name: NR10,       address: 0x04000060 }
+      - { name: NR11,       address: 0x04000062 }
+      - { name: NR12,       address: 0x04000063 }
+      - { name: NR13,       address: 0x04000064 }
+      - { name: NR14,       address: 0x04000065 }
+      - { name: NR21,       address: 0x04000068 }
+      - { name: NR22,       address: 0x04000069 }
+      - { name: NR23,       address: 0x0400006C }
+      - { name: NR24,       address: 0x0400006D }
+      - { name: NR30,       address: 0x04000070 }
+      - { name: NR31,       address: 0x04000072 }
+      - { name: NR32,       address: 0x04000073 }
+      - { name: NR33,       address: 0x04000074 }
+      - { name: NR34,       address: 0x04000075 }
+      - { name: NR41,       address: 0x04000078 }
+      - { name: NR42,       address: 0x04000079 }
+      - { name: NR43,       address: 0x0400007C }
+      - { name: NR44,       address: 0x0400007D }
+      - { name: NR50,       address: 0x04000080 }
+      - { name: NR51,       address: 0x04000082 }
+      - { name: NR52,       address: 0x04000084 }
+      - { name: SOUNDCNT_L, address: 0x04000080 }   # alias of NR50 on GBA: kept for the lockstep's digests
+      - { name: SOUNDCNT_H, address: 0x04000082 }
+      - { name: SOUNDCNT_X, address: 0x04000084 }
+      - { name: WAVE_RAM0,  address: 0x04000090 }
+      - { name: FIFO_A,    address: 0x040000A0 }
+      - { name: FIFO_B,    address: 0x040000A4 }
+
+  - name: screen
+    description: |
+      The 240x160 16bpp frame buffer at the end of every frame (one shot per
+      game frame the window spans; sampled by default every k=2 game frames
+      to keep the per-run wall time down).
+    every: 2
+    format: ppm
+
+ram: []  # see file header. Every RAM anchor must be confirmed by a `null`
+         # intervention before it can be used; candidates are added to
+         # #ram-pending below and only removed to `ram:` when their `null`
+         # match passes.
+
+# Pending RAM candidates (a workflow run may record one here as a hint):
+#   - { name: oBattleState_HP, address: 0x02036844, every: 1, note: "HP values for both sides" }
