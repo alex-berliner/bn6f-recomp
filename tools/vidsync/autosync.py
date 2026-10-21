@@ -1726,8 +1726,11 @@ def try_subchip(D):
     for name, (fa, m, ca) in SUBCHIPS.items():
         fb = b.e.read(fa, 1)[0]
         if fb & m:
+            # the flag alone, or with the counter: "Yes" then closes without "You used" (the flag alone, as the
+            # video's at run11h 1412103) or with it
             for W in range(w[0] + 1, D + 6):
                 off.append((ck, [[W, f'{fa:#x}={fb & ~m & 0xFF:#04x}/1,{ca:#x}=0x0/4']], until, f'{name} off@{W}'))
+                off.append((ck, [[W, f'{fa:#x}={fb & ~m & 0xFF:#04x}/1']], until, f'{name} flag off@{W}'))
     res = evaluate(tasks + off)
     if off:
         far = max(res[t[3]][0] for t in off)
