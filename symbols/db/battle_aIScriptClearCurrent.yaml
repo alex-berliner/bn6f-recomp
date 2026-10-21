@@ -1,0 +1,42 @@
+name: battle_aIScriptClearCurrent
+address: '0x080C4C46'
+kind: function
+status: probable
+summary: Clears the current-step/status byte (offset 0xC) of a battle object's AI script block, effectively
+  ending/halting the script.
+interface: (r0 = oAIData_AIScriptOffset script pointer) -> r0 preserved; sets byte at script+0xC to 0
+details: Called only from battle_objectCleanup after the script-offset pointer is loaded from the AI data
+  block. Writes a single zero byte at that script struct's offset 0xC, which is the 'current script step/state'
+  byte in the AI script state structure; the function does not null the pointer itself, nor free the script,
+  only resets its state so it won't continue. No side effects beyond this store.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'Caller ldr r0, [r0,#oAIData_AIScriptOffset] then bl sub_80C4C46: r0 is the AI script block
+    pointer; Only instruction on the data side is strb r1, [r0,#0xc] with r1=0: zero out a single flag/state
+    byte; Reached after the AIDataPtr''s subordinate fields and AI script offset are already known to
+    be non-null (tst/beq guards); No return value used; callees = none'
+  refs:
+  - bn6f/asm/asm31.s:29506
+  - 0x080E1352 battle_objectCleanup
+  reproduce: python3 tools/asmcat.py 0x080C4C46
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-003336'
+open_questions:
+- What the other fields of the AI script block (the bytes around 0xC) actually represent — offset 0xC
+  is inferred to be a 'current step' status byte from context only.
+- Whether this should instead be named battle_aIScriptReset or battle_aIScriptStop (it does not free the
+  script).
+sources:
+- wf investigate investigate-20261021-003336
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 1a34a9bf
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80C4C46 -> battle_aIScriptClearCurrent
+  where: bn6f fe6f6c70
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80C4C46

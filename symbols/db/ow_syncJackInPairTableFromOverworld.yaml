@@ -1,0 +1,47 @@
+name: ow_syncJackInPairTableFromOverworld
+address: '0x0803CAC4'
+kind: function
+status: probable
+summary: Rewrites the jack-in paired table (slots 0..N) by re-fetching each overworld entry while the
+  jack-in flag is set
+interface: () -> void; runs only when ow_checkJackInFlag() != 0
+details: 'Guarded by ow_checkJackInFlag: if the flag is clear the function returns immediately. Otherwise
+  it loops r6 times (where r6 is the previously read flag/byte value), and for each slot r4 = 0..r6-1
+  it calls sub_81466E4(r4) and ow_getOverworldEntry(r4), then feeds those two getters to storeIndexedPair
+  which writes parallel 32-bit arrays at 0x200A3C0 and 0x200A3E0. Effectively rebuilds a paired per-slot
+  table from the current overworld record array at unk_20098B0 while the player is jack-in.'
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'sub_803CAC4: branches to locret_803CAF4 when ow_checkJackInFlag returns 0, so it is a jack-in-only
+    maintenance routine.; sub_803CAC4: per-iteration sub_81466E4(r4) + ow_getOverworldEntry(r4) -> storeIndexedPair
+    rebuilds 0x200A3C0/0x200A3E0 tables slot-by-slot.; sub_803CAC4: loops r4 from 0 to r6 (the ow_checkJackInFlag
+    byte), iterating exactly that many slots.; sub_803CB78: caller runs only when byte at eS200BC50 equals
+    7, invoking the function as periodic/gated upkeep.; storeIndexedPair: writes the two parallel arrays
+    at 0x200A3C0 and 0x200A3E0, which is the data this function maintains.'
+  refs:
+  - bn6f/asm/asm03_1_1.s:8453
+  - 0x0803CB78 sub_803CB78
+  - 0x0813D638 ow_checkJackInFlag
+  - 0x08146714 ow_getOverworldEntry
+  - 0x0803C434 storeIndexedPair
+  reproduce: python3 tools/asmcat.py 0x0803CAC4
+  result: 'proposed by minimax/MiniMax-M3, self_score 3; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-003336'
+open_questions:
+- What sub_81466E4 computes (the first getter) — only its return is pushed into the paired write.
+- Why eS200BC50 must equal 7 at sub_803CB78 before this runs (timer? state check?) and what flag byte
+  ow_checkJackInFlag actually represents.
+sources:
+- wf investigate investigate-20261021-003336
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 1a34a9bf
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_803CAC4 -> ow_syncJackInPairTableFromOverworld
+  where: bn6f fe6f6c70
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_803CAC4

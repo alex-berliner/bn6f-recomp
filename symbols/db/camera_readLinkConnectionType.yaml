@@ -1,0 +1,47 @@
+name: camera_readLinkConnectionType
+address: '0x081325C0'
+kind: function
+status: probable
+summary: Reads two 16-bit connection-type fields from a 16-byte linked-camera entry (offset 0x8 and 0x18),
+  returning them in r0 and r1.
+interface: (r0 = ptr to 0x10-byte link-camera entry) -> r0 = low half at entry+8, r1 = low half at entry+0x18;
+  flags none
+details: The routine takes a pointer in r0, duplicates it into r2, loads a u16 from r0+8 into r0, then
+  advances r2 by 0x10 and loads the u16 at (original+0x10)+8 = original+0x18 into r1. Effectively it reads
+  two adjacent 0x10-byte slot-like records at offsets 8 and 0x18 and returns their low halfwords. Callers
+  treat this as reading two connection-type fields to compare against 0x10 / 0x08 / 0x20, consistent with
+  a per-direction link-camera connection-type pair.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: 'Assembly: r2=r0; ldrh r0,[r2,#8]; add r2,#0x10; ldrh r1,[r2,#8] — reads two u16 fields 0x10
+    bytes apart starting +8.; camera_checkLinkConnectionType calls at 0x812BB7A/0x812BB8E/0x812BBAE/0x812BBC2
+    each take r4 as the entry ptr and compare r0/r1 against 0x10/0x08, i.e. two per-side connection types.;
+    camera_checkLinkEndSync and the three sub_ callers in the 0x812AD04/0x812CC44/0x812CFD4/0x812E440
+    region also pass a similar 0x10-byte camera entry pointer to this routine.'
+  refs:
+  - bn6f/asm/asm36.s:4974
+  - 0x0812BB08 camera_checkLinkConnectionType
+  - 0x08131068 camera_checkLinkEndSync
+  - 0x0812AD04 sub_812AD04
+  reproduce: python3 tools/asmcat.py 0x081325C0
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-003336'
+open_questions:
+- Exact layout/meaning of the 0x10-byte link-camera structure beyond the u16 at +8 (whether +8 alone is
+  the connection type or also covers state bits).
+- Whether the second read at original+0x18 is truly the 'remote' side or an extended/echo field of the
+  same slot.
+sources:
+- wf investigate investigate-20261021-003336
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f 1a34a9bf
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_81325C0 -> camera_readLinkConnectionType
+  where: bn6f fe6f6c70
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_81325C0
