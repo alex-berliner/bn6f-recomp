@@ -445,7 +445,7 @@ def run_record(pairs: list[tuple[str, str]], found_by: str, run_dir: str, log_pa
     FOUND_BY is the commit message's "found by ..." phrase (wf investigate RUN_ID, or the
     rescue's own)."""
     message = (f"symbols: name {len(pairs)} functions found by {found_by} "
-               f"(Hyper glm-5.3-flash, checked by MiniMax M3)\n"
+               f"(proposing and checking models: see each entry's evidence)\n"
                f"\n"
                f"Candidates selected from the run's report (status probable, cross-check agree); "
                f"entries written by tools/investigate_land.py, checked with tools/symdb.py, "
