@@ -614,7 +614,9 @@ def try_position(D):
     log(f'  position: {len(cands)} places tried; best ({best[1]:#x}, {best[2]:#x}) reaches {best[0][0]} (mean cost {best[0][1]:.3f})')
     # (a place that holds 100 frames at a low cost is taken too: the walk then meets the next event, an encounter
     # the video's walk had elsewhere: run8s 827311, 827423 at 1.56)
-    if best[0][0] >= D + 150 or (best[0][0] >= D + 100 and best[0][1] < 1.6):
+    # (or 50 at a low cost: the video's next encounter can start right after, run10t 1307840 to +58 at 1.52; the
+    # encounter handlers take the next loss)
+    if best[0][0] >= D + 150 or (best[0][0] >= D + 100 and best[0][1] < 1.6) or (best[0][0] >= D + 50 and best[0][1] < 1.55):
         KEEP_NEXT[0] = True
         return w2, [[W, f'{GS_PLAYER:#x}={best[1]:#x}/4,{GS_PLAYER + 4:#x}={best[2]:#x}/4']]
     return None
