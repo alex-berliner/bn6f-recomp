@@ -2061,6 +2061,10 @@ def write_ok(W, D):
     """A write point the RNG search may use: not inside a FREE window (a handler's or a kill's staged frames:
     a replay from there lacks the pokes the window needs, ck_file keeps only those before W) nor before one that
     starts before the loss (a fix at W drops the later pokes, the window's too, while the window stays)."""
+    # (nor before a hand written in this battle: a write there drops it, and the hand handler and the RNG search took
+    # turns undoing each other, run10u 1307979/1307982 eight times)
+    hands = [g for g, _ in HAND_DONE if g < D]
+    if hands and W < max(hands) and D - max(hands) < 3000: return False
     return not any(W < z for a, z in FREE if a <= D)
 
 def repair_fixed(D):
