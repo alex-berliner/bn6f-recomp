@@ -1208,6 +1208,9 @@ def check_reward(g_lo, D=None):
     Ea = errs(a, r2) if a != r1 else E0
     b2 = max(((float(np.sum(Ea - errs(a, x))), x) for x in c2), default=(0.0, r2))
     c = b2[1] if b2[0] > REWARD_GAIN else r2
+    # (a zenny reward (0x4000 | amount) the video shows too is not swapped for an item: run10y 1338180, 0x4bb8 =
+    # 3000z, the video's, replaced by 0x815e (HP+350) on a gain the delete time's digits made)
+    if r2 >> 12 == 4 and c >> 12 != 4: c = r2
     log(f'  rewards at {gc}: {r1:#06x} {r2:#06x}; best {b1[1]:#06x} (gain {b1[0]:.0f}) {b2[1]:#06x} (gain {b2[0]:.0f})')
     if (a, c) == (r1, r2): return None
     return w, pk(a, c)
