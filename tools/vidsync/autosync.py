@@ -1720,7 +1720,20 @@ def try_subchip(D):
         fb = b.e.read(fa, 1)[0] | m
         for W in range(w[0] + 1, D + 6):
             tasks.append((ck, [[W, f'{fa:#x}={fb:#04x}/1,{ca:#x}=0x0/4']], until, f'{name}@{W}'))
-    res = evaluate(tasks)
+    # a subchip still on in ours that the video's player picks again from the SubChip menu ("LocEnemy is in
+    # use", run11g 1412103: the video's had run out on the map unseen): switched off (flag clear, counter 0)
+    off = []
+    for name, (fa, m, ca) in SUBCHIPS.items():
+        fb = b.e.read(fa, 1)[0]
+        if fb & m:
+            for W in range(w[0] + 1, D + 6):
+                off.append((ck, [[W, f'{fa:#x}={fb & ~m & 0xFF:#04x}/1,{ca:#x}=0x0/4']], until, f'{name} off@{W}'))
+    res = evaluate(tasks + off)
+    ok_off = [t for t in off if res[t[3]][0] >= until]
+    if ok_off:
+        t = max(ok_off, key=lambda t: (t[1][0][0], -res[t[3]][1]))       # the latest frame: the least change
+        log(f'  subchip: {len(ok_off)} switch-offs hold to {until}; take {t[3]} (mean cost {res[t[3]][1]:.3f})')
+        if res[t[3]][1] < SUBCHIP_COST: return w, [t[1][0]]
     ok = [t for t in tasks if res[t[3]][0] >= until]
     if not ok: return None
     t = min(ok, key=lambda t: res[t[3]][1])
