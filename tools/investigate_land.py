@@ -342,6 +342,10 @@ def select(rows: list[Row], run_dir: str, syms: dict[str, int], code: list[tuple
         if row.old in names:
             skipped.append((row.address, row.old, row.proposed, "the function already has a symbols/db entry"))
             continue
+        if syms and row.old not in syms:   # (the selfcheck passes an empty table)
+            skipped.append((row.address, row.old, row.proposed,
+                            "the placeholder is no longer a symbol of bn6f.elf (already renamed by an earlier landing)"))
+            continue
         if os.path.exists(os.path.join(ROOT, "bn6f", "asm", f"{row.old}.s")):
             skipped.append((row.address, row.old, row.proposed,
                             "its name is also an asm include file: the rename would rewrite the include path, not the file"))
