@@ -2,26 +2,23 @@ name: t1StepSequence
 address: '0x0813D7B8'
 kind: function
 status: probable
-summary: 'Steps a 21-state sequence (counter at [r0+1] 0..0x14): indexes a 6-entry handler table off_813D7E4
-  and invokes the handler; on completion (counter > 0x14) calls sub_813D5E8(1); clears byte_200AF81 each
-  tick.'
-interface: (r0 = ptr to state struct; [r0+1] = step counter 0..0x14) -> r0 = 0 (or finalize result); r5/r7
-  clobbered
+summary: 'Steps a 21-state sequence (counter at [r0+1] 0..0x14): indexes a 6-entry handler table off_813D7E4 and
+  invokes the handler; on completion (counter > 0x14) calls sub_813D5E8(1); clears byte_200AF81 each tick.'
+interface: (r0 = ptr to state struct; [r0+1] = step counter 0..0x14) -> r0 = 0 (or finalize result); r5/r7 clobbered
 details: Saves r0 in r7 and fetches entry 0 of the 0x20-byte IWRAM table at byte_203C4A0 via getTableEntryPtr32_802D064.
-  It reads the step counter at [r7+1]; if it is <= 0x14, it indexes off_813D7E4 (6 handler pointers) with
-  counter*4 and calls that handler with lr=pc, presumably passing the table entry in r5. On return it
-  clears byte_200AF81 (byte 1 of the byte_200AF80 work area) and returns 0. If the counter exceeds 0x14,
-  it instead calls sub_813D5E8(1) — likely a completion/teardown step — without touching the work byte.
-  The struct at byte_200AF80 appears to be the shared work area whose byte 1 is reset each tick; whether
-  r7 ever points into it is not shown here.
+  It reads the step counter at [r7+1]; if it is <= 0x14, it indexes off_813D7E4 (6 handler pointers) with counter*4
+  and calls that handler with lr=pc, presumably passing the table entry in r5. On return it clears byte_200AF81
+  (byte 1 of the byte_200AF80 work area) and returns 0. If the counter exceeds 0x14, it instead calls sub_813D5E8(1)
+  — likely a completion/teardown step — without touching the work byte. The struct at byte_200AF80 appears to be
+  the shared work area whose byte 1 is reset each tick; whether r7 ever points into it is not shown here.
 evidence:
 - method: assembly-reading
   date: '2026-10-19'
-  detail: 'ldrb r0,[r7,#1]; cmp r0,#0x14; bgt — counter field in caller struct gates the sequence; ldr
-    r1,[r1,r0] with off_813D7E8 table of 6 thumb handlers — per-step dispatch, lr=pc call trick; strb
-    r0,[r4,#1] on byte_200AF80 — clears a byte of a global work area every tick; bgt path: mov r0,#1;
-    bl sub_813D5E8 — single finalize call once counter exceeds 0x14; bl getTableEntryPtr32_802D064(0)
-    — handlers operate on entry 0 of a fixed 0x20-byte-entry table'
+  detail: 'ldrb r0,[r7,#1]; cmp r0,#0x14; bgt — counter field in caller struct gates the sequence; ldr r1,[r1,r0]
+    with off_813D7E8 table of 6 thumb handlers — per-step dispatch, lr=pc call trick; strb r0,[r4,#1] on byte_200AF80
+    — clears a byte of a global work area every tick; bgt path: mov r0,#1; bl sub_813D5E8 — single finalize call
+    once counter exceeds 0x14; bl getTableEntryPtr32_802D064(0) — handlers operate on entry 0 of a fixed 0x20-byte-entry
+    table'
   refs:
   - bn6f/asm/asm37_0.s:4241
   - 0x0814713C sub_814713C
@@ -29,32 +26,30 @@ evidence:
   - 0x0802D064 getTableEntryPtr32_802D064
   - 0x0813D5E8 sub_813D5E8
   reproduce: python3 tools/asmcat.py 0x0813D7B8
-  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise
-    — The summary''s description is largely correct: r7 holds the struct pointer, the counter at [r7+1]
-    is compared against 0x14, and >0x14 routes to sub_813D5E8(1) for finalization. However, the off_813D7E4
-    dispatch table actually contains 6 entries (sub_813D804/838/848/87C/88C/8AC), so the proposal correctly
-    states six handlers, but the summary''s wording ''one tick ... dispatches ... based on counter'' is
-    fine. Notably, the interface claim that r0=ptr to struct is right, but the scratch byte being cleared
-    is byte_200AF81 (strb r0,[r4,#1]), not a ''work area byte 1'' of byte_200AF80 ambiguously — that''s
-    accurate. The ''subStep'' style name ''updateStepSequence'' is plausible but ''subStep'' or ''stepSequence''
-    would be more idiomatic; prefix ''sub'' isn''t allowed but ''navicust'' or ''object'' don''t fit either
-    — ''t1'' as a generic ''tick'' prefix works better given unknown context.; run wf investigate investigate-20261019-030611;
-    proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted by glm-5.3-flash (tools/investigate_land.py
-    reconcile)'
+  result: 'proposed by hyper/glm-5.3-flash, self_score 3; cross-checked by minimax/MiniMax-M3: revise — The summary''s
+    description is largely correct: r7 holds the struct pointer, the counter at [r7+1] is compared against 0x14,
+    and >0x14 routes to sub_813D5E8(1) for finalization. However, the off_813D7E4 dispatch table actually contains
+    6 entries (sub_813D804/838/848/87C/88C/8AC), so the proposal correctly states six handlers, but the summary''s
+    wording ''one tick ... dispatches ... based on counter'' is fine. Notably, the interface claim that r0=ptr to
+    struct is right, but the scratch byte being cleared is byte_200AF81 (strb r0,[r4,#1]), not a ''work area byte
+    1'' of byte_200AF80 ambiguously — that''s accurate. The ''subStep'' style name ''updateStepSequence'' is plausible
+    but ''subStep'' or ''stepSequence'' would be more idiomatic; prefix ''sub'' isn''t allowed but ''navicust''
+    or ''object'' don''t fit either — ''t1'' as a generic ''tick'' prefix works better given unknown context.; run
+    wf investigate investigate-20261019-030611; proposed by Hyper glm-5.3-flash, revised by MiniMax-M3, accepted
+    by glm-5.3-flash (tools/investigate_land.py reconcile)'
 open_questions:
-- What the six handlers (sub_813D804..sub_813D8AC) and sub_813D5E8 actually do — that would reveal the
-  domain (animation, cutscene, effect, etc.)
+- What the six handlers (sub_813D804..sub_813D8AC) and sub_813D5E8 actually do — that would reveal the domain (animation,
+  cutscene, effect, etc.)
 - What the 0x20-byte table entries at byte_203C4A0 contain and whether r7 callers pass &byte_200AF80
 - Which callers at 0x814713C/0x8147DE0 own the state struct and what feature drives the counter
-- 'The summary''s description is largely correct: r7 holds the struct pointer, the counter at [r7+1] is
-  compared against 0x14, and >0x14 routes to sub_813D5E8(1) for finalization. However, the off_813D7E4
-  dispatch table actually contains 6 entries (sub_813D804/838/848/87C/88C/8AC), so the proposal correctly
-  states six handlers, but the summary''s wording ''one tick ... dispatches ... based on counter'' is
-  fine. Notably, the interface claim that r0=ptr to struct is right, but the scratch byte being cleared
-  is byte_200AF81 (strb r0,[r4,#1]), not a ''work area byte 1'' of byte_200AF80 ambiguously — that''s
-  accurate. The ''subStep'' style name ''updateStepSequence'' is plausible but ''subStep'' or ''stepSequence''
-  would be more idiomatic; prefix ''sub'' isn''t allowed but ''navicust'' or ''object'' don''t fit either
-  — ''t1'' as a generic ''tick'' prefix works better given unknown context.'
+- 'The summary''s description is largely correct: r7 holds the struct pointer, the counter at [r7+1] is compared
+  against 0x14, and >0x14 routes to sub_813D5E8(1) for finalization. However, the off_813D7E4 dispatch table actually
+  contains 6 entries (sub_813D804/838/848/87C/88C/8AC), so the proposal correctly states six handlers, but the summary''s
+  wording ''one tick ... dispatches ... based on counter'' is fine. Notably, the interface claim that r0=ptr to
+  struct is right, but the scratch byte being cleared is byte_200AF81 (strb r0,[r4,#1]), not a ''work area byte
+  1'' of byte_200AF80 ambiguously — that''s accurate. The ''subStep'' style name ''updateStepSequence'' is plausible
+  but ''subStep'' or ''stepSequence'' would be more idiomatic; prefix ''sub'' isn''t allowed but ''navicust'' or
+  ''object'' don''t fit either — ''t1'' as a generic ''tick'' prefix works better given unknown context.'
 sources:
 - wf investigate investigate-20261019-030611
 changes:
@@ -66,5 +61,9 @@ changes:
   what: rename sub_813D7B8 -> t1StepSequence
   where: bn6f 1189566c
   tool: tools/rename_symbol.py
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f abbd9480
+  tool: tools/symdoc.py
 previous_names:
 - sub_813D7B8

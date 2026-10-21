@@ -1,0 +1,45 @@
+name: battle_dispatchCurPhaseByParam1
+address: '0x080BD478'
+kind: function
+status: probable
+summary: Dispatches a battle object's current phase based on CurAction, choosing one of two handler tables
+  depending on Param1.
+interface: '(r5 = oBattleObject, Param1==0 ? dispatch table at off_80BD4A0 : table at off_80BD4B0) ->
+  tail-calls handler; clobbers r0'
+details: Loads the object's Param1 byte. When Param1 is 0, it uses the CurAction byte to index the four-entry
+  table at off_80BD4A0 (sub_80BD4BC, object_runCurPhase, sub_80BD742, sub_80BD7EA). Otherwise it indexes
+  the three-entry table at off_80BD4B0 (battle_dispatchCurPhase, sub_80BD89C, sub_80BD7EA). Each entry
+  holds a Thumb function pointer with the low bit set, and the routine switches to it via mov lr,pc /
+  bx r1 with no return — a tail-call dispatcher. Registers r4-r7 are saved/popped by the caller because
+  this function never returns.
+evidence:
+- method: assembly-reading
+  date: '2026-10-21'
+  detail: ldrb r0, [r5,#oBattleObject_Param1] then cmp r0,#0 / bne loc_80BD48C selects one of two tables;
+    ldrb r0, [r5,#oBattleObject_CurAction]; ldr r1,[r1,r0] indexes both tables by CurAction; mov lr,pc
+    / bx r1 tail-calls the selected handler with no return; Caller at 0x080BD45E sets CUR_STATE_UPDATE
+    then invokes this dispatcher, matching the off_80BD4B0 entry battle_dispatchCurPhase (normal phase
+    progression); off_80BD4A0 used when Param1==0 contains object_runCurPhase, the placeholders' initialisation-only
+    path
+  refs:
+  - bn6f/asm/asm31.s:12003
+  - 0x080BD3AC battle_initObjectFromParam1Table
+  reproduce: python3 tools/asmcat.py 0x080BD478
+  result: 'proposed by minimax/MiniMax-M3, self_score 4; cross-checked by minimax/MiniMax-M3: agree; run
+    wf investigate investigate-20261021-023934'
+open_questions:
+- Which CurAction values correspond to which of the slots in each table is only known by constants; semantics
+  of sub_80BD4BC and sub_80BD89C are unknown
+sources:
+- wf investigate investigate-20261021-023934
+changes:
+- date: '2026-10-21'
+  what: doc comment (symdb block) at the definition
+  where: bn6f abbd9480
+  tool: tools/symdoc.py
+- date: '2026-10-21'
+  what: rename sub_80BD478 -> battle_dispatchCurPhaseByParam1
+  where: bn6f 05ad9cd9
+  tool: tools/rename_symbol.py
+previous_names:
+- sub_80BD478
