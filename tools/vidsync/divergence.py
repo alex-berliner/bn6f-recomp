@@ -2,8 +2,9 @@
 
 export_trace.py --verify compares the two replays of a result only at its end. This replays both again,
 digests every N game frames (only between --from and --to, if given), and prints the first game frame whose
-digests differ and which parts (ewram, pal, vram, oam). OUT is the basename export_trace.py wrote (OUT.trace,
-OUT.sav, OUT.poke). Run a coarse pass (--every 10000), then a fine one over the window it names.
+digests differ and which parts (ewram, pal, vram, oam). It writes its own recording of RESULT to OUT.trace,
+OUT.sav (blank save), as export_trace.py does: keep OUT apart from data/ready. Run a coarse pass (--every
+10000), then a fine one over the window it names.
 
 mgba_run's --digest-every digests when the game frame counter at the start of a hardware frame is a multiple
 of N; emu_server's digest after the steps that reach game frame G. The first comparison (at N) checks that
@@ -12,7 +13,7 @@ the two line up: if it already differs, the alignment is off, not the game.
 import argparse, json, os, re, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from emu import Emu, ROM, BIOS
-from export_trace import GAME_FRAME_ADDR, AWAIT_FRAME_PC, MGBA_RUN, timeline, poke_lines
+from export_trace import GAME_FRAME_ADDR, AWAIT_FRAME_PC, MGBA_RUN, SAVE_SIZE, timeline, trace_lines, poke_lines
 
 PARTS = ('ewram', 'pal', 'vram', 'oam')
 LINE = re.compile(r'^digest game=(\d+) hw=(\d+) ewram=(\w+) pal=(\w+) vram=(\w+) oam=(\w+)$', re.M)
@@ -67,7 +68,11 @@ def main():
     R = json.load(open(a.result))
     keys = timeline(R)
     end = len(keys)
-    m = mgba_digests(a.out, poke_lines(R, end), end, a)
+    pokes = poke_lines(R, end)
+    os.makedirs(os.path.dirname(a.out) or '.', exist_ok=True)
+    open(a.out + '.sav', 'wb').write(b'\xff' * SAVE_SIZE)
+    open(a.out + '.trace', 'w').write('\n'.join(['# gbarecomp-keyinput-v1'] + trace_lines(keys)) + '\n')
+    m = mgba_digests(a.out, pokes, end, a)
     e = emu_digests(R, keys, a)
     common = sorted(set(m) & set(e))
     print(f'compared {len(common)} digests ({len(m)} mgba_run, {len(e)} emu_server), every {a.every}')
