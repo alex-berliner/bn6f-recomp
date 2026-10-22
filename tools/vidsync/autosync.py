@@ -1719,7 +1719,8 @@ def try_subchip(D):
     ck = ck_file(w); until = D + MARGIN; tasks = []
     for name, (fa, m, ca) in SUBCHIPS.items():
         fb = b.e.read(fa, 1)[0] | m
-        for W in range(w[0] + 1, D + 6):
+        # (to 15 after: the loss is seen a few frames into the video's message, run11g 1411099 -> 1411104)
+        for W in range(w[0] + 1, D + 16):
             tasks.append((ck, [[W, f'{fa:#x}={fb:#04x}/1,{ca:#x}=0x0/4']], until, f'{name}@{W}'))
     # a subchip still on in ours that the video's player picks again from the SubChip menu ("LocEnemy is in
     # use", run11g 1412103: the video's had run out on the map unseen): switched off (flag clear, counter 0)
@@ -1753,7 +1754,7 @@ def try_subchip(D):
     # a real expiry is a matter of frames and matches well; many that hold, or a poor match, mean the write is
     # not what the loss needs (run8c, 10-16: 70 of 160 held at 2.08 at 530684, covering roaming map objects)
     # (a loss asked for names the place: the many that hold there are the expiry's message seen from either side)
-    if res[t[3]][1] >= SUBCHIP_COST or (len(ok) > len(tasks) // 4 and not FORCED_NOW[0]):
+    if res[t[3]][1] >= SUBCHIP_COST or (len(ok) > len(tasks) // 4 and not FORCED_NOW[0] and not t[3].startswith('LocEnemy')):
         log(f'  subchip: not taken (cost {res[t[3]][1]:.3f}, {len(ok)} of {len(tasks)} hold)'); return None
     return w, [t[1][0]]
 
