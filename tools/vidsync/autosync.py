@@ -978,7 +978,8 @@ def try_noencounter(D):
     r = reach_many(w, ex, D + 400, D)
     best = max(ex, key=lambda t: (r[t][0], -r[t][1]))
     log(f'  no encounter: ours starts a battle at {T}; walk counter 0 at {best[1:]} reaches {r[best][0]} (mean cost {r[best][1]:.3f})')
-    if r[best][0] >= D + 100: return w, ex[best]
+    # (80: a later roll can start the battle again, the next loss's: run12c 1558607 reached +84)
+    if r[best][0] >= D + 80: return w, ex[best]
     # LocEnemy's countdown (it goes down with the steps) can run out at another time than the video's "LocEnemy
     # just expired!" (run11d 1389010: ours ~30 frames later): the countdown moved too, by -160..+40 steps
     a = int(best[1:]); w2 = state_at(a)
@@ -991,7 +992,7 @@ def try_noencounter(D):
     r = reach_many(w, ex, D + 400, D)
     best = max(ex, key=lambda t: (r[t][0], -r[t][1]))
     log(f'  no encounter: and LocEnemy\'s countdown {gate:#x} moved by {best[1:]} reaches {r[best][0]} (mean cost {r[best][1]:.3f})')
-    if r[best][0] < D + 100: return None
+    if r[best][0] < D + 80: return None
     return w, ex[best]
 
 def try_pick(D):
