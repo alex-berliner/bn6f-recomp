@@ -1612,9 +1612,15 @@ def skip_video_battle(D, w, vD):
     # (after a dialog the video's MegaMan stands in another pose a few pixels off, run12g 1558688: 23.0; the sync
     # from there judges it)
     if dv > (25 if dialog else 10): return None
-    w3 = (wa[0], wa[1], wa[2], wa[3] + (vb - va), wa[4], wa[5])
-    r = evaluate([(ck_file(w3), [], away + 300, 'SV')] * 2)['SV']
-    log(f'  skip ahead: re-anchored {vb - va:+d} video frames at {away}, the sync reaches {r[0]} (mean cost {r[1]:.3f})')
+    # (after a dialog the video's last keys close its text, which ours does not have: anchors up to 40 frames later
+    # too, the furthest sync taken, run12h 1558688: +93 held 17 frames)
+    best_r = None
+    for sh in ((0, 5, 10, 15, 20, 25, 30, 35, 40) if dialog else (0,)):
+        w3 = (wa[0], wa[1], wa[2], wa[3] + (vb + sh - va), wa[4], wa[5])
+        r = evaluate([(ck_file(w3), [], away + 300, f'SV{sh}')] * 2)[f'SV{sh}']
+        log(f'  skip ahead: re-anchored {vb + sh - va:+d} video frames at {away}, the sync reaches {r[0]} (mean cost {r[1]:.3f})')
+        if best_r is None or (r[0], -r[1]) > (best_r[0][0], -best_r[0][1]): best_r = (r, w3)
+    r, w3 = best_r
     if r[0] >= away + 300 and r[1] < KILL_COST: return w3, []
     return None
 
