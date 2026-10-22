@@ -959,7 +959,7 @@ def try_noencounter(D):
     ~90 frames; our step roll passed and took its battle, the video's did not and LocEnemy expired): the walk
     counter written to 0 some frames before our trigger, so no roll passes there (LocEnemy's countdown goes on
     with the steps); the path's keys judge it."""
-    last = max([p[0] for p in b.pokes] + [0])
+    last = max([p[0] for p in b.pokes if p[0] <= D] + [0])
     W0 = max(last + 1, D - 90, ring[0][0])
     w = state_at(W0)
     if w is None: return None
@@ -1375,7 +1375,7 @@ def try_split(D):
     val = round(max(1.0, 1.4 * b0), 2)
     # (not back past the last write: a kill's hold and its deletion are two writes, and going back between them
     # dropped the deletion, run10e 1147823: MegaMan and the virus held at 9999 HP)
-    if st - 60 <= max([p[0] for p in b.pokes] + [0]): return None
+    if st - 60 <= max([p[0] for p in b.pokes if p[0] <= D] + [0]): return None
     w = state_at(st - 60)
     if w is None: return None
     STRICT.append((st - 40, st + 400, val))
@@ -1400,7 +1400,7 @@ def try_kill(D, side=1):
         # ours won before the video did (run10d 1147836: our last virus gone ~120 frames early): the kill from the
         # last frame it lived, the enemies held there until the video's deletion
         if side != 1 or b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 0x0C: return None
-        last = max([p[0] for p in b.pokes] + [0])
+        last = max([p[0] for p in b.pokes if p[0] <= D] + [0])
         for bk in range(30, 601, 30):
             wb = state_at(D - bk)
             if wb is None or wb[0] <= last: return None
@@ -1771,7 +1771,7 @@ def try_hand(D, deep=None):
     rare to reach with secondary RNG writes. Write the folder order instead: after the shuffle (a big jump of
     the secondary), for each hand slot in turn, put each of the folder's distinct chips there, render the custom
     screen and compare that slot (icon and code) with the full-size video frame."""
-    last = max([p[0] for p in b.pokes] + [0])
+    last = max([p[0] for p in b.pokes if p[0] <= D] + [0])
     shuf = [f for f, p, q in EVENTS if q and f in set(BIG) and f > last]
     if deep is None:
         # the battle's shuffle can lie before the events' 2400 frames (run9g 993234: a JudgeMan battle lost 3200
@@ -1904,7 +1904,7 @@ def try_redraw(D):
     the end of the folder and the hand fills up from the front, run8u 839864) draws the folder's next chips. For
     each new slot in turn, put each of the rest of the folder's chips (or a pack chip) at its folder place just
     before the redraw, render the new hand and compare that slot with the video, as try_hand does a hand's."""
-    last = max([p[0] for p in b.pokes] + [0])
+    last = max([p[0] for p in b.pokes if p[0] <= D] + [0])
     ks = path_keys(); p0 = b.press_gf
     g1 = max(last + 1, D - 1500, ring[0][0])
     w = state_at(g1)
@@ -2089,7 +2089,7 @@ def repair(D):
     json.dump({'press_gf': b.press_gf, 'status': f'lost near {D}', 'lenient': LENIENT, 'free': FREE, 'keys': [k for k, v in ks], 'vid': [v for k, v in ks],
                'pokes': b.pokes}, open(os.path.join(A.out, f'loss_{D}.json'), 'w'))
     ev = events(D); EVENTS[:] = ev
-    last = max([p[0] for p in b.pokes] + [0])      # encounters before the last write held to there already
+    last = max([p[0] for p in b.pokes if p[0] <= D] + [0])      # encounters before the last write held to there already
     for f, p in reversed(TRIGGERS):
         # (a trigger within 2 frames after a write of the battle pointer is that write: a formation fix's own
         # pointer; a trigger right after another fix (an encounter's, run8q 782213) gets its formation tried)
