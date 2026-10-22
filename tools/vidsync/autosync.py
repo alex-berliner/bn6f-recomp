@@ -1742,10 +1742,14 @@ def try_subchip(D):
         t = max(ok_off, key=lambda t: (res[t[3]][0], t[1][0][0], -res[t[3]][1]))   # the furthest, then the latest frame
         log(f'  subchip: {len(ok_off)} switch-offs reach {D + PARTIAL}; take {t[3]} (to {res[t[3]][0]}, mean cost {res[t[3]][1]:.3f})')
         if res[t[3]][1] < SUBCHIP_COST: return w, [t[1][0]]
-    ok = [t for t in tasks if res[t[3]][0] >= until]
+    if tasks: log(f'  subchip: expiries reach {max(res[t[3]][0] for t in tasks)} at best')
+    # (a battle can start right after the expiry's message, and its formation or hand is the next loss's: past
+    # PARTIAL is enough, run11m 1411110)
+    ok = [t for t in tasks if res[t[3]][0] >= D + PARTIAL]
     if not ok: return None
-    t = min(ok, key=lambda t: res[t[3]][1])
-    log(f'  subchip: {len(ok)} hold to {until}; take {t[3]} (mean cost {res[t[3]][1]:.3f})')
+    far = max(res[t[3]][0] for t in ok)
+    t = min((t for t in ok if res[t[3]][0] == far), key=lambda t: res[t[3]][1])
+    log(f'  subchip: {len(ok)} reach {D + PARTIAL}; take {t[3]} (to {far}, mean cost {res[t[3]][1]:.3f})')
     # a real expiry is a matter of frames and matches well; many that hold, or a poor match, mean the write is
     # not what the loss needs (run8c, 10-16: 70 of 160 held at 2.08 at 530684, covering roaming map objects)
     if res[t[3]][1] >= SUBCHIP_COST or len(ok) > len(tasks) // 4:
