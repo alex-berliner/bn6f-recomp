@@ -1256,7 +1256,7 @@ def check_reward(g_lo, D=None):
     # (a zenny reward (0x4000 | amount) the video shows too is not swapped for an item: run10y 1338180, 0x4bb8 =
     # 3000z, the video's, replaced by 0x815e (HP+350) on a gain the delete time's digits made)
     # (but a clear gain is the video's item: run11g 1411733, 0x228b (Meteors R) at 195 over 3000z)
-    if r2 >> 12 == 4 and c >> 12 != 4 and b2[0] < 175: c = r2
+    if r2 >> 12 == 4 and c >> 12 != 4 and b2[0] < 165: c = r2      # (run11p 1435329: Meteors R at 174)
     log(f'  rewards at {gc}: {r1:#06x} {r2:#06x}; best {b1[1]:#06x} (gain {b1[0]:.0f}) {b2[1]:#06x} (gain {b2[0]:.0f})')
     if (a, c) == (r1, r2): return None
     return w, pk(a, c)
@@ -2087,6 +2087,13 @@ def repair(D):
     # a battle whose folder shuffle no fix has held to yet: its first hand goes before a video jump (a wrong hand
     # costs little on the custom screen, and the offset handler re-anchored over one, run8t 839618)
     if any(q and f in set(BIG) and f > last for f, p, q in ev): order.sort(key=lambda x: x[0] not in ('hand', 'redraw'))
+    # LocEnemy on in ours: its expiry ("LocEnemy just expired!", ~76 frames) goes before a video jump, which would
+    # step over the video's message (run11g 1411059, run11p 1434762: a jump of 76-79 frames, ours then wrong later)
+    else:
+        wl = state_at(max(D - 5, ring[0][0]))
+        if wl is not None:
+            b.e.load(wl[1])
+            if b.e.read(syms.SUBCHIP_FLAGS, 1)[0] & 0x10: order.sort(key=lambda x: x[0] != 'subchip')
     for name, h in order:
         if not allowed(name) or name in tried: continue
         if over_budget(): log(f'  the search budget ({A.budget_hours} h) is spent'); return None
