@@ -1630,6 +1630,9 @@ def skip_video_battle(D, w, vD):
     log(f'  skip ahead: re-anchored {jump:+d} video frames at {at}, the sync reaches {r[0]} (mean cost {r[1]:.3f})'
         + (f' (best of {len(tasks)})' if len(tasks) > 1 else ''))
     if r[0] >= away + 300 and r[1] < KILL_COST: return w3, []
+    # (after a dialog the video can go into a battle soon, the next loss's: 100 frames, run12j 1558688 held 115 to
+    # the video's next random battle)
+    if dialog and r[0] >= at + 100 and r[1] < 3.0: return w3, []
     return None
 
 def try_menuwalk(D):
