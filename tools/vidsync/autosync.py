@@ -1752,7 +1752,8 @@ def try_subchip(D):
     log(f'  subchip: {len(ok)} reach {D + PARTIAL}; take {t[3]} (to {far}, mean cost {res[t[3]][1]:.3f})')
     # a real expiry is a matter of frames and matches well; many that hold, or a poor match, mean the write is
     # not what the loss needs (run8c, 10-16: 70 of 160 held at 2.08 at 530684, covering roaming map objects)
-    if res[t[3]][1] >= SUBCHIP_COST or len(ok) > len(tasks) // 4:
+    # (a loss asked for names the place: the many that hold there are the expiry's message seen from either side)
+    if res[t[3]][1] >= SUBCHIP_COST or (len(ok) > len(tasks) // 4 and not FORCED_NOW[0]):
         log(f'  subchip: not taken (cost {res[t[3]][1]:.3f}, {len(ok)} of {len(tasks)} hold)'); return None
     return w, [t[1][0]]
 
