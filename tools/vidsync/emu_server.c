@@ -43,6 +43,7 @@
 #include <mgba/core/serialize.h>
 #include <mgba/core/timing.h>
 #include <mgba/internal/gba/gba.h>
+#include <mgba/internal/gba/savedata.h>
 #include <mgba-util/vfs.h>
 #include <fcntl.h>
 #include <math.h>
@@ -95,7 +96,9 @@ static unsigned base, last16;
  * tools/mgba_run applies --poke-at (when the game is already waiting in main_awaitFrame as G begins, that is
  * the next game frame's entry) */
 static long long poked_upto = -1;
-typedef struct { void *st; unsigned long long hw; unsigned base, last16; long long poked_upto; } Slot;
+/* sav: the game's save memory with the state (mGBA's state leaves it out: a soft reset's CONTINUE reads what the
+ * last in-game save wrote, which a state loaded from another branch or a restarted driver would not have) */
+typedef struct { void *st; unsigned long long hw; unsigned base, last16; long long poked_upto; unsigned char *sav; size_t nsav; } Slot;
 static Slot slots[65536];
 static size_t state_size;   /* state buffers are zeroed: saveState leaves the state's reserved bytes alone */
 
@@ -465,14 +468,35 @@ static unsigned vkey(long v) {
     return v < nvbits ? (~(unsigned)vbits[v]) & 0x3FF : 0x3FF;
 }
 
+#define SAVE_SIZE_MAX 0x20000
+static unsigned char *sav_data(size_t *n) {
+    struct GBA *gba = core->board;
+    if (!gba->memory.savedata.data) return NULL;
+    *n = GBASavedataSize(&gba->memory.savedata);
+    return *n && *n <= SAVE_SIZE_MAX ? gba->memory.savedata.data : NULL;
+}
+static void sav_keep(Slot *s) {
+    size_t n; unsigned char *d = sav_data(&n);
+    if (!d) { s->nsav = 0; return; }
+    if (!s->sav) s->sav = malloc(SAVE_SIZE_MAX);
+    memcpy(s->sav, d, n); s->nsav = n;
+}
+static void sav_put(const unsigned char *src, size_t n0) {
+    if (!n0) return;
+    size_t n; unsigned char *d = sav_data(&n);
+    if (!d) { GBASavedataForceType(&((struct GBA *)core->board)->memory.savedata, SAVEDATA_SRAM); d = sav_data(&n); }
+    if (d && n == n0) memcpy(d, src, n);
+}
+static void sav_back(const Slot *s) { sav_put(s->sav, s->nsav); }
+
 static void slot_save(Slot *s) {
     if (!s->st) s->st = calloc(1, state_size);
     PROF(P_SAVE, core->saveState(core, s->st));
-    s->hw = hw; s->base = base; s->last16 = last16; s->poked_upto = poked_upto;
+    s->hw = hw; s->base = base; s->last16 = last16; s->poked_upto = poked_upto; sav_keep(s);
 }
 static void slot_load(const Slot *s) {
     PROF(P_LOAD, core->loadState(core, s->st)); dead = 0;
-    hw = s->hw; base = s->base; last16 = s->last16; poked_upto = s->poked_upto;
+    hw = s->hw; base = s->base; last16 = s->last16; poked_upto = s->poked_upto; sav_back(s);
 }
 
 /* " H64 SEED": the game's working memory (EWRAM, IWRAM; branches equal here are the same game), the RNG seed */
@@ -615,6 +639,8 @@ static void follow(char *args, unsigned stride) {
         memcpy(slots[slot].st, pre->st, state_size);
         slots[slot].hw = pre->hw; slots[slot].base = pre->base; slots[slot].last16 = pre->last16;
         slots[slot].poked_upto = pre->poked_upto;   /* else the next load applies this stretch's pokes again */
+        if (pre->nsav) { if (!slots[slot].sav) slots[slot].sav = malloc(SAVE_SIZE_MAX); memcpy(slots[slot].sav, pre->sav, pre->nsav); }
+        slots[slot].nsav = pre->nsav;
     }
     free(hist); free(rk); free(rv); free(rb);
 }
@@ -677,16 +703,19 @@ int main(int argc, char **argv) {
                 if (!slots[s].st) slots[s].st = calloc(1, state_size);
                 PROF(P_SAVE, core->saveState(core, slots[s].st));
                 slots[s].hw = hw; slots[s].base = base; slots[s].last16 = last16; slots[s].poked_upto = poked_upto;
+                sav_keep(&slots[s]);
                 printf("ok\n");
             } else if (slots[s].st) {
                 PROF(P_LOAD, core->loadState(core, slots[s].st)); dead = 0;
                 hw = slots[s].hw; base = slots[s].base; last16 = slots[s].last16; poked_upto = slots[s].poked_upto;
+                sav_back(&slots[s]);
                 printf("ok\n");
             } else {
                 printf("err empty slot\n");
             }
         } else if (!strcmp(cmd, "savef") || !strcmp(cmd, "loadf")) {
-            /* a checkpoint file: hw, base, last16, the core state, then poked_upto */
+            /* a checkpoint file: hw, base, last16, the core state, then poked_upto, then (newer files) the save
+             * memory's size and contents */
             char path[400];
             int ok = 0;
             void *st = calloc(1, state_size);
@@ -697,6 +726,10 @@ int main(int argc, char **argv) {
                     ok = fwrite(&hw, sizeof hw, 1, f) == 1 && fwrite(&base, sizeof base, 1, f) == 1 &&
                          fwrite(&last16, sizeof last16, 1, f) == 1 && fwrite(st, 1, state_size, f) == state_size &&
                          fwrite(&poked_upto, sizeof poked_upto, 1, f) == 1;
+                    size_t n = 0; unsigned char *d = sav_data(&n);
+                    if (!d) n = 0;
+                    uint32_t n32 = (uint32_t)n;
+                    ok = ok && fwrite(&n32, sizeof n32, 1, f) == 1 && (!n || fwrite(d, 1, n, f) == n);
                 } else if (f) {
                     ok = fread(&hw, sizeof hw, 1, f) == 1 && fread(&base, sizeof base, 1, f) == 1 &&
                          fread(&last16, sizeof last16, 1, f) == 1 && fread(st, 1, state_size, f) == state_size &&
@@ -704,6 +737,13 @@ int main(int argc, char **argv) {
                     dead = 0;
                     /* files from before poked_upto: everything before this game frame counts as in */
                     if (ok && fread(&poked_upto, sizeof poked_upto, 1, f) != 1) poked_upto = (long long)game() - 1;
+                    /* files from before the save memory: the one in place stays */
+                    uint32_t n32 = 0;
+                    if (ok && fread(&n32, sizeof n32, 1, f) == 1 && n32 && n32 <= SAVE_SIZE_MAX) {
+                        unsigned char *buf = malloc(n32);
+                        if (fread(buf, 1, n32, f) == n32) sav_put(buf, n32);
+                        free(buf);
+                    }
                 }
                 if (f) fclose(f);
             }
@@ -735,6 +775,7 @@ int main(int argc, char **argv) {
                 s0 &= 0xFFFF; s1 &= 0xFFFF;
                 PROF(P_LOAD, core->loadState(core, slots[s0].st)); dead = 0;
                 hw = slots[s0].hw; base = slots[s0].base; last16 = slots[s0].last16; poked_upto = slots[s0].poked_upto;
+                sav_back(&slots[s0]);
                 step_game(key);
                 long vb = vbase_of(v0, hw - 1);
                 double er[NOFF];
@@ -742,6 +783,7 @@ int main(int argc, char **argv) {
                 if (!slots[s1].st) slots[s1].st = calloc(1, state_size);
                 PROF(P_SAVE, core->saveState(core, slots[s1].st));
                 slots[s1].hw = hw; slots[s1].base = base; slots[s1].last16 = last16; slots[s1].poked_upto = poked_upto;
+                sav_keep(&slots[s1]);
                 printf("stepx %llu %ld", hw, vb);
                 for (int i = 0; i < NOFF; i++) printf(" %.5f", er[i]);
                 PROF(P_HASH, print_hash());
