@@ -2097,6 +2097,21 @@ def repair(D):
         if wl is not None:
             b.e.load(wl[1])
             if b.e.read(syms.SUBCHIP_FLAGS, 1)[0] & 0x10: order.sort(key=lambda x: x[0] != 'subchip')
+    # the video in a random battle's white flash where ours walks the map: its battle starts first (encounter,
+    # pick), before a video jump, which would step over the walk and leave MegaMan elsewhere after the battle
+    # (run11s 1450843, run10z 1345283: jumps of 77-78 frames)
+    try:
+        wl = state_at(max(D - 2, ring[0][0]))
+        if wl is not None:
+            b.e.load(wl[1])
+            if b.e.read(syms.GS_SUBSYSTEM, 1)[0] == 4:
+                kv = path_keys()[min(D - b.press_gf, len(path_keys()) - 1)][1]
+                Vw = video_frame(kv + 4)
+                if Vw is not None and float(Vw.mean()) > 190:
+                    log('  the video is in a battle flash, ours on the map: encounter and pick first')
+                    order.sort(key=lambda x: x[0] not in ('encounter', 'pick'))
+    except Exception as ex:
+        log(f'  (flash check: {ex!r})')
     for name, h in order:
         if not allowed(name) or name in tried: continue
         if over_budget(): log(f'  the search budget ({A.budget_hours} h) is spent'); return None
