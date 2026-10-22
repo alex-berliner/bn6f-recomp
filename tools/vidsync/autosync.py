@@ -1834,15 +1834,41 @@ def try_hand(D, deep=None):
     # went another way); one from the pack takes the place of the last chip of the shuffled folder
     pack = sorted(pack_chips() - set(folder))
     chosen, rest = [], list(folder)
+    # chips of one family share their icon and code (Spreader1 * and Spreader3 *, run11v 1511580): a slot's
+    # near-equal candidates are told apart by the chip name box over the custom screen's frames, where the
+    # video's cursor passes the slot
+    NAME = (slice(9, 23), slice(12, 82))
+    seq_at = list(range(c, min(c + 240, b.g), 3))
+    vseq = None
+    def name_err(order):
+        nonlocal vseq
+        if vseq is None:
+            vm = {t: ks[t - 1 - p0][1] for t in seq_at}
+            vf_ = video_frames(min(vm.values()), max(vm.values()))
+            vseq = {t: vf_[vm[t]] for t in seq_at if vm[t] in vf_}
+        set_emu_pokes([[f, folder_spec(order, pad)]])
+        b.e.load(w[1]); g = f; tot = 0.0
+        for t in seq_at:
+            while g < t: b.e.step(ks[g - p0][0]); g += 1
+            if t in vseq: tot += float(np.abs(b.e.shot().astype(np.float32)[NAME] - vseq[t][NAME]).mean())
+        set_emu_pokes()
+        return tot
     for i in range(N):
-        best = None
+        best = None; scored = []
         for cand in sorted(set(rest)) + pack:
             r = list(rest)
             if cand in r: r.remove(cand)
             else: r = r[:-1]
             E = render(chosen + [cand] + r)
             e = err(E, i)
+            scored.append((e, cand, r))
             if best is None or e < best[0]: best = (e, cand)
+        ties = [(cand, r) for e, cand, r in scored if e <= best[0] + 0.5]
+        if len(ties) > 1:
+            nb = min(ties, key=lambda x: name_err(chosen + [x[0]] + x[1]))
+            if nb[0] != best[1]:
+                log(f'  hand: slot {i + 1} {best[1]:04x} and {nb[0]:04x} look alike; the name box takes {nb[0]:04x}')
+                best = (best[0], nb[0])
         chosen.append(best[1])
         if best[1] in rest: rest.remove(best[1])
         else: rest = rest[:-1]; pack.remove(best[1])
