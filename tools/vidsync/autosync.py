@@ -1588,15 +1588,23 @@ def skip_video_battle(D, w, vD):
     wa = state_at(away)
     if wa is None: return None
     b.e.load(wa[1]); th = emu_thumb(b.e.shot()).astype(np.float32); va = ks[away - p0][1]
-    off = None; best = None
-    for v in range(va, va + 4000):
-        d = float(np.abs(b.T[min(v, b.N - 1)].astype(np.float32) - th).mean())
-        if off is None:
-            if d > 25: off = v
-            continue
-        if v - off < 120: continue
-        if best is None or d < best[0]: best = (d, v)
-        if d < 6: break
+    def back(level, least, span):
+        off = None; best = None
+        for v in range(va, va + span):
+            d = float(np.abs(b.T[min(v, b.N - 1)].astype(np.float32) - th).mean())
+            if off is None:
+                if d > level: off = v
+                continue
+            if v - off < least: continue
+            if best is None or d < best[0]: best = (d, v)
+            if d < 6: break
+        return off, best
+    off, best = back(25, 120, 4000)
+    # or a dialog ours does not get on the same map (run12d 1558688: the video's MegaMan opens a mystery data
+    # ours lacks and stands there through its text): a smaller step away, back within 600 frames
+    if best is None or best[0] > 10:
+        off2, best2 = back(9, 40, 600)
+        if best2 is not None and (best is None or best2[0] < best[0]): off, best = off2, best2
     if best is None: log(f'  skip ahead: the video does not leave the map after {va}'); return None
     dv, vb = best
     log(f'  skip ahead: ours at {away} (the video {va}) looks like the video again at {vb} ({dv:.1f}), after it left at {off}')
