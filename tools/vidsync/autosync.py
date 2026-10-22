@@ -1754,7 +1754,9 @@ def try_subchip(D):
     # a real expiry is a matter of frames and matches well; many that hold, or a poor match, mean the write is
     # not what the loss needs (run8c, 10-16: 70 of 160 held at 2.08 at 530684, covering roaming map objects)
     # (a loss asked for names the place: the many that hold there are the expiry's message seen from either side)
-    if res[t[3]][1] >= SUBCHIP_COST or (len(ok) > len(tasks) // 4 and not FORCED_NOW[0] and not t[3].startswith('LocEnemy')):
+    # (LocEnemy's expiry after a battle can come with MegaMan's place off, the next loss's: up to 2.2, run11r 1450407)
+    cap = 2.2 if t[3].startswith('LocEnemy') else SUBCHIP_COST
+    if res[t[3]][1] >= cap or (len(ok) > len(tasks) // 4 and not FORCED_NOW[0] and not t[3].startswith('LocEnemy')):
         log(f'  subchip: not taken (cost {res[t[3]][1]:.3f}, {len(ok)} of {len(tasks)} hold)'); return None
     return w, [t[1][0]]
 
