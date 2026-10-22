@@ -1614,13 +1614,21 @@ def skip_video_battle(D, w, vD):
     if dv > (25 if dialog else 10): return None
     # (after a dialog the video's last keys close its text, which ours does not have: anchors up to 40 frames later
     # too, the furthest sync taken, run12h 1558688: +93 held 17 frames)
-    best_r = None
-    for sh in ((0, 5, 10, 15, 20, 25, 30, 35, 40) if dialog else (0,)):
-        w3 = (wa[0], wa[1], wa[2], wa[3] + (vb + sh - va), wa[4], wa[5])
-        r = evaluate([(ck_file(w3), [], away + 300, f'SV{sh}')] * 2)[f'SV{sh}']
-        log(f'  skip ahead: re-anchored {vb + sh - va:+d} video frames at {away}, the sync reaches {r[0]} (mean cost {r[1]:.3f})')
-        if best_r is None or (r[0], -r[1]) > (best_r[0][0], -best_r[0][1]): best_r = (r, w3)
-    r, w3 = best_r
+    # (and ours from a few frames earlier: the video's MegaMan stopped to open it where ours walked on, run12i
+    # 1558688: ours at -8 is the video after the dialog)
+    tasks = []; ws = {}
+    for bk in ((0, 4, 8, 12, 16, 20) if dialog else (0,)):
+        wb = state_at(away - bk) if bk else wa
+        if wb is None: continue
+        vab = ks[away - bk - p0][1]
+        for sh in ((0, 5, 10, 15, 20, 25, 30, 35, 40) if dialog else (0,)):
+            w3 = (wb[0], wb[1], wb[2], wb[3] + (vb + sh - vab), wb[4], wb[5])
+            tid = f'SV{bk}:{sh}'; tasks.append((ck_file(w3), [], away + 300, tid)); ws[tid] = (w3, vb + sh - vab, away - bk)
+    res = evaluate(tasks)
+    tid = max(res, key=lambda t: (res[t][0], -res[t][1]))
+    r = res[tid]; w3, jump, at = ws[tid]
+    log(f'  skip ahead: re-anchored {jump:+d} video frames at {at}, the sync reaches {r[0]} (mean cost {r[1]:.3f})'
+        + (f' (best of {len(tasks)})' if len(tasks) > 1 else ''))
     if r[0] >= away + 300 and r[1] < KILL_COST: return w3, []
     return None
 
