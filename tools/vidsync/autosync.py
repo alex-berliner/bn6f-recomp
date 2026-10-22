@@ -929,13 +929,16 @@ def try_encounter(D):
     b.e.load(w[1])
     if b.e.read(syms.GS_SUBSYSTEM, 1)[0] != 4: return None
     rolls = [f for f, p, q in EVENTS if p and D - 64 <= f <= D + 2]
-    if not rolls: return None
+    # no roll near the loss (our walk counter low, after a battle stopped earlier: run12b 1547645): write points
+    # every 4 frames over the 40 before it, the counter at its top and the RNG moved less
+    near = not rolls
+    if near: rolls = list(range(D - 40, D + 1, 4))
     tasks = []; ck = None
-    for f in rolls[-3:]:
+    for f in (rolls if near else rolls[-3:]):
         wf = state_at(f - 2)
         if wf is None: continue
         ckf = ck_file(wf); b.e.load(wf[1]); P0 = b.e.u32(rf.PRIMARY)
-        for j in range(-100, 101):
+        for j in (range(-30, 31) if near else range(-100, 101)):
             spec = f'{ENC_STEPS:#x}=0x400/2,' + rf.spec(rf.PRIMARY, rf.rng_move(P0, j))
             tasks.append((ckf, [[f - 2, spec]], D + 200, f'E{f}:{j}'))
         ck = (ck or {}); ck[f] = wf
