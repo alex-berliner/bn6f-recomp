@@ -1627,6 +1627,10 @@ def skip_video_battle(D, w, vD):
     res = evaluate(tasks)
     tid = max(res, key=lambda t: (res[t][0], -res[t][1]))
     r = res[tid]; w3, jump, at = ws[tid]
+    # (state_at's scratch slot held each candidate in turn: the chosen one's machine again)
+    wb = state_at(at)
+    if wb is None: return None
+    w3 = (wb[0], wb[1], wb[2], wb[3] + jump, wb[4], wb[5])
     log(f'  skip ahead: re-anchored {jump:+d} video frames at {at}, the sync reaches {r[0]} (mean cost {r[1]:.3f})'
         + (f' (best of {len(tasks)})' if len(tasks) > 1 else ''))
     if r[0] >= away + 300 and r[1] < KILL_COST: return w3, []
