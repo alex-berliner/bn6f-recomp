@@ -1602,13 +1602,16 @@ def skip_video_battle(D, w, vD):
     off, best = back(25, 120, 4000)
     # or a dialog ours does not get on the same map (run12d 1558688: the video's MegaMan opens a mystery data
     # ours lacks and stands there through its text): a smaller step away, back within 600 frames
+    dialog = False
     if best is None or best[0] > 10:
         off2, best2 = back(9, 40, 600)
-        if best2 is not None and (best is None or best2[0] < best[0]): off, best = off2, best2
+        if best2 is not None and (best is None or best2[0] < best[0]): off, best, dialog = off2, best2, True
     if best is None: log(f'  skip ahead: the video does not leave the map after {va}'); return None
     dv, vb = best
     log(f'  skip ahead: ours at {away} (the video {va}) looks like the video again at {vb} ({dv:.1f}), after it left at {off}')
-    if dv > 10: return None
+    # (after a dialog the video's MegaMan stands in another pose a few pixels off, run12g 1558688: 23.0; the sync
+    # from there judges it)
+    if dv > (25 if dialog else 10): return None
     w3 = (wa[0], wa[1], wa[2], wa[3] + (vb - va), wa[4], wa[5])
     r = evaluate([(ck_file(w3), [], away + 300, 'SV')] * 2)['SV']
     log(f'  skip ahead: re-anchored {vb - va:+d} video frames at {away}, the sync reaches {r[0]} (mean cost {r[1]:.3f})')
