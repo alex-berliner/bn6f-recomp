@@ -980,6 +980,15 @@ def try_noencounter(D):
     log(f'  no encounter: ours starts a battle at {T}; walk counter 0 at {best[1:]} reaches {r[best][0]} (mean cost {r[best][1]:.3f})')
     # (80: a later roll can start the battle again, the next loss's: run12c 1558607 reached +84)
     if r[best][0] >= D + 80: return w, ex[best]
+    # or the video's own battle starts where the stopped one's sync ends (ours ~36 frames early, run12v 1609557:
+    # a video jump took it instead and left MegaMan elsewhere after the battle): its flash there
+    if r[best][0] >= D + 20:
+        ksr = reach_keys(r[best][0] + 30, D)
+        vr = ksr[min(r[best][0] - b.press_gf, len(ksr) - 1)][1]
+        Vs = [video_frame(vr + k) for k in (2, 8, 14)]
+        if any(V is not None and float(V.mean()) > 190 for V in Vs):
+            log(f'  no encounter: the video\'s battle flash at {r[best][0]}: taken')
+            return w, ex[best]
     # LocEnemy's countdown (it goes down with the steps) can run out at another time than the video's "LocEnemy
     # just expired!" (run11d 1389010: ours ~30 frames later): the countdown moved too, by -160..+40 steps
     a = int(best[1:]); w2 = state_at(a)
