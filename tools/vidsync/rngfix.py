@@ -58,12 +58,38 @@ def run_task(b, ck, extra, until, bad_max=30):
 
 # ---- a pool of sync workers on this machine
 _B = None
+_VDIR = None
 def _init(vdir):
-    global _B
+    global _B, _VDIR
+    _VDIR = vdir
     _B = bm.Beam(vdir, log=lambda *a: None)
-def _task(t):
+
+# a write can send the game where mGBA's frame never ends (run12x 1717830: an RNG candidate, emu_server inside
+# runFrame at 100% for half an hour, the driver waiting on the pool): each task has TASK_SECONDS, then its
+# machines are killed and started again and the task counts as failed
+import signal
+TASK_SECONDS = 300
+class _Hung(Exception): pass
+def _alarm(*a): raise _Hung()
+def _restart():
+    global _B, _E
+    for e in ([_B.e] if _B is not None else []) + ([_E] if _E is not None else []):
+        try: e.p.kill()
+        except Exception: pass
+    _E = None
+    if _VDIR is not None: _B = bm.Beam(_VDIR, log=lambda *a: None)
+def _guarded(fn, t, fail):
+    signal.signal(signal.SIGALRM, _alarm); signal.alarm(TASK_SECONDS)
+    try: return fn(t)
+    except _Hung:
+        _restart(); return fail
+    finally: signal.alarm(0)
+
+def _task0(t):
     ck, extra, until, tid = t
     return tid, run_task(_B, ck, extra, until)
+def _task(t):
+    return _guarded(_task0, t, (t[3], [t[0]['g'], 9.0]))
 
 # ---- the quick pass: the known path's keys from W (no sync), then the picture against the video only at a
 # few frames near the loss. A write that fixes the event makes those frames match where the path lost them.
@@ -86,9 +112,11 @@ def quick_score(e, ck, extra, keys, vids, at, span=3, cap=None):
     return tot
 
 _E = None
-def _qtask(t):
+def _qtask0(t):
     ck, extra, keys, vids, at, tid = t[:6]
     return tid, quick_score(_emu(), ck, extra, keys, vids, at, **(t[6] if len(t) > 6 else {}))
+def _qtask(t):
+    return _guarded(_qtask0, t, (t[5], 1e9))
 
 # ---- the driver's own judges, on the workers: path_reach (the path's keys from W with a write, no sync) and a
 # grid of RAM writes each scored by the picture a few frames later (try_relocate, try_mapobj, try_tornado)
@@ -132,10 +160,14 @@ def _emu():
         from emu import Emu
         _E = Emu()
     return _E
-def _ptask(t):
+def _ptask0(t):
     return t['id'], path_score(_emu(), t['ck'], t['pokes'], t['keys'], t['vids'], t['until'], t['windows'], t['mask'],
                                strict=[tuple(x) for x in t.get('strict', [])])
-def _gtask(t):
+def _ptask(t):
+    return _guarded(_ptask0, t, (t['id'], [t['ck']['g'], 6.0]))
+def _gtask0(t):
     return t['id'], grid_score(_emu(), t['ck'], t['pokes'], t['cands'], t['keys'], t['vid'], t['span'], t['mask'])
+def _gtask(t):
+    return _guarded(_gtask0, t, (t['id'], [1e9] * len(t['cands'])))
 KINDS = {'path': _ptask, 'grid': _gtask}
 
