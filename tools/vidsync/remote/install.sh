@@ -1,7 +1,7 @@
 #!/bin/bash
 # install.sh TGZ: put a deploy (tools/vidsync/deploy.py) in place: unpack it as ~/vidsync/deploys/STAMP, link
 # the PC's own data into it, build mgba_run and emu_server there, then point the link ~/vidsync/recomp at it
-# (a rename of the link: jobs that run keep their own tree; WSL1, on 192.168.1.167, cannot rename a directory
+# (a rename of the link: jobs that run keep their own tree; WSL1, on 10.67.1.167, cannot rename a directory
 # a process works in). The three newest deploys are kept.
 set -euo pipefail
 home=$HOME/vidsync; new=$home/deploys/$(date +%Y%m%d-%H%M%S)

@@ -164,7 +164,7 @@ class WorkersOutput(Result):
 
 @workflow.step
 def restart_worker_server(given: WorkersInput) -> WorkersOutput:
-    """Restart the worker server on 192.168.1.167 from the deployed tree (through WMI); the driver reconnects."""
+    """Restart the worker server on 10.67.1.167 from the deployed tree (through WMI); the driver reconnects."""
     return WorkersOutput(workers=restart_workers())
 
 

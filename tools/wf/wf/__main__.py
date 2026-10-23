@@ -57,7 +57,7 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
                        [--stall-minutes 30] [--pathcheck-minutes 60] [--no-repair]   # docs/vidsync/README.md
   python -m wf vidsync-repair --run NAME [--loss G] [--model P/M]... [--max-attempts N]
   python -m wf vidsync-ready [--checkpoint PATH|RUN] [--most G] [--out-dir DIR] [--every N] [--local DIR] [--import]
-  python -m wf vidsync-status [RUN]        # the driver's state on 192.168.1.175 (furthest frame, last event)
+  python -m wf vidsync-status [RUN]        # the driver's state on 10.67.1.175 (furthest frame, last event)
   python -m wf vidsync-tick [--run NAME]    # one check-in (for a 15-minute recurring prompt): acts on the
                                             # routine cases, stops at `decide` for the rest
   python -m wf waiting RUN_ID              # what a paused run needs

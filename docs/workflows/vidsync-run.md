@@ -51,7 +51,7 @@ the stall time), it ended, a pathcheck is due, or the watch is over.
 
 ### `restart_worker_server` (step)
 
-Restart the worker server on 192.168.1.167 from the deployed tree (through WMI); the driver reconnects.
+Restart the worker server on 10.67.1.167 from the deployed tree (through WMI); the driver reconnects.
 
 - reads: nothing
 - produces: `workers: int`

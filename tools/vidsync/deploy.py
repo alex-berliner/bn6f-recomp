@@ -10,7 +10,7 @@ data in, build mgba_run and emu_server, move the link; running jobs keep their o
 stays where it is (the LAN is a slow WireGuard link: never copy video over it). Restarting the
 driver or the worker server is separate (the vidsync-run workflow, or remote/launch.ps1).
 
-Default PCs: 192.168.1.175 (the driver) and 192.168.1.167 (the worker server), in parallel. --json prints
+Default PCs: 10.67.1.175 (the driver) and 10.67.1.167 (the worker server), in parallel. --json prints
 one JSON object per PC: {"pc", "ok", "deployed", "output"}."""
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PARTS = ("tools/vidsync", "tools/gamepaths.py", "tools/paths.env", "tools/mgba_run.c", "tools/Makefile")
-PCS = ("192.168.1.175", "192.168.1.167")
+PCS = ("10.67.1.175", "10.67.1.167")
 USER = "alex"
 WINDOWS_HOME = "C:/Users/alex"              # where scp puts files; /mnt/c/Users/alex in WSL
 TGZ = "vidsync_deploy.tgz"

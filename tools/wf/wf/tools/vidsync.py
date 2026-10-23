@@ -21,9 +21,9 @@ from wf.repo import REPO
 from wf.tools.errors import ToolOutputError
 from wf.types import FrameCount, LogPath, PcHost, RemotePath, Result, RunName, ToolMessage
 
-DRIVER_PC = PcHost("192.168.1.175")   # the driver (supervise.sh -> autosync.py, 13 local workers), exports,
+DRIVER_PC = PcHost("10.67.1.175")   # the driver (supervise.sh -> autosync.py, 13 local workers), exports,
                                       # segment cuts, pathcheck, handler tests
-WORKER_PC = PcHost("192.168.1.167")   # the worker server (15 workers, TCP 7777)
+WORKER_PC = PcHost("10.67.1.167")   # the worker server (15 workers, TCP 7777)
 PCS = (DRIVER_PC, WORKER_PC)
 USER = "alex"
 REMOTE = "~/vidsync/recomp/tools/vidsync/remote"   # the deployed job scripts

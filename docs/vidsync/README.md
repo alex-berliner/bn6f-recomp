@@ -67,8 +67,8 @@ logs and a few pictures back. The LAN is a slow WireGuard link: video never cros
 
 | PC | Role | WSL home |
 |---|---|---|
-| 192.168.1.175 | driver (`supervise.sh` → `autosync.py`, 13 local workers), exports, segment cuts, pathcheck, handler tests | `/home/alex` |
-| 192.168.1.167 | worker server (15 workers, TCP 7777) | `/root` |
+| 10.67.1.175 | driver (`supervise.sh` → `autosync.py`, 13 local workers), exports, segment cuts, pathcheck, handler tests | `/home/alex` |
+| 10.67.1.167 | worker server (15 workers, TCP 7777) | `/root` |
 
 **Deploy** (`tools/vidsync/deploy.py`, or the deploy step of `wf vidsync-run`): the part of this tree vidsync
 needs (`tools/vidsync`, `tools/gamepaths.py`, `tools/paths.env`, `tools/mgba_run.c`, `tools/Makefile`, the files
@@ -95,7 +95,7 @@ script on stdin (`ssh PC wsl -d Ubuntu -- bash -s`: no quoting through cmd.exe).
 | `py.sh SCRIPT ARGS` | any `tools/vidsync` script with the PC's environment (`py.sh pathcheck.py X.json`, `py.sh probes/trig.py ...`) |
 | `export.sh`, `segments.sh` | export a checkpoint (verified), cut segments |
 
-By hand: `echo 'bash ~/vidsync/recomp/tools/vidsync/remote/status.sh' | ssh alex@192.168.1.175 wsl -d Ubuntu -- bash -s`,
+By hand: `echo 'bash ~/vidsync/recomp/tools/vidsync/remote/status.sh' | ssh alex@10.67.1.175 wsl -d Ubuntu -- bash -s`,
 or `./wf vidsync-status`.
 
 ## Workflows

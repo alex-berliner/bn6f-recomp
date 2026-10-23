@@ -192,7 +192,7 @@ class Rename(Result):
 
 # ── vidsync (docs/vidsync/README.md) ───────────────────────────────────
 
-PcHost = NewType("PcHost", str)          # a compute PC's address, e.g. "192.168.1.175"
+PcHost = NewType("PcHost", str)          # a compute PC's address, e.g. "10.67.1.175"
 RunName = NewType("RunName", str)        # a sync run on the driver PC: its directories are data/auto/RUN.0, .1, ...
 RemotePath = NewType("RemotePath", str)  # a path on a compute PC, relative to its vidsync working directory
                                          # (data/auto/run7k.0/fix_0003; checkpoints without .json/.state)
