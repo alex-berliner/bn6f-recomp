@@ -371,9 +371,12 @@ def try_library(D):
     flag = lambda n: b.e.read(EVENT_FLAGS + (n >> 3), 1)[0] & (0x80 >> (n & 7))
     got, missing = library_standard(lambda i: any(flag(base + i) for base in LIBRARY_FLAGS))
     n = len(got)
-    if not missing or n >= 100: return None
+    # (the doors count 100 (Undernet 2) or exactly 200 (the Graveyard's "mark of S", ts_check_library_standard
+    # 0xC8..0xC8, run13e 1793272): the next one above ours)
+    target = 100 if n < 100 else 200
+    if not missing or n >= target: return None
     extras = {}
-    for k in sorted({100 - n, 100 - n + 2, 100 - n + 5, 100 - n + 10}):
+    for k in sorted({target - n} | ({target - n + 2, target - n + 5, target - n + 10} if target == 100 else set())):
         if k <= 0 or k > len(missing): continue
         byts = {}
         for i in missing[:k]:
