@@ -52,6 +52,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdarg.h>
+#include <setjmp.h>
+#include <signal.h>
+#include <sys/time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -401,9 +404,21 @@ static void errs_block(const float *E, float emean, long v0, int n, float *out) 
 }
 
 /* one game frame holding key (the step command's unit) */
+/* a write can send the game where mGBA's frame never ends (run12x 1717830, run13f 1793272: emu_server inside
+ * ARMRunLoop at 100% for half an hour, the driver waiting on it): an alarm 3 s into one game frame jumps out of
+ * the core and the machine counts as dead (until a state is loaded, which sets everything again) */
+static sigjmp_buf hang_jb;
+static volatile sig_atomic_t hang_armed;
+static void on_hang(int sig) { (void)sig; if (hang_armed) { hang_armed = 0; siglongjmp(hang_jb, 1); } }
 static void step_game1(unsigned key) {
     unsigned g = game(), guard = 0;
+    static int installed;
+    if (!installed) { signal(SIGALRM, on_hang); installed = 1; }
+    struct itimerval on = {{0, 0}, {3, 0}}, off = {{0, 0}, {0, 0}};
+    if (sigsetjmp(hang_jb, 1)) { setitimer(ITIMER_REAL, &off, NULL); dead = 1; return; }
+    hang_armed = 1; setitimer(ITIMER_REAL, &on, NULL);
     while (game() == g && guard++ < 3600) run_hw(key);
+    hang_armed = 0; setitimer(ITIMER_REAL, &off, NULL);
     if (game() == g) dead = 1;           /* a minute in one game frame: crashed */
 }
 static void step_game(unsigned key) { PROF(P_STEP, step_game1(key)); }
@@ -478,7 +493,7 @@ static unsigned char *sav_data(size_t *n) {
 static void sav_keep(Slot *s) {
     size_t n; unsigned char *d = sav_data(&n);
     if (!d) { s->nsav = 0; return; }
-    if (!s->sav) s->sav = malloc(SAVE_SIZE_MAX);
+    if (!s->sav || s->nsav != n) { free(s->sav); s->sav = malloc(n); }
     memcpy(s->sav, d, n); s->nsav = n;
 }
 static void sav_put(const unsigned char *src, size_t n0) {
@@ -639,7 +654,10 @@ static void follow(char *args, unsigned stride) {
         memcpy(slots[slot].st, pre->st, state_size);
         slots[slot].hw = pre->hw; slots[slot].base = pre->base; slots[slot].last16 = pre->last16;
         slots[slot].poked_upto = pre->poked_upto;   /* else the next load applies this stretch's pokes again */
-        if (pre->nsav) { if (!slots[slot].sav) slots[slot].sav = malloc(SAVE_SIZE_MAX); memcpy(slots[slot].sav, pre->sav, pre->nsav); }
+        if (pre->nsav) {
+            if (!slots[slot].sav || slots[slot].nsav != pre->nsav) { free(slots[slot].sav); slots[slot].sav = malloc(pre->nsav); }
+            memcpy(slots[slot].sav, pre->sav, pre->nsav);
+        }
         slots[slot].nsav = pre->nsav;
     }
     free(hist); free(rk); free(rv); free(rb);
