@@ -22,6 +22,10 @@ def serve(conn, addr):
         with lock:
             try: f.write((json.dumps({'id': r[0], 'reached': r[1]}) + '\n').encode()); f.flush()   # (a quick score, for 'quick')
             except OSError: pass
+    def failed(tid, res):       # a task that raised replies as failed (else the driver waits on it: run13g 1793272)
+        def cb(ex):
+            print('task error', tid, repr(ex), flush=True); reply((tid, res))
+        return cb
     try:
         for line in f:
             m = json.loads(line)
@@ -29,13 +33,16 @@ def serve(conn, addr):
                 open(os.path.join(store, m['name']), 'wb').write(base64.b64decode(m['state']))
             elif m['op'] == 'task':
                 ck = dict(m['ck']); ck['state'] = os.path.join(store, ck['state'])
-                pool.apply_async(rngfix._task, ((ck, m['extra'], m['until'], m['id']),), callback=reply)
+                pool.apply_async(rngfix._task, ((ck, m['extra'], m['until'], m['id']),), callback=reply,
+                                 error_callback=failed(m['id'], [ck.get('g', 0), 9.0]))
             elif m['op'] == 'quick':
                 ck = dict(m['ck']); ck['state'] = os.path.join(store, ck['state'])
-                pool.apply_async(rngfix._qtask, ((ck, m['extra'], m['keys'], m['vids'], m['at'], m['id'], m.get('opts', {})),), callback=reply)
+                pool.apply_async(rngfix._qtask, ((ck, m['extra'], m['keys'], m['vids'], m['at'], m['id'], m.get('opts', {})),), callback=reply,
+                                 error_callback=failed(m['id'], 1e9))
             elif m['op'] in rngfix.KINDS:       # a driver judge ('path', 'grid'): the message is the task
                 m['ck'] = dict(m['ck'], state=os.path.join(store, m['ck']['state']))
-                pool.apply_async(rngfix.KINDS[m['op']], (m,), callback=reply)
+                bad = [1e9] * len(m.get('cands', [])) if m['op'] == 'grid' else [m['ck'].get('g', 0), 6.0]
+                pool.apply_async(rngfix.KINDS[m['op']], (m,), callback=reply, error_callback=failed(m['id'], bad))
     except (OSError, ValueError) as ex: print('driver error', addr, repr(ex), flush=True)
     print('driver gone', addr, flush=True)
 while True:                     # a thread per driver: a half-dead old line never blocks a new driver
