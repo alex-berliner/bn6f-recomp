@@ -1628,7 +1628,7 @@ def skip_video_battle(D, w, vD):
             if best is None or d < best[0]: best = (d, v)
             if d < 6: break
         return off, best
-    off, best = back(25, 120, 4000)
+    off, best = back(25, 120, 8000)    # (8000: a story boss deleted early, the video's fight ~4700 frames on: run13o 1821760)
     # or a dialog ours does not get on the same map (run12d 1558688: the video's MegaMan opens a mystery data
     # ours lacks and stands there through its text): a smaller step away, back within 600 frames
     dialog = False
