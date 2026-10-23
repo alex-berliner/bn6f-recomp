@@ -68,7 +68,7 @@ def _init(vdir):
 # runFrame at 100% for half an hour, the driver waiting on the pool): each task has TASK_SECONDS, then its
 # machines are killed and started again and the task counts as failed
 import signal
-TASK_SECONDS = 300
+TASK_SECONDS = 60         # (a sync task to D+400 takes seconds; run12y hit several hung candidates in one wave)
 class _Hung(Exception): pass
 def _alarm(*a): raise _Hung()
 def _restart():
