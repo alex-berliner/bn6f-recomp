@@ -1256,7 +1256,9 @@ def check_reward(g_lo, D=None):
     c2 = sorted((set(cands) | held_candidates() | battle_md_candidates(r2) | {r2}) - {0xFFFF, r2}) if r2 not in (0, 0xFFFF) else []
     Ea = errs(a, r2) if a != r1 else E0
     b2 = max(((float(np.sum(Ea - errs(a, x))), x) for x in c2), default=(0.0, r2))
-    c = b2[1] if b2[0] > REWARD_GAIN else r2
+    # (the second needs more: judged after the first is changed it gains from timing, run12o 1570354: the game's own
+    # Meteors R, the video's, swapped for HP+350 at 61)
+    c = b2[1] if b2[0] > max(REWARD_GAIN, 100) else r2
     # (a zenny reward (0x4000 | amount) the video shows too is not swapped for an item: run10y 1338180, 0x4bb8 =
     # 3000z, the video's, replaced by 0x815e (HP+350) on a gain the delete time's digits made)
     # (but a clear gain is the video's item: run11g 1411733, 0x228b (Meteors R) at 195 over 3000z)
