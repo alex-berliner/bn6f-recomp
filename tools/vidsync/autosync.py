@@ -85,8 +85,14 @@ class Remote:
     def _run(self, tasks, out, tag, want):
         for t in tasks:
             c = dict(ck_of(t)); c['state'] = Remote.names[ck_of(t)['state']]
+            # (only the writes from the machine's frame on: those before it are in the saved state already, and
+            # the whole run's (2000 writes, folder orders among them) in every message stalled the link to the
+            # workers for good, run13h 1793272)
+            g0 = c.get('g', 0) - 2
+            c['pokes'] = [p for p in c.get('pokes', []) if p[0] >= g0]
             if isinstance(t, dict):
                 m = dict(t, op=t['kind'], id=tag + t['id'], ck=c)
+                if 'pokes' in m: m['pokes'] = [p for p in m['pokes'] if p[0] >= g0]
             elif len(t) == 4:
                 m = {'op': 'task', 'id': tag + t[3], 'ck': c, 'extra': t[1], 'until': t[2]}
             else:
