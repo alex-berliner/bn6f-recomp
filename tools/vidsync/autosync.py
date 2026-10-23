@@ -1620,7 +1620,7 @@ def skip_video_battle(D, w, vD):
     # (and ours from a few frames earlier: the video's MegaMan stopped to open it where ours walked on, run12i
     # 1558688: ours at -8 is the video after the dialog)
     tasks = []; ws = {}
-    for bk in ((0, 4, 8, 12, 16, 20) if dialog else (0,)):
+    for bk in (tuple(range(0, 61, 6)) if dialog else (0,)):      # (run12t 1576620: ours ~30 past)
         wb = state_at(away - bk) if bk else wa
         if wb is None: continue
         vab = ks[away - bk - p0][1]
