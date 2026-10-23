@@ -1624,9 +1624,14 @@ def skip_video_battle(D, w, vD):
         wb = state_at(away - bk) if bk else wa
         if wb is None: continue
         vab = ks[away - bk - p0][1]
+        vbb = vb
+        if dialog and bk:
+            # (its own anchor: the video frame after the dialog most like ours there, run12u 1576620)
+            b.e.load(wb[1]); thb = emu_thumb(b.e.shot()).astype(np.float32)
+            vbb = min(range(off + 40, off + 600), key=lambda v: float(np.abs(b.T[min(v, b.N - 1)].astype(np.float32) - thb).mean()))
         for sh in ((0, 5, 10, 15, 20, 25, 30, 35, 40) if dialog else (0,)):
-            w3 = (wb[0], wb[1], wb[2], wb[3] + (vb + sh - vab), wb[4], wb[5])
-            tid = f'SV{bk}:{sh}'; tasks.append((ck_file(w3), [], away + 300, tid)); ws[tid] = (w3, vb + sh - vab, away - bk)
+            w3 = (wb[0], wb[1], wb[2], wb[3] + (vbb + sh - vab), wb[4], wb[5])
+            tid = f'SV{bk}:{sh}'; tasks.append((ck_file(w3), [], away + 300, tid)); ws[tid] = (w3, vbb + sh - vab, away - bk)
     res = evaluate(tasks)
     tid = max(res, key=lambda t: (res[t][0], -res[t][1]))
     r = res[tid]; w3, jump, at = ws[tid]
