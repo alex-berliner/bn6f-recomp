@@ -1925,7 +1925,7 @@ def try_hand(D, deep=None):
     # near-equal candidates are told apart by the chip name box over the custom screen's frames, where the
     # video's cursor passes the slot
     NAME = (slice(9, 23), slice(12, 82))
-    seq_at = list(range(c, min(c + 240, b.g), 3))
+    seq_at = list(range(c, min(c + 120, b.g), 4))      # (120 frames: 240 for every tie took half an hour, run13j 1795484)
     vseq = None
     def name_err(order):
         nonlocal vseq
@@ -1950,7 +1950,7 @@ def try_hand(D, deep=None):
             e = err(E, i)
             scored.append((e, cand, r))
             if best is None or e < best[0]: best = (e, cand)
-        ties = [(cand, r) for e, cand, r in scored if e <= best[0] + 0.5]
+        ties = [(cand, r) for e, cand, r in sorted(scored, key=lambda x: x[0]) if e <= best[0] + 0.5][:4]
         if len(ties) > 1:
             nb = min(ties, key=lambda x: name_err(chosen + [x[0]] + x[1]))
             if nb[0] != best[1]:
