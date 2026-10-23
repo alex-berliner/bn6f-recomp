@@ -619,7 +619,15 @@ def try_position(D):
     # the video's walk had elsewhere: run8s 827311, 827423 at 1.56)
     # (or 50 at a low cost: the video's next encounter can start right after, run10t 1307840 to +58 at 1.52; the
     # encounter handlers take the next loss)
-    if best[0][0] >= D + 150 or (best[0][0] >= D + 100 and best[0][1] < 1.6) or (best[0][0] >= D + 50 and best[0][1] < 1.55):
+    ok = best[0][0] >= D + 150 or (best[0][0] >= D + 100 and best[0][1] < 1.6) or (best[0][0] >= D + 50 and best[0][1] < 1.55)
+    # (or to where the video's next random battle flashes, at a higher cost: run12w 1710539, +87 at 2.35 to the
+    # video's battle; the encounter handlers take the next loss)
+    if not ok and best[0][0] >= D + 40 and best[0][1] < 2.6:
+        ksr = reach_keys(best[0][0] + 30, D)
+        vr = ksr[min(best[0][0] - b.press_gf, len(ksr) - 1)][1]
+        ok = any(V is not None and float(V.mean()) > 190 for V in (video_frame(vr + k) for k in (2, 8, 14)))
+        if ok: log(f'  position: the video\'s battle flash at {best[0][0]}: taken')
+    if ok:
         KEEP_NEXT[0] = True
         return w2, [[W, f'{GS_PLAYER:#x}={best[1]:#x}/4,{GS_PLAYER + 4:#x}={best[2]:#x}/4']]
     return None
