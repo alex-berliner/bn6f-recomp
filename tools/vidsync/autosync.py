@@ -2173,7 +2173,7 @@ def repair(D):
                 if Vw is not None and float(Vw.mean()) > 190:
                     log('  the video is in a battle flash, ours on the map: encounter and pick first')
                     order.sort(key=lambda x: x[0] not in ('encounter', 'pick'))
-            elif b.e.read(syms.GS_SUBSYSTEM, 1)[0] == 8:
+            elif b.e.read(syms.GS_SUBSYSTEM, 1)[0] in (8, 0xC):      # (its flash, or the battle itself: run12m 1564859)
                 # the other way: ours in a random battle's start where the video walks on (run12l 1564819: a jump of
                 # 57 frames covered our early battle, MegaMan elsewhere after it): ours stopped first
                 kv = path_keys()[min(D - b.press_gf, len(path_keys()) - 1)][1]
