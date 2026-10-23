@@ -1613,7 +1613,7 @@ def skip_video_battle(D, w, vD):
     log(f'  skip ahead: ours at {away} (the video {va}) looks like the video again at {vb} ({dv:.1f}), after it left at {off}')
     # (after a dialog the video's MegaMan stands in another pose a few pixels off, run12g 1558688: 23.0; the sync
     # from there judges it)
-    if dv > (25 if dialog else 10): return None
+    if dv > (40 if dialog else 10): return None      # (run12r 1576620: 34.2, the same mystery data again)
     # (after a dialog the video's last keys close its text, which ours does not have: anchors up to 40 frames later
     # too, the furthest sync taken, run12h 1558688: +93 held 17 frames)
     # (and ours from a few frames earlier: the video's MegaMan stopped to open it where ours walked on, run12i
