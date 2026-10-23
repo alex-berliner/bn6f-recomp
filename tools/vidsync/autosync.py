@@ -1588,7 +1588,7 @@ def try_skipahead(D):
         if J - G >= 30 and float(th.std()) > 20: break
         if J - G > 400: return None
     vJ = vD + int(round((J - D) * bm.RATE))
-    ds = [(float(np.abs(b.T[min(v, b.N - 1)].astype(np.float32) - th).mean()), v) for v in range(vJ + 60, vJ + 4000)]
+    ds = [(float(np.abs(b.T[min(v, b.N - 1)].astype(np.float32) - th).mean()), v) for v in range(vJ + 60, vJ + 8000)]   # (8000: run13p, Bass deleted early)
     dv, vbest = min(ds)
     log(f'  skip ahead: ours back on the map at {G} (the video {vJ} still in the battle); its map at {J} looks most like video {vbest} ({dv:.1f})')
     if dv > 12: return None
