@@ -1607,7 +1607,8 @@ def skip_video_battle(D, w, vD):
     dialog = False
     if best is None or best[0] > 10:
         off2, best2 = back(9, 40, 600)
-        if best2 is not None and (best is None or best2[0] < best[0]): off, best, dialog = off2, best2, True
+        # (taken whenever it is within reach: run12s 1576620 found its battle-like 34.2 first)
+        if best2 is not None and best2[0] <= 40: off, best, dialog = off2, best2, True
     if best is None: log(f'  skip ahead: the video does not leave the map after {va}'); return None
     dv, vb = best
     log(f'  skip ahead: ours at {away} (the video {va}) looks like the video again at {vb} ({dv:.1f}), after it left at {off}')
