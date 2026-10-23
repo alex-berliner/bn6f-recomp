@@ -1838,6 +1838,7 @@ def try_subchip(D):
     return state_at(t[1][0][0] - 1), [t[1][0]]
 
 HAND_DONE = set()
+HAND_SPENT = set()          # hands that came back to their loss: not written again, nor holding the RNG search back
 def try_hand(D, deep=None):
     """The first hand of a battle is the shuffled folder's first 5 chips, and one order of 5 out of 30 is too
     rare to reach with secondary RNG writes. Write the folder order instead: after the shuffle (a big jump of
@@ -2175,6 +2176,10 @@ def repair(D):
     if LAST_FIX[0] is not None and abs(LAST_FIX[0] - D) <= 30:
         FAILED.setdefault(LAST_FIX[0], set()).add(LAST_FIX[1])
         log(f'  the last fix ({LAST_FIX[1]}) came back to this loss: not asking it again here')
+        # (a hand that did not help no longer keeps the RNG search after it: run12x 1717878, ProtoMan's moves went
+        # another way 700 frames before, behind the hand written at 1717730)
+        if LAST_FIX[1] in ('hand', 'redraw'):
+            for hd in [h for h in HAND_DONE if D - 3000 < h[0] < D]: HAND_DONE.discard(hd); HAND_SPENT.add(hd)
         if LAST_FIX[1] == 'overlay':    # its window goes too (the run would compare less than the tasks do)
             LENIENT[:] = [x for x in LENIENT if not x[0] <= D < x[1]]
     skip = set().union(*[v for d, v in FAILED.items() if abs(d - D) <= 30])
