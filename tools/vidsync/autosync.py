@@ -1800,7 +1800,7 @@ def try_subchip(D):
     # (a battle can start right after the expiry's message, and its formation or hand is the next loss's: past
     # PARTIAL is enough, run11m 1411110)
     # (LocEnemy's: 100, a random battle often follows the message within that, run11t 1470096 -> 1470214)
-    ok = [t for t in tasks if res[t[3]][0] >= D + (100 if t[3].startswith('LocEnemy') else PARTIAL)]
+    ok = [t for t in tasks if res[t[3]][0] >= D + (60 if t[3].startswith('LocEnemy') else PARTIAL)]   # (run12q 1570677: +74)
     if not ok: return None
     far = max(res[t[3]][0] for t in ok)
     t = min((t for t in ok if res[t[3]][0] == far), key=lambda t: res[t[3]][1])
