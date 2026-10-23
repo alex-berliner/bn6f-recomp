@@ -404,7 +404,8 @@ def try_library(D):
     res = evaluate(tasks)
     t = max(tasks, key=lambda t: (res[t[3]][0], -res[t[3]][1]))
     log(f'  library: {n} standard chips in ours; furthest {t[3]} to {res[t[3]][0]} (mean cost {res[t[3]][1]:.3f})')
-    if res[t[3]][0] < D + PARTIAL: return None
+    # (the mark of S door then warps on, where the video's own timing differs: 100 there, run13i 1793272 +134)
+    if res[t[3]][0] < D + (100 if target == 200 else PARTIAL): return None
     k, d = map(int, t[3][1:].split(':'))
     log(f'  library: +{k} chips ({", ".join(f"{i:#x}" for i in missing[:k])}) and the video {d:+d} frames let the path through')
     w2 = state_at(W2, extras[k])
