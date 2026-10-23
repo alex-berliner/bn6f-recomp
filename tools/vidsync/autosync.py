@@ -1771,6 +1771,21 @@ def try_subchip(D):
             for W in range(w[0] + 1, D + 6):
                 off.append((ck, [[W, f'{fa:#x}={fb & ~m & 0xFF:#04x}/1,{ca:#x}=0x0/4']], until, f'{name} off@{W}'))
                 off.append((ck, [[W, f'{fa:#x}={fb & ~m & 0xFF:#04x}/1']], until, f'{name} flag off@{W}'))
+    # LocEnemy running out before the video's (its countdown lower: run12o 1570677, ours ~30 frames early): the
+    # countdown raised some frames before the loss, so it runs out later
+    late = []
+    fa_l, m_l, ca_l = SUBCHIPS['LocEnemy']
+    for W in (D - 90, D - 60, D - 30):
+        wl = state_at(max(W, ring[0][0]))
+        if wl is None: continue
+        b.e.load(wl[1])
+        if not b.e.read(fa_l, 1)[0] & m_l: continue
+        gl = b.e.u32(ca_l)
+        if not 0 < gl < 0x200: continue
+        ckl = ck_file(wl)
+        for d in range(4, 121, 4):
+            late.append((ckl, [[wl[0] + 1, f'{ca_l:#x}={gl + d:#x}/4']], until, f'LocEnemy later@{wl[0] + 1}+{d}'))
+    tasks = tasks + late
     res = evaluate(tasks + off)
     if off:
         far = max(res[t[3]][0] for t in off)
@@ -1780,7 +1795,7 @@ def try_subchip(D):
     if ok_off:
         t = max(ok_off, key=lambda t: (res[t[3]][0], t[1][0][0], -res[t[3]][1]))   # the furthest, then the latest frame
         log(f'  subchip: {len(ok_off)} switch-offs reach {D + PARTIAL}; take {t[3]} (to {res[t[3]][0]}, mean cost {res[t[3]][1]:.3f})')
-        if res[t[3]][1] < SUBCHIP_COST: return w, [t[1][0]]
+        if res[t[3]][1] < SUBCHIP_COST: return state_at(t[1][0][0] - 1), [t[1][0]]
     if tasks: log(f'  subchip: expiries reach {max(res[t[3]][0] for t in tasks)} at best')
     # (a battle can start right after the expiry's message, and its formation or hand is the next loss's: past
     # PARTIAL is enough, run11m 1411110)
@@ -1797,7 +1812,7 @@ def try_subchip(D):
     cap = 2.5 if t[3].startswith('LocEnemy') else SUBCHIP_COST   # (run11u 1470096: 2.448, MegaMan's walk a little off)
     if res[t[3]][1] >= cap or (len(ok) > len(tasks) // 4 and not FORCED_NOW[0] and not t[3].startswith('LocEnemy')):
         log(f'  subchip: not taken (cost {res[t[3]][1]:.3f}, {len(ok)} of {len(tasks)} hold)'); return None
-    return w, [t[1][0]]
+    return state_at(t[1][0][0] - 1), [t[1][0]]
 
 HAND_DONE = set()
 def try_hand(D, deep=None):
