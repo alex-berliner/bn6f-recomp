@@ -2169,7 +2169,9 @@ def repair(D):
             b.e.load(wl[1])
             if b.e.read(syms.GS_SUBSYSTEM, 1)[0] == 4:
                 kv = path_keys()[min(D - b.press_gf, len(path_keys()) - 1)][1]
-                Vw = video_frame(kv + 4)
+                # (the brightest of the next frames: the flash fades in, run12n 1564859 was at 176 four frames on)
+                Vs = [video_frame(kv + k) for k in (4, 10, 16)]
+                Vw = max((V for V in Vs if V is not None), key=lambda V: float(V.mean()), default=None)
                 if Vw is not None and float(Vw.mean()) > 190:
                     log('  the video is in a battle flash, ours on the map: encounter and pick first')
                     order.sort(key=lambda x: x[0] not in ('encounter', 'pick'))
