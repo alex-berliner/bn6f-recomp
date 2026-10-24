@@ -67,6 +67,7 @@ MAX_FACTS_SYMBOLS = 10                              # RAM symbols it writes, nam
 MAX_FACTS_CALLERS = 6                               # runtime callers, named
 MAX_FACTS_ROUTES = 4                                # routes named per scene
 MAX_FACTS_IO = 8                                    # I/O registers it writes, named
+MAX_FACTS_FIELDS = 8                                # struct fields the captured calls wrote, named
 STRAGGLER_SECONDS = 300                            # a request still unanswered this long after the last other
                                                    # request of its pass finished is abandoned
 
@@ -792,8 +793,12 @@ def _reached_routes(record: facts.FunctionFacts) -> tuple[facts.RouteCoverage, .
 
 def _plural(count: int, word: str) -> str:
     """`1 value`, `13 values`, `4,243,040 calls`: the block is read at a glance, and `1 values` is
-    not; the recordings run for hours, so the call counts are long."""
-    return f"{count:,} {word}" + ("" if count == 1 else "s")
+    not; the recordings run for hours, so the call counts are long. A few irregular nouns get a
+    plural of their own (`entry`/`entries`) so the block reads right without anyone noticing."""
+    irregular = {"entry": "entries", "child": "children"}
+    if count == 1:
+        return f"{count:,} {word}"
+    return f"{count:,} {irregular.get(word, word + 's')}"
 
 
 def _scenes_text(record: facts.FunctionFacts) -> str:
@@ -826,6 +831,67 @@ def _callers_text(record: facts.FunctionFacts) -> str:
 
 
 UNNAMED_RAM = ("EWRAM", "IWRAM", "OAM", "PALETTE", "RAM", "SRAM", "VRAM")   # region names, not symbols
+
+
+def _per_call_scenes_text(record: facts.FunctionFacts) -> str:
+    """The scenes the captured CALLS ran in, from `record.scenes_at_call` (the mode bytes each
+    call's own entry snapshot says were live -- not the route name, which mixes scenes). The
+    count is over captured calls, not over route traces. An `other` mode has no scene name, so
+    it is reported as `unidentified` rather than being mistaken for evidence of a scene."""
+    if not record.scenes_at_call:
+        return ""
+    counts: dict[str, int] = {}
+    for call in record.scenes_at_call:
+        scene = "unidentified" if call.scene == "other" else call.scene
+        counts[scene] = counts.get(scene, 0) + 1
+    parts = [f"{scene} ({_plural(n, 'call')})" for scene, n in
+             sorted(counts.items(), key=lambda item: (-item[1], item[0]))]
+    return f"  scenes it runs in (per captured call): {', '.join(parts)}"
+
+
+def _field_writes_text(record: facts.FunctionFacts) -> str:
+    """The bn6f struct fields the captured calls wrote, in bn6f's own `o*` vocabulary
+    (`oBattleObject_Timer`, `oAIData_BeastOutAPwrAtk`). The bare RAM symbol the v1 block
+    quoted says which object instance was written; the field names say which slot, which is
+    what a claim is actually about.
+
+    Only attributed names are shown: an offset is shared by many structs, so a name at an
+    offset is evidence of a field only when the base register's struct family agrees with
+    it. The most frequent attributed write comes first, and at most MAX_FACTS_FIELDS distinct
+    field names are listed. The names already carry their family (`oBattleObject_*`), so they
+    are not prefixed a second time."""
+    names: list[str] = []
+    seen: set[str] = set()
+    writes = sorted((write for write in record.field_writes if write.attributed),
+                    key=lambda write: (-write.count, write.symbol, write.offset))
+    for write in writes:
+        preferred = [name for name in write.field_names
+                     if write.struct_guess and name.startswith(write.struct_guess + "_")]
+        if not preferred and write.candidates:
+            preferred = [name for name in write.field_names
+                         if any(name.startswith(candidate + "_") for candidate in write.candidates)]
+        for name in preferred or list(write.field_names)[:1]:
+            if name not in seen:
+                seen.add(name)
+                names.append(name)
+            break                   # aliases at one offset are one field, not several fields
+    if not names:
+        return ""
+    parts = names[:MAX_FACTS_FIELDS]
+    more = f" (+{len(names) - MAX_FACTS_FIELDS} more)" if len(names) > MAX_FACTS_FIELDS else ""
+    return f"  struct fields it wrote: {', '.join(parts)}{more}"
+
+
+def _entries_text(record: facts.FunctionFacts) -> str:
+    """How often the function was entered per 1000 game frames, summed over the recorded routes
+    (`entries`/`entries_per_1000_frames`). Real CPU entry counts from entry_counts.py, not the
+    profile's cycles and not the indirect-call .edges count -- what 'called every frame' is about.
+    A route whose `entries` is None was not measured; a measured zero is still a measurement."""
+    if not any(route.entries is not None for route in record.routes):
+        return ""
+    per = record.entries_per_1000_frames
+    return (f"  CPU entry rate: {_plural(record.entries, 'entry')}; "
+            f"{per:.3f} calls per 1,000 frames")
 
 
 def _symbol_text(record: facts.FunctionFacts) -> str:
@@ -892,7 +958,13 @@ def _written_text(record: facts.FunctionFacts) -> str:
 def runtime_facts_text(record: facts.FunctionFacts | None, name: FunctionName) -> str:
     """The short block the proposer and the checker are shown (at most FACTS_LINES lines): what the
     original game was observed doing, read from one `wf facts` record. A function no recording ever
-    reached says so instead -- that silence is information, but it argues for nothing either way."""
+    reached says so instead -- that silence is information, but it argues for nothing either way.
+
+    v2: scenes come from each captured call's own entry snapshot (the mode bytes `main_`
+    dispatches on, not the route name -- a route is an input tape that mixes scenes), the
+    struct fields the captured calls wrote are quoted by their bn6f `o*` name (more useful
+    for a name than the bare RAM symbol the v1 block quoted), and the call rate is the
+    real CPU entry count per 1000 frames, not the indirect-site count."""
     if record is None:
         return f"Runtime facts: none recorded for {name} (build/facts has no record of it)."
     if not record.reached:
@@ -902,17 +974,23 @@ def runtime_facts_text(record: facts.FunctionFacts | None, name: FunctionName) -
     reached = _reached_routes(record)
     calls = "; no calls at the recorded indirect call sites" if record.calls == 0 \
         else f"; {_plural(record.calls, 'call')} at the recorded indirect call sites"
-    lines = [FACTS_HEADER, _scenes_text(record),
+    scenes_line = _per_call_scenes_text(record)
+    if not scenes_line:
+        scenes_line = _scenes_text(record) + " (route-level, routes mix scenes)"
+    lines = [FACTS_HEADER, scenes_line,
              f"  reached by {len(reached)} of {len(record.routes)} recorded routes{calls}"]
+    entries_line = _entries_text(record)
+    if entries_line:
+        lines.append(entries_line)
     lines.append(_callers_text(record))
-    if record.facts is None:
+    if record.facts is None and not record.field_writes:
         lines.append(f"  arguments, writes and returns: unknown -- {record.probes} captured call(s) were "
                      f"replayed and none returned{f' ({record.facts_error})' if record.facts_error else ''}")
     else:
-        lines += [line for line in (_symbol_text(record), _io_text(record),
-                                    _registers_text(record, "arguments"),
-                                    _registers_text(record, "returns"),
-                                    _written_text(record)) if line]
+        writes = (_field_writes_text(record), _symbol_text(record), _io_text(record),
+                  _registers_text(record, "arguments"), _registers_text(record, "returns"),
+                  _written_text(record))
+        lines += [line for line in writes if line]
     lines.append(FACTS_CAVEAT)
     return "\n".join(lines[:FACTS_LINES])
 

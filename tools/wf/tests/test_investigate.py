@@ -619,24 +619,52 @@ def test_the_prompt_says_the_call_sites_are_the_evidence(monkeypatch: pytest.Mon
 
 def fake_record(address: int = 0x08001234, name: str = "sub_08001234",
                 **over: object) -> dict[str, object]:
-    """One `wf facts` record in the shape the layer writes it (docs/workflows/facts-notes.md), with
-    the fields the block reads: a battle and an overworld route that reached it, an indirect caller,
-    the RAM and I/O the replayed calls wrote, and the arguments and returns."""
+    """One `wf facts` record in the shape the v2 layer writes it (docs/workflows/facts-notes.md),
+    with the fields the block reads: a battle and an overworld route that reached it, an indirect
+    caller, the per-call scenes and struct field writes the replays produced, the RAM and I/O the
+    replayed calls wrote, the arguments and returns, and the entry counts the per-route mGBA
+    passes measured."""
     record: dict[str, object] = {
         "address": address, "address_hex": f"0x{address:08X}", "name": name, "end": address + 0x10,
         "asm": "asm00_0.s:10", "reached": True, "captured": True, "captured_states": 8, "states": 8,
         "probes": 8, "returned": 8, "calls": 6, "calls_per_1000_frames": 0.02, "cycles": 900,
-        "routes_reached": 2,
+        "routes_reached": 2, "entries": 12, "entries_per_1000_frames": 0.18,
         "routes": [
             {"route": "battle", "executed": True, "body_executed": True, "frames": 20000, "calls": 4,
+             "entries": 8, "entries_per_1000_frames": 0.4,
              "callers": [{"site": "0x03005C68", "caller": "0x0803E18C",
                           "name": "battle_dispatchAI_8003E18", "count": 4}]},
             {"route": "story2", "executed": True, "body_executed": True, "frames": 33546, "calls": 2,
+             "entries": 4, "entries_per_1000_frames": 0.119,
              "callers": [{"site": "0x03005C70", "caller": "0x0803E18C",
                           "name": "battle_dispatchAI_8003E18", "count": 2},
                          {"site": "0x03005C74", "caller": "0x08123456", "name": "sub_8123456", "count": 1}]},
             {"route": "wander", "executed": False, "body_executed": False, "frames": 8000, "calls": None,
-             "callers": []},
+             "entries": 0, "entries_per_1000_frames": 0.0, "callers": []},
+        ],
+        "scenes_at_call": [
+            {"state": 0, "snapshot": "snap_battle_0.bin", "main": 4, "gamestate": 12, "scene": "battle",
+             "handler": "main 0x04 cbGameState_80050EC -> gamestate 0x0C HandlesBattleMainUntil..."},
+            {"state": 1, "snapshot": "snap_battle_1.bin", "main": 4, "gamestate": 12, "scene": "battle",
+             "handler": "main 0x04 cbGameState_80050EC -> gamestate 0x0C HandlesBattleMainUntil..."},
+            {"state": 2, "snapshot": "snap_story2_0.bin", "main": 4, "gamestate": 4, "scene": "overworld",
+             "handler": "main 0x04 cbGameState_80050EC -> gamestate 0x04 gamestate_OnMapUpdate..."},
+            {"state": 3, "snapshot": "snap_story2_1.bin", "main": 4, "gamestate": 4, "scene": "overworld",
+             "handler": "main 0x04 cbGameState_80050EC -> gamestate 0x04 gamestate_OnMapUpdate..."},
+        ],
+        "scenes": ["battle: 2 of 4 captured call(s)",
+                   "overworld: 2 of 4 captured call(s)"],
+        "field_writes": [
+            {"base": "r5", "base_address": 0x02036000, "symbol": "eT3BattleObject1",
+             "offset": 8, "struct_offset": 8, "size": 4, "count": 4,
+             "field_names": ["oBattleObject_CurAction", "oT3BattleObject_CurAction"],
+             "struct_guess": "oBattleObject", "candidates": ["oT3BattleObject", "oBattleObject"],
+             "names_at_offset": 86, "attributed": True, "in_family": True},
+            {"base": "r5", "base_address": 0x02036000, "symbol": "eT3BattleObject1",
+             "offset": 32, "struct_offset": 32, "size": 4, "count": 8,
+             "field_names": ["oBattleObject_Timer", "oT3BattleObject_Timer"],
+             "struct_guess": "oBattleObject", "candidates": ["oT3BattleObject", "oBattleObject"],
+             "names_at_offset": 34, "attributed": True, "in_family": True},
         ],
         "arguments": [{"reg": "r0", "samples": 8, "distinct": 1, "lowest": 12, "highest": 12,
                        "values": [12]},
@@ -683,11 +711,15 @@ def block_for(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, address: int = 0x
 def test_the_facts_block_says_what_the_original_game_was_observed_doing(monkeypatch: pytest.MonkeyPatch,
                                                                        tmp_path: Path) -> None:
     block = block_for(monkeypatch, tmp_path)
-    assert "battle (battle)" in block and "overworld (story2)" in block     # the scenes, and the routes
+    # v2: scenes are per captured call, not per route; the route names no longer appear there
+    assert "per captured call" in block and "battle (" in block and "overworld (" in block
     assert "wander" not in block                                            # a route that did not reach it
     assert "reached by 2 of 3 recorded routes" in block and "6 calls" in block
     assert "battle_dispatchAI_8003E18 (6 calls)" in block                   # the runtime callers, by name
-    assert "eBattleState_Flags (4 bytes, 7 values)" in block                # RAM written, distinct values
+    assert "12 entries" in block                                            # the real CPU entry count
+    assert "0.180 calls per 1,000 frames" in block
+    assert "oBattleObject_CurAction" in block                              # struct field names, not RAM symbols
+    assert "eBattleState_Flags" in block                                    # raw RAM symbols still appear (fallback line)
     assert "REG_DISPSTAT = 0x00000020 (2 bytes, in 8 probes)" in block      # I/O written
     assert "r0 = 0x0000000C (8 calls, one value)" in block                  # the arguments
     assert "r1 = 0x00000001..0x00000009 (8 calls, 3 values)" in block
@@ -728,7 +760,7 @@ def test_a_reached_function_with_no_replayed_call_says_what_is_unknown(monkeypat
                                                                        tmp_path: Path) -> None:
     block = block_for(monkeypatch, tmp_path, facts=None, facts_error="state 0 did not return within "
                                                                      "5000000 instructions", probes=0,
-                      returned=0, arguments=[], returns=[])
+                      returned=0, arguments=[], returns=[], scenes_at_call=(), field_writes=())
     assert "unknown -- 0 captured call(s) were replayed and none returned" in block
     assert "did not return within 5000000 instructions" in block
 
@@ -755,6 +787,98 @@ def test_the_routes_map_to_the_scenes_they_were_played_in() -> None:
     assert investigate.scene_of("wander") == "overworld"
     assert investigate.scene_of("menus2") == "menu" and investigate.scene_of("title_mash_a") == "title"
     assert investigate.scene_of("beastsp") == "mixed" and investigate.scene_of("fuzz") == "mixed"
+
+
+# ── v2: scenes per captured call, struct field writes, entry counts ──────
+
+def test_per_call_scenes_count_each_captured_call_once(monkeypatch: pytest.MonkeyPatch,
+                                                       tmp_path: Path) -> None:
+    """The renderer uses scenes_at_call (per captured call) when present: each captured call's
+    own entry snapshot gave the scene, not the route name -- a route like story2 runs a battle,
+    opens a menu and returns to the map, so per-route scenes mix."""
+    block = block_for(monkeypatch, tmp_path)
+    assert "scenes it runs in (per captured call):" in block
+    assert "battle (" in block and "overworld (" in block
+    assert "calls)" in block     # the counts are of captured calls, not of routes
+
+
+def test_per_call_scenes_fall_back_to_route_level_with_a_caveat(monkeypatch: pytest.MonkeyPatch,
+                                                                tmp_path: Path) -> None:
+    """Without scenes_at_call the renderer falls back to the v1 route-level scene map, but says
+    so explicitly so a claim about 'a battle function' is not made over a function that ran only
+    in routes starting with 'battle'."""
+    block = block_for(monkeypatch, tmp_path, scenes_at_call=())
+    assert "(route-level, routes mix scenes)" in block
+    assert "battle (" in block and "story2" in block         # routes are named for the scene fallback
+
+
+def test_per_call_scenes_report_an_unidentified_mode_without_falling_back(monkeypatch: pytest.MonkeyPatch,
+                                                                          tmp_path: Path) -> None:
+    """A scene in `other` (an unnamed mode) has no scene name, but the per-call evidence is
+    still present. The renderer says `unidentified` and does not fall back to the route's scene."""
+    block = block_for(monkeypatch, tmp_path, scenes_at_call=[
+        {"state": 0, "snapshot": "x.bin", "main": 99, "gamestate": 99, "scene": "other",
+         "handler": "main 0x63 (outside main_subsystemJumpTable)"},
+        {"state": 1, "snapshot": "y.bin", "main": 4, "gamestate": 12, "scene": "battle",
+         "handler": "main 0x04 cbGameState_80050EC -> gamestate 0x0C HandlesBattleMain..."}])
+    line = block.split("scenes it runs in")[1].splitlines()[0]
+    assert "battle (1 call)" in line and "unidentified (1 call)" in line
+    assert "route-level" not in line
+
+
+def test_field_writes_are_capped_at_eight_and_dedup_by_name(monkeypatch: pytest.MonkeyPatch,
+                                                             tmp_path: Path) -> None:
+    """Up to MAX_FACTS_FIELDS field names; the same field from two writes is listed once.
+    Attributed writes (the base register pointed into the family the name belongs to) come first,
+    then by how often the write happened."""
+    writes = [{"base": "r5", "base_address": 0x2003600, "symbol": f"eT{i}BattleObject{i}",
+               "offset": 8 + i, "struct_offset": 8 + i, "size": 4, "count": i + 1,
+               "field_names": [f"oBattleObject_Field{i}"],
+               "struct_guess": "oBattleObject", "candidates": ["oBattleObject"],
+               "names_at_offset": 1, "attributed": True, "in_family": True}
+              for i in range(15)]
+    block = block_for(monkeypatch, tmp_path, field_writes=writes)
+    line = block.split("struct fields it wrote: ")[1].splitlines()[0]
+    names = line.split(", ")
+    assert len(names) == investigate.MAX_FACTS_FIELDS
+    assert "(+7 more)" in line
+    assert names[0] == "oBattleObject_Field14"                  # most frequent write first
+    assert len(set(names)) == len(names)
+
+
+def test_field_writes_skip_names_the_base_struct_does_not_support(monkeypatch: pytest.MonkeyPatch,
+                                                                   tmp_path: Path) -> None:
+    """An offset is shared by many structs. A name at that offset is not evidence of a field
+    when the base register points into a different family, so only attributed names are shown."""
+    block = block_for(monkeypatch, tmp_path, field_writes=[{
+        "base": "r2", "base_address": 0x3000000, "symbol": "byte_3000000",
+        "offset": 5, "struct_offset": 5, "size": 4, "count": 8,
+        "field_names": ["oUnrelatedStruct_Field"], "struct_guess": "",
+        "candidates": [], "names_at_offset": 1, "attributed": False, "in_family": False}])
+    assert "struct fields it wrote" not in block
+
+
+def test_entries_per_1000_frames_appears_when_recorded(monkeypatch: pytest.MonkeyPatch,
+                                                       tmp_path: Path) -> None:
+    """The block shows the real CPU entry count when entry_counts.py measured it: that is what
+    'called every frame' means, not the indirect-site count above."""
+    block = block_for(monkeypatch, tmp_path)
+    assert "CPU entry rate:" in block
+    assert "12 entries" in block
+    assert "0.180 calls per 1,000 frames" in block
+
+
+def test_entries_text_is_absent_when_nobody_measured(monkeypatch: pytest.MonkeyPatch,
+                                                      tmp_path: Path) -> None:
+    """No entry-count files (`entries` is None on every route): the renderer says nothing rather
+    than call the unknown count zero."""
+    route = {"route": "battle", "executed": True, "body_executed": True, "frames": 20000,
+             "calls": 4, "entries": None, "entries_per_1000_frames": None,
+             "callers": [{"site": "0x03005C68", "caller": "0x0803E18C",
+                          "name": "battle_dispatchAI_8003E18", "count": 4}]}
+    block = block_for(monkeypatch, tmp_path, routes=[route], entries=0,
+                      entries_per_1000_frames=0.0)
+    assert "CPU entry rate:" not in block
 
 
 def test_the_record_is_looked_up_by_entry_address(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

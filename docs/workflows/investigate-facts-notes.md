@@ -185,3 +185,237 @@ orchestrator's, through the normal path.
 * Not measured here: whether the facts arm's names land more often once reviewed. The pilot can
   only say that more names were proposed and that more of them survived their own cross-check.
   Landing them, and comparing what sticks, is the next measurement.
+---
+
+# v2: the block again -- scenes per call, struct fields, CPU entry rates
+
+The pilot above is the baseline this section is measured against. Nothing of it changed: the same
+120 functions (`pilot/ab-armA.txt`, `pilot/ab-armB.txt`), the same two arms, the same model
+(`minimax/MiniMax-M3`) as proposer and checker, `--jobs 12`, one run at a time.
+
+## What the block says now
+
+`runtime_facts_text()` (`tools/wf/wf/tools/investigate.py`) builds the same short block from a
+richer `wf facts` record. Three of its lines changed:
+
+| line | v1 | v2 |
+|---|---|---|
+| scenes | route-level: `scenes it runs in: battle (battlesweep), mixed (beastsp)` | **per captured call**: `scenes it runs in (per captured call): overworld (8 calls)` -- the two mode bytes `main_` dispatches on (`oToolkit_MainJumptableIndexPtr` and `GameState.SubsystemIndex`), read out of each captured call's *own* entry snapshot (`tools/wf/wf/tools/scenes.py`). A route is an input tape, not a scene: `story2` runs a battle, opens a menu and comes back to the map. When there is no captured call the route-level line is still used, now with the caveat **`(route-level, routes mix scenes)`** attached, so the model is told which kind of claim it is reading. A mode the tables cannot place (`other`) is reported as `unidentified`, never as evidence of a scene. |
+| RAM written | the bare RAM symbol that contained the write (`eT3BattleObject1_Timer`) | **the struct field, in bn6f's own words** (`oBattleObject_Timer`), listed before the RAM symbols (`tools/wf/wf/tools/structfields.py`). Only *attributed* writes are quoted -- the base register's struct family has to agree with the field's family -- and at most 8 field names are listed, with `(+N more)` after that. The bare RAM symbols stay in the block, one line lower. |
+| call rate | `N calls at the recorded indirect call sites` (the `.edges` count, which only covers indirect sites) | **the CPU entry count**: `CPU entry rate: 2 entries; 0.001 calls per 1,000 frames` -- how often the CPU actually entered the function, measured over the recorded routes (`tools/wf/wf/tools/entry_counts.py`). A route whose entries were not measured is left out; a measured zero is shown as a measurement. |
+
+The rest of the block is unchanged (reached-by, runtime callers, I/O, arguments, returns, unchanged
+registers, the blind-spots caveat), and it is still capped at `FACTS_LINES` (25): over the 120
+functions the longest block was **12 lines**, the mean **9.2**.
+
+The block for `sub_808A054` -- the function the v1 arm named `battleUpdateBeastAim` while it runs
+in the overworld -- reads:
+
+```
+Runtime facts (observed by running the ORIGINAL game, not inferred: the recorded routes in
+build/facts, and captured calls of it replayed in mGBA):
+  scenes it runs in (per captured call): overworld (8 calls)
+  reached by 1 of 21 recorded routes; 3 calls at the recorded indirect call sites
+  CPU entry rate: 2 entries; 0.001 calls per 1,000 frames
+  runtime callers, with the calls they made: dispatch_808A028 (3 calls)
+  struct fields it wrote: oCutsceneState_CutsceneScript3LongPauseTimer
+  RAM symbols it wrote: byt_3007F78 (96 bytes, 3 values), dword_200A498 (64 bytes, 2 values), ...
+  I/O it wrote: none seen (write-only registers are never listed)
+  arguments: r0 = 0x0808A055 (8 calls, one value), r1 = 0x0808A048 (8 calls, one value), ...
+  returns: r0 = 0x00000001 (8 calls, one value)
+  argument registers left unchanged: sp
+  Blind spots: only values that CHANGED are listed ...
+```
+
+The v1 block for the same function said `scenes it runs in: mixed (beastsp)` and quoted
+`eCutsceneState*` as a RAM symbol. The v2 block says *overworld*, names the field
+`oCutsceneState_CutsceneScript3LongPauseTimer`, and gives the caller.
+
+### Where the records came from
+
+The richer record format (`scenes_at_call`, `field_writes`, `entries`) is not in this worktree's
+`wf facts` yet: it exists in the object DB as commit `27d0bd87` ("wf facts: struct-field writes
+... scene per captured call ... exact entry counts per route", branch `wf-burr-demo`), and the
+`facts2` worktree carries the matching uncommitted source. The 120 A/B targets were therefore
+**re-generated** with that source (no edit to it):
+
+```
+WF_FACTS_DIR=.../inv-facts2/build/facts-v2 \
+WF_COUNTS_DIR=.../facts2/build/counts2 \
+python -m wf facts --only <the 120 names> --states 8 --jobs 6 --limit 0
+```
+
+120 records, **0 errors**, 60 captured (60 with per-call scenes), 40 with field writes of which
+**18 have attributed ones** (the ones the block quotes), and measured entries for all 120. The
+captured calls fall in three scenes: overworld 288, battle 136, menu 56 (480 captured calls of 8
+states each). The records live in `build/facts-v2/` (git-ignored, regenerable); the two v2 runs
+read them through `$WF_FACTS_DIR`.
+
+## The three arms
+
+The same 120 functions, three arms: **without** facts (the 2026-10-21 runs), **v1** facts (the
+2026-10-21 runs) and **v2** facts (the 2026-10-24 runs).
+
+| run id | arm | functions | proposed | probable+agree | tokens |
+|---|---|---|---|---|---|
+| `investigate-20261021-101004` | A without facts | 60 | 18 | 6 | 109,963 |
+| `investigate-20261021-101527` | B without facts | 60 | 37 | 20 | 128,010 |
+| `investigate-20261021-100724` | A facts v1 | 60 | 31 | 14 | 177,555 |
+| `investigate-20261021-101229` | B facts v1 | 60 | 40 | 19 | 159,712 |
+| `investigate-20261024-064512` | A facts **v2** | 60 | 35 | 13 | 175,841 |
+| `investigate-20261024-064746` | B facts **v2** | 60 | 47 | 20 | 181,730 |
+
+Both halves together, 120 functions:
+
+| arm | proposed | probable+agree | tokens | per function |
+|---|---|---|---|---|
+| without facts | 55 | 26 | 237,973 | 1,983 |
+| facts v1 | 71 | **33** | 337,267 | 2,810 |
+| facts **v2** | **82** | **33** | 357,571 | 2,979 |
+
+* v2 names **11 more functions** than v1 (+15%) for **+6% tokens** (+20,304), and **27 more** than
+  no facts (+49%) for +50% tokens.
+* v2 and v1 agree on **33 probable+agree** -- the same. The extra names v2 proposed did **not**
+  survive their own cross-check as probable ones.
+* **32 of v2's 33 probable+agree names are names the no-facts arm did not produce**: 13 are for
+  functions the no-facts arm left unnamed, 19 are a different name for a function it did name
+  (one name is the same). The two facts arms are unstable with each other too: only 14 of the 33
+  probable functions are probable in both v1 and v2, and **none** of those 14 carries the same
+  name in the two arms.
+* Split on whether the function's calls were captured (so the block can say more than route
+  coverage):
+
+| arm | captured calls: named / probable+agree | route coverage only: named / probable+agree |
+|---|---|---|
+| without facts | 24 / 8 | 31 / 18 |
+| facts v1 | 35 / 16 | 36 / 17 |
+| facts v2 | **38** / 12 | **44** / **21** |
+
+  v2 names more of the captured half (38 of 60, against 35 for v1 and 24 without facts) but
+  **fewer** of them are probable+agree (12 against 16 for v1): the extra names it proposes there
+  are the less certain ones. The route-coverage half gains in both arms, and v2's gain there
+  (+8 named, +4 probable over v1) comes from the new entry-rate line -- that half has no per-call
+  scenes and no field writes, only the route-level line with its caveat.
+* **No name survives unchanged between v1 and v2**: of the 62 functions both arms named, **0**
+  got the same name (without vs v1: 1 of 45; without vs v2: 1 of 47). The block decides the name,
+  so the v2 names are facts-driven by construction.
+
+## Names side by side, against the facts
+
+`pilot/name_quality_ab.py` prints the whole table (95 functions named in at least one arm, each
+with the v2 facts hint: per-call scenes, attributed field writes, runtime callers) and counts the
+contradictions:
+
+```
+python pilot/name_quality_ab.py            # --facts-dir defaults to build/facts-v2
+```
+
+**How a contradiction is counted.** A *scene* contradiction: the name's leading word names a
+scene of the vocabulary the per-call scenes use (`battle`, `ow`/`overworld`, `menu`/`submenu`,
+`cutscene`, `title`) and the captured calls were never in that scene. `battleObject_`/
+`battleState_` are struct families, not scenes, and are not counted as scene claims. A *struct*
+contradiction: the name's leading word names a struct family (`battleObject`, `owPlayer`,
+`chatbox`, `aiAttack`, `gameState`, ...) and none of the attributed field writes belongs to that
+family. `CUTSCENE` is counted apart: a `cutscene` name whose calls the mode bytes called
+`overworld` -- the cutscene commands are dispatched from the map handler, so the mode byte says
+`overworld` while the code is plainly cutscene code. That is a limit of the scene vocabulary, not
+a wrong name, so it is reported separately.
+
+Only functions with captured calls can be checked (60 of the 120; the rest have route coverage
+only, which says nothing about a scene).
+
+| arm | names proposed | checkable (named & captured) | scene contradictions | CUTSCENE | struct contradictions | any |
+|---|---|---|---|---|---|---|
+| without facts | 55 | 24 | 2 | 1 | 0 | **3** (12.5% of checkable) |
+| facts v1 | 71 | 35 | 5 | 8 | 2 | **15** (42.9%) |
+| facts **v2** | 82 | 38 | 5 | 3 | 0 | **8** (21.1%) |
+
+* **v2 halves v1's contradiction rate** (15 -> 8, 42.9% -> 21.1% of the checkable names) and
+  removes both struct contradictions. The eight v1 CUTSCENE marks are the bulk of v1's count:
+  the v1 block could only say `mixed (beastsp), overworld (story5, story6)` for those functions
+  -- a route-level line that names no single scene and contradicts no prefix -- so nothing
+  steered the proposer away from a `cutscene_`/`battle_` prefix. The v2 block says
+  `overworld (8 calls)` and names the field the call wrote, and the names follow.
+* The five v2 scene contradictions are all real in the same sense the v1 pilot's own table used:
+  a scene prefix the captured calls never showed.
+
+| function | v2 name | what the facts say |
+|---|---|---|
+| `sub_80A8674` | `battle_beastSP_init` | overworld; fields `oOverworldMapObject_End/Size/SpriteData_Size`; caller `battleObject_dispatchUpdateByCurAction_80A8654` (276 calls) -- the fields say *overworld map object*, the name says *battle* |
+| `sub_80871F4` | `battle_beastSpRefreshState` | overworld (8 calls), never a battle |
+| `sub_80A7AE0` | `battle_storeBeastSpAIDataOffset` | overworld (8 calls); caller `battle_beastSpStepper_80A7912` (59 calls) |
+| `sub_81261FC` | `battle_drawBcdNumberGrid` | menu (8 calls) -- a chip-number grid, seen only in a menu |
+| `sub_81375AC` | `battleHandleBeastSp` | menu (8 calls); fields `oJoypad_Held`, `oJoypad_LowSensitivityHeld` |
+
+* v2 **fixed** the flagship scene error the earlier pilot showed: `sub_808A054` was
+  `battleUpdateBeastAim` (v1) against a function that runs in the overworld; v2's checker revised
+  it to `cutsceneUpdateFacingDistanceAndLongPause`, citing the field write
+  `oCutsceneState_CutsceneScript3LongPauseTimer` in the block. It also dropped the menu claim
+  on `sub_809B9EC` (v1 `submenu_applyCursorDelta` -> v2 `object_applyCutsceneMovement`; the
+  function is overworld, and the name no longer claims a scene).
+* v2's three CUTSCENE marks are `sub_8084214` (`cutscene_getIntroPlayerCoords`), `sub_808B9A0`
+  (`cutsceneSetDefaultScriptTableEntry`, writing `oCutsceneState_DefaultScriptTable`) and
+  `sub_808A054` (`cutsceneUpdateFacingDistanceAndLongPause`, writing
+  `oCutsceneState_CutsceneScript3LongPauseTimer`). In all three the **field family supports the
+  name** and only the mode byte disagrees (the cutscene commands run under the overworld gamestate
+  byte), which is why they are counted apart from the five scene contradictions.
+* The no-facts arm contradicts the facts least (3 of 24) simply because its names are vaguer
+  (`object_...`, `sprite_...`, `get_countAdjacentBeastSpEntries`): a generic name cannot name a
+  scene that was never seen. Facts make names specific, and a specific name can be wrong.
+
+## Recommendation: **facts on by default -- in the v2 form**
+
+Reasons, in order of weight:
+
+1. **It buys names and probable names.** Over the same 120 functions: 82 names proposed and 33
+   probable+agree with facts, against 55 and 26 without. The extra names are concentrated where
+   the evidence is (38 of the 60 captured functions named, against 24), and 32 of the 33 probable
+   names are names the no-facts arm never produced.
+2. **v2 is strictly better than v1 for the same tokens.** +11 names for +6% tokens, the same 33
+   probable+agree, less than half the contradictions, no struct contradictions, and the flagship
+   scene error is fixed. The v1 block's route-level line was the worst of it: it named no
+   single scene, so a wrong scene prefix could not be caught against it; the per-call scenes and
+   the struct-field names replace it.
+3. **The contradictions that remain are checkable, not silent.** The block shows the model the
+   same per-call scene and the same field family a reviewer would check a name against, so a
+   contradiction is visible in the block (and the v2 checker did use it, twice). The failure mode
+   of a facts-driven name is a wrong *prefix*, which the next step (`wf check-names`) is built to
+   catch.
+4. **The cost is the same one v1 was accepted at.** ~2,980 tokens per function against ~1,980
+   without facts (+50%), for +49% names. The pilot's earlier reading -- "the block is worth its
+   tokens" -- survives the v2 measurement.
+
+Caveats to keep in mind when it is switched on:
+
+* The gain still needs captured calls. In the uncaptured half the block is route-level only, and
+  its scene line now carries the `(route-level, routes mix scenes)` caveat; the honest thing
+  there is to capture more functions (`wf capture`), not to trust the scene line.
+* The contradiction rate (21% of checkable names) is still above the no-facts arm's (12.5%):
+  facts make names specific, and specific names can be wrong. The cross-check (and later
+  `wf check-names`) has to stay in the loop; the block is evidence for the checker, not a verdict.
+* `CUTSCENE` marks (3 of v2's 8) are the scene vocabulary's limit, not the model's error: the
+  cutscene commands run under the overworld gamestate byte. Naming those functions
+  `cutscene_...` is the project's convention and should not be counted against a name.
+* Nothing here is landed: no rename, no `symbols/db` entry, no commit. Reviewing and landing is
+  the orchestrator's, through the normal path.
+
+## Where the runs and the records are
+
+* the six runs: `build/investigate/investigate-20261021-{100724,101004,101229,101527}` and
+  `build/investigate/investigate-20261024-{064512,064746}` in the **main checkout** (`wf.repo.REPO`
+  points there, so that is where the run folders are written; they are generated output, and no
+  source in the main tree was touched).
+* the v2 facts records: `build-wf-worktrees/inv-facts2/build/facts-v2/by_address/*.json` (120
+  records, regenerable, git-ignored).
+* the analysis: `tools/wf/pilot/name_quality_ab.py` (new, in this worktree).
+
+## Housekeeping
+
+`cport/src/lifted` and `cport/src/lifted_t` in this worktree are **symlinks** into the main
+checkout (`/home/alex/Code/recomp/cport/src/lifted`): the worktree's own build output, untracked.
+They are build output, not source: they stay untracked and are not part of this change.
+
+The changed files in this worktree are `tools/wf/wf/tools/investigate.py` (the v2 block),
+`tools/wf/wf/tools/facts.py` (the richer record fields), `tools/wf/tests/test_investigate.py`
+(the fake-record tests for the v2 block), `tools/wf/pilot/name_quality_ab.py` (the table above)
+and this note. The full suite passes: **527 passed**.
