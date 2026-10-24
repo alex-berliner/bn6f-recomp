@@ -16,7 +16,10 @@ launcher at the root) is `python -m wf ARGS` with this folder's venv.
                        # the candidates (for review, nothing installed) go to build/investigate/RUN_ID.
                        # --facts adds what the original game did at runtime (`wf facts`, build/facts):
                        # the scenes, the runtime callers, the RAM and I/O written, the arguments and
-                       # the returns of the calls replayed in mGBA; the name has to be consistent with it
+                       # the returns of the calls replayed in mGBA; the name has to be consistent with it.
+                       # --facts is the default since v3: a mechanical contradiction check rejects names
+                       # that contradict those facts (recorded, not landed), so the cross-check never
+                       # has to debate them.  Pass --no-facts to opt out.
   python -m wf investigate-data [--count N] [--only NAME]... [--model M] [--checker M] [--jobs N]
                        # the same for placeholder DATA labels (byte_203F750, unk_2017A00): the code
                        # that uses the label is the evidence; candidates go to build/investigate_data/RUN_ID
@@ -961,12 +964,14 @@ def parse_command() -> Command:
     look.add_argument("--only-file", type=Path,
                       help="a file of function names, one per line, to investigate like --only "
                            "(# comments allowed): the explicit list of a run over a chosen set")
-    look.add_argument("--facts", dest="gather", action="store_true", default=False,
+    look.add_argument("--facts", dest="gather", action="store_true", default=True,
                       help="show the models what the original game did at runtime, from `wf facts` "
                            "(the scenes it runs in, its runtime callers, the RAM and I/O it writes, "
-                           "its arguments and returns), and require the proposed name to fit")
+                           "its arguments and returns), and require the proposed name to fit.  "
+                           "ON BY DEFAULT since v3 (a mechanical contradiction check rejects names "
+                           "that contradict those facts without re-running the cross-check).")
     look.add_argument("--no-facts", dest="gather", action="store_false",
-                      help="do not show the runtime facts (default)")
+                      help="do not show the runtime facts (off by default since v3's check)")
     look.add_argument("--retry-unnamed", help="an earlier run's ID: re-ask the functions its proposals left "
                                               "without a name (their new candidates go to the new run folder)")
     look.add_argument("--model", default=DEFAULT_INVESTIGATE_MODEL, help="who proposes (default hyper/glm-5.3-flash)")

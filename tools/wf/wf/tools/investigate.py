@@ -32,6 +32,7 @@ import yaml
 from pydantic import field_serializer
 
 from wf.tools import facts            # the runtime-facts layer: the records --facts reads
+from wf.tools import facts_check       # the mechanical name/facts contradiction check
 from wf.tools import runtime_evidence as rt   # the RuntimeFacts the records carry (io writes)
 from wf.tools.models import Prompt
 from wf.repo import REPO, SNAPSHOTS
@@ -155,9 +156,11 @@ class Proposal(Result):
     answer: Answer | None
     tokens: int
     seconds: float
-    retries: int = 0                   # answers asked again after an unusable reply (0 or 1)
+    retries: int = 0                   # answers asked again after an unusable reply or contradiction
     problem: ToolMessage | None = None
     finished: bool = False              # a candidate for it was already written (skipped, not asked)
+    rejection: ToolMessage | None = None  # rejected by the facts check; recorded, not landed
+    facts_checked: bool = False         # the facts check ran on the final answer
 
 
 CheckVerdict = Literal["agree", "revise", "disagree", "none"]
@@ -223,17 +226,20 @@ class Report(Result):
     disagreed: int
     nulls: int
     invalid: int                       # candidates tools/symdb.py's check refused
-    retries: int                       # answers asked a second time after an unusable reply
+    retries: int                       # answers asked a second time after an unusable reply or contradiction
     tokens: int
     problems: tuple[ToolMessage, ...]
     stragglers: int = 0                # requests abandoned still unanswered (see STRAGGLER_SECONDS)
     stopped: ToolMessage | None = None   # e.g. the provider ran out of credits mid-run
+    rejected: int = 0                  # names the runtime-facts check refused
 
     def totals(self) -> str:
         per = self.tokens / self.selected if self.selected else 0.0
         return (f"{self.written} candidates of {self.selected} functions: {self.agreed} agreed, "
                 f"{self.revised} revised, {self.disagreed} disagreed, {self.nulls} without a name, "
-                f"{self.invalid} invalid; {self.tokens} tokens (~{per:,.0f} per function); "
+                f"{self.invalid} invalid"
+                + (f", {self.rejected} rejected by runtime facts" if self.rejected else "")
+                + f"; {self.tokens} tokens (~{per:,.0f} per function); "
                 f"{self.retries} retries"
                 + (f"; {self.stragglers} abandoned" if self.stragglers else "")
                 + (f"; {self.stopped}" if self.stopped else ""))
@@ -1264,35 +1270,94 @@ def keep(path: Path, name: str, result: Result) -> None:
     (path / f"{name}.json").write_text(result.model_dump_json())
 
 
+def _facts_contradictions(context: Context, name: str) -> tuple[facts_check.Contradiction, ...]:
+    """The contradictions between a proposed name and the record for this function.
+
+    A context without a facts block belongs to a run made without ``--facts`` and is never
+    checked.  A facts run whose address has no record has nothing to contradict either.
+    """
+    if not context.facts:
+        return ()
+    return facts_check.contradictions(name, facts_record(context.target.address))
+
+
+def _facts_retry_prompt(prompt: str, name: str,
+                        issues: tuple[facts_check.Contradiction, ...]) -> Prompt:
+    """The one retry prompt for a name that contradicts the facts: the contradiction is stated
+    plainly, and the model is asked for a different name (or no name)."""
+    reasons = " ".join(issue.reason for issue in issues)
+    return Prompt(f"{prompt}\n\nYour proposed name {name!r} contradicts the runtime facts: {reasons}\n"
+                  "Do not propose that name again. Propose a different name that fits both the code "
+                  "and the facts, or answer with \"proposed_name\": null and put the contradiction "
+                  "in open_questions. Reply with only the JSON object.")
+
+
 def ask_investigate(model: ModelSpec, context: Context, run_dir: Path, run_id: str,
                     prefixes: tuple[str, ...], cancelled: threading.Event | None = None) -> Proposal:
-    """The investigating model's answer for one function, or the problem that left none. An unusable
-    reply (no JSON object in it) is asked once more, with a short follow-up; the retry is counted.
-    A request whose pass was abandoned around it (CANCELLED set) is not cached: a later run asks
-    again."""
+    """The investigating model's answer for one function, or the problem that left none.
+
+    An unusable reply (no JSON object in it) is asked once more, with a short follow-up.  With
+    facts, a proposed name that mechanically contradicts the record gets one more, separate
+    retry with the contradiction stated.  If that answer still contradicts the facts, the
+    proposal is rejected and is not sent to the checker or written as a candidate.
+
+    A request whose pass was abandoned around it (CANCELLED set) is not cached: a later run
+    asks again.
+    """
     target = context.target
     if (INVESTIGATE / run_id / f"{target.name}.yaml").exists():
         return Proposal(name=target.name, address=target.address, answer=None, tokens=0, seconds=0.0,
                         problem=ToolMessage("already finished"), finished=True)
     cached_proposal = cached(run_dir / "proposals", target.name, Proposal)
-    if cached_proposal is not None:
+    if cached_proposal is not None and (not context.facts or cached_proposal.facts_checked):
         return cached_proposal
+
     started = time.monotonic()
     prompt = prompt_investigate(context, prefixes)
-    tokens, retries, answer, problem = 0, 0, None, ToolMessage("")
-    for attempt in range(2):
-        tag = f"{run_id} investigate {target.name} {attempt}"
-        reply, problem = ask(model, prompt, INVESTIGATE_SYSTEM, tag)
-        tokens += logged_tokens(USAGE_LOG, tag)
-        if problem is None:
-            answer, problem = parse_answer(reply)
-        if problem is None:
-            break
-        retries = attempt + 1
-        prompt = Prompt(f"{prompt}\n\nYour previous reply could not be used: {problem}\n"
-                        f"Reply again with only the JSON object, nothing else.")
+    if cached_proposal is None:
+        tokens, retries, answer, problem = 0, 0, None, None
+        for attempt in range(2):
+            tag = f"{run_id} investigate {target.name} {attempt}"
+            reply, problem = ask(model, prompt, INVESTIGATE_SYSTEM, tag)
+            tokens += logged_tokens(USAGE_LOG, tag)
+            if problem is None:
+                answer, problem = parse_answer(reply)
+            if problem is None:
+                break
+            retries = attempt + 1
+            prompt = Prompt(f"{prompt}\n\nYour previous reply could not be used: {problem}\n"
+                            f"Reply again with only the JSON object, nothing else.")
+    else:
+        tokens = cached_proposal.tokens
+        retries = cached_proposal.retries
+        answer = cached_proposal.answer
+        problem = cached_proposal.problem
+
+    rejection: ToolMessage | None = None
+    if context.facts:
+        proposed = answer.proposed_name if answer is not None else None
+        issues = _facts_contradictions(context, str(proposed)) if proposed is not None else ()
+        if issues:
+            assert proposed is not None
+            retries += 1
+            retry_prompt = _facts_retry_prompt(prompt, str(proposed), issues)
+            tag = f"{run_id} investigate {target.name} facts-retry"
+            reply, problem = ask(model, retry_prompt, INVESTIGATE_SYSTEM, tag)
+            tokens += logged_tokens(USAGE_LOG, tag)
+            if problem is None:
+                answer, problem = parse_answer(reply)
+            if problem is None and answer is not None and answer.proposed_name is not None:
+                remaining = _facts_contradictions(context, str(answer.proposed_name))
+                if remaining:
+                    reasons = " ".join(issue.reason for issue in remaining)
+                    rejection = ToolMessage(f"rejected by the runtime-facts check: {reasons}")
+
+    seconds = round(time.monotonic() - started, 1)
+    if cached_proposal is not None:
+        seconds = round(cached_proposal.seconds + seconds, 1)
     proposal = Proposal(name=target.name, address=target.address, answer=answer, tokens=tokens,
-                        seconds=round(time.monotonic() - started, 1), retries=retries, problem=problem)
+                        seconds=seconds, retries=retries, problem=problem, rejection=rejection,
+                        facts_checked=bool(context.facts))
     if cancelled is None or not cancelled.is_set():
         keep(run_dir / "proposals", target.name, proposal)
     return proposal
@@ -1303,6 +1368,9 @@ def ask_check(model: ModelSpec, context: Context, proposal: Proposal, run_dir: P
     """The cross-check model's verdict on one proposal; a proposal without a usable name is not
     asked. An unusable reply is asked once more with a short follow-up; the retry is counted. A
     request whose pass was abandoned around it (CANCELLED set) is not cached."""
+    if proposal.rejection is not None:
+        return Verdict(name=proposal.name, address=proposal.address, reply=None, tokens=0, seconds=0.0,
+                       problem=ToolMessage(f"not checked: {proposal.rejection}"))
     cached_verdict = cached(run_dir / "checkers", proposal.name, Verdict)
     if cached_verdict is not None:
         return cached_verdict
@@ -1610,20 +1678,22 @@ def write_candidate(candidate: Candidate, run_dir: Path) -> Path:
 
 
 def report_rows(pairs: tuple[tuple[Proposal, Verdict], ...]) -> str:
-    """The run's report.tsv: address, old name, proposed name, status, self score, verdict, cost."""
-    lines = ["# address\told\tproposed\tstatus\tself_score\tcross_check\ttokens\tretries"]
+    """The run's report.tsv: address, old name, proposed name, status, self score, verdict, cost,
+    and the reason a facts check rejected a name."""
+    lines = ["# address\told\tproposed\tstatus\tself_score\tcross_check\ttokens\tretries\trejection"]
     for proposal, verdict in pairs:
         answer = proposal.answer
         proposed = (verdict.reply.revised_name if verdict.reply is not None
                     and verdict.reply.verdict == "revise" and verdict.reply.revised_name else None) \
             or (answer.proposed_name if answer else None) or "-"
-        status = status_of(proposal, verdict).value
+        status = "rejected" if proposal.rejection is not None else status_of(proposal, verdict).value
         score = answer.self_score if answer else None
         check = verdict.reply.verdict if verdict.reply else "none"
         retries = proposal.retries + verdict.retries
+        rejection = proposal.rejection or "-"
         lines.append(f"0x{proposal.address:08X}\t{proposal.name}\t{proposed}\t{status}\t"
                      f"{score if score is not None else '-'}\t{check}\t{proposal.tokens + verdict.tokens}"
-                     f"\t{retries}")
+                     f"\t{retries}\t{rejection}")
     return "\n".join(lines) + "\n"
 
 

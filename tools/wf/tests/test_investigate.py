@@ -353,7 +353,7 @@ def test_report_rows(tmp_path: Path) -> None:
                                        revised_name=None, revised_summary=None))
     rows = investigate.report_rows(((proposal, verdict),)).splitlines()
     assert rows[0].startswith("# address\told\tproposed\tstatus\tself_score\tcross_check\ttokens\tretries")
-    assert rows[1] == "0x08000000\tsub_8000000\tsprite_queueOamEntry\tprobable\t4\tagree\t150\t1"
+    assert rows[1] == ("0x08000000\tsub_8000000\tsprite_queueOamEntry\tprobable\t4\tagree\t150\t1\t-")
 
 
 # ── the graph, end to end, with fake models ────────────────────────────
@@ -435,6 +435,27 @@ def test_the_graph_finishes_with_nothing_selected(monkeypatch: pytest.MonkeyPatc
     report = run_investigate(InvestigateState(run_dir=tmp_path), run_id="investigate-2", tracked=False)
     assert report.written == 0 and report.selected == 0
     assert not list(tmp_path.glob("*.yaml"))
+
+
+def test_a_facts_rejection_is_recorded_but_not_written_as_a_candidate(monkeypatch: pytest.MonkeyPatch,
+                                                                     tmp_path: Path) -> None:
+    target_facts = target("sub_8000000")
+    contexts = (context_of(target_facts, tmp_path),)
+    proposals = (Proposal(name=target_facts.name, address=target_facts.address, tokens=120, seconds=1.0,
+                          answer=Answer(proposed_name=SymbolName("battle_update"),
+                                        summary=ToolMessage("Updates an object."), interface=None, details=None,
+                                        evidence=(ToolMessage("e"),), self_score=3, open_questions=()),
+                          rejection=ToolMessage("rejected by the runtime-facts check: scene mismatch"),
+                          facts_checked=True),)
+    verdicts = (Verdict(name=target_facts.name, address=target_facts.address, reply=None, tokens=0, seconds=0.0,
+                        problem=ToolMessage("not checked: rejected by the runtime-facts check")),)
+    fake_graph(monkeypatch, tmp_path, contexts, proposals, verdicts, [])
+    run_dir = tmp_path / "investigate" / "rejected"
+    report = run_investigate(InvestigateState(run_dir=run_dir), run_id="investigate-rejected", tracked=False)
+    assert report.rejected == 1 and report.written == 0
+    assert not list(run_dir.glob("*.yaml"))
+    row = (run_dir / "report.tsv").read_text().splitlines()[1].split("\t")
+    assert row[3] == "rejected" and "scene mismatch" in row[-1]
 
 
 def test_a_run_out_of_credits_keeps_what_is_done() -> None:
@@ -913,7 +934,8 @@ def test_a_run_without_facts_asks_exactly_as_before(monkeypatch: pytest.MonkeyPa
 
 def test_the_graph_gathers_the_facts_only_when_asked(monkeypatch: pytest.MonkeyPatch,
                                                       tmp_path: Path) -> None:
-    """`--facts` reaches the gathering step through the run state (off unless the flag says so)."""
+    """`--no-facts` reaches the gathering step through the run state; `--facts` is the default
+    since v3 (a mechanical contradiction check rejects names that contradict those facts)."""
     asked: list[bool] = []
     targets = (target("sub_8000000"),)
     contexts = (context_of(targets[0], tmp_path),)
@@ -928,12 +950,72 @@ def test_the_graph_gathers_the_facts_only_when_asked(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(graph, "select_targets", select)
     monkeypatch.setattr(graph, "gather_all", gather)
-    run_investigate(InvestigateState(run_dir=tmp_path / "run", gather=True),
+    run_investigate(InvestigateState(run_dir=tmp_path / "run"),
                     run_id="investigate-facts", tracked=False)
-    assert asked == [True]
-    run_investigate(InvestigateState(run_dir=tmp_path / "run2"), run_id="investigate-plain",
-                    tracked=False)
-    assert asked == [True, False]      # the flag is off by default
+    assert asked == [True]            # --facts is on by default since v3
+    run_investigate(InvestigateState(run_dir=tmp_path / "run2", gather=False),
+                    run_id="investigate-plain", tracked=False)
+    assert asked == [True, False]     # --no-facts turns the runtime facts off
+
+
+# ── the mechanical facts check before the checker ─────────────────────
+
+def facts_context(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Context:
+    """A context whose fake record says every captured call was in the overworld."""
+    facts_dir = tmp_path / "by_address"
+    scenes = [{"state": index, "snapshot": f"snap_{index}.bin", "main": 4, "gamestate": 4,
+               "scene": "overworld", "handler": "map"} for index in range(4)]
+    write_record_file(facts_dir, scenes_at_call=scenes)
+    monkeypatch.setattr(investigate, "FACTS_BY_ADDRESS", facts_dir)
+    target_facts = target("sub_08001234", address=0x08001234)
+    return context_of(target_facts, tmp_path).model_copy(update={"facts": "Runtime facts: overworld"})
+
+
+def model_answer(name: str) -> str:
+    return json.dumps({"proposed_name": name, "summary": "Updates the object.",
+                       "interface": "(r0 = object) -> void", "details": "Writes a field.",
+                       "evidence": ["asm00_0.s:12 writes the field"], "self_score": 3,
+                       "open_questions": []})
+
+
+def test_a_contradicting_name_gets_one_retry_with_the_contradiction(monkeypatch: pytest.MonkeyPatch,
+                                                                    tmp_path: Path) -> None:
+    replies = iter((model_answer("battle_update"), model_answer("overworld_update")))
+    prompts: list[str] = []
+
+    def complete(*arguments: object, **keyword: object) -> str:
+        prompt = str(arguments[1]) if len(arguments) > 1 else str(keyword.get("prompt", ""))
+        prompts.append(prompt)
+        return next(replies)
+
+    monkeypatch.setattr(investigate, "_complete", complete)
+    proposal = investigate.ask_investigate(MODEL, facts_context(monkeypatch, tmp_path), tmp_path,
+                                           "facts-retry", ())
+    assert proposal.answer is not None and proposal.answer.proposed_name == "overworld_update"
+    assert proposal.rejection is None and proposal.facts_checked and proposal.retries == 1
+    assert len(prompts) == 2 and "contradicts the runtime facts" in prompts[1]
+    assert "mostly in 'overworld'" in prompts[1]
+
+
+def test_a_name_that_still_contradicts_is_rejected_and_not_checked(monkeypatch: pytest.MonkeyPatch,
+                                                                   tmp_path: Path) -> None:
+    replies = iter((model_answer("battle_update"), model_answer("battle_reset")))
+
+    def complete(*arguments: object, **keyword: object) -> str:
+        return next(replies)
+    monkeypatch.setattr(investigate, "_complete", complete)
+    proposal = investigate.ask_investigate(MODEL, facts_context(monkeypatch, tmp_path), tmp_path,
+                                           "facts-reject", ())
+    assert proposal.rejection is not None and "mostly in 'overworld'" in proposal.rejection
+    assert proposal.facts_checked and proposal.retries == 1
+
+    def must_not_be_called(*arguments: object, **keyword: object) -> str:
+        raise AssertionError("the checker was called for a rejected proposal")
+    monkeypatch.setattr(investigate, "_complete", must_not_be_called)
+    verdict = investigate.ask_check(MODEL, facts_context(monkeypatch, tmp_path), proposal,
+                                    tmp_path, "facts-reject", ())
+    assert verdict.reply is None and verdict.problem is not None
+    assert "not checked" in verdict.problem
 
 
 # ── the stragglers: give up, do not cache, do not block the exit ───────

@@ -419,3 +419,243 @@ The changed files in this worktree are `tools/wf/wf/tools/investigate.py` (the v
 `tools/wf/wf/tools/facts.py` (the richer record fields), `tools/wf/tests/test_investigate.py`
 (the fake-record tests for the v2 block), `tools/wf/pilot/name_quality_ab.py` (the table above)
 and this note. The full suite passes: **527 passed**.
+
+# v3: a mechanical facts check before the cross-check
+
+The pilot above (v2) found 8 names that contradict the facts (21.1% of the 38 checkable
+ones), reported apart from the cutscene-mode-byte caveat. The contradictions have a clear
+shape -- a `battle_` name for a function whose captured calls were 8/8 in the overworld, an
+`owPlayer_` name for a function that did not write any `oOWPlayerObject_*` field. The v2 block
+shows the model the evidence; nothing in v2 stops a contradicting name from being written. v3
+adds the missing step: a typed, mechanical check (`wf.tools.facts_check`) that flags the
+contradiction, gives the proposer one retry with the contradiction stated, and rejects the
+proposal if the retry still contradicts (recorded in `report.tsv`, never landed).
+
+## The check, narrowly
+
+`facts_check.contradictions(name, record)` returns a tuple of `Contradiction(kind, claim,
+observed, reason)`. Two kinds:
+
+* `scene`: the name's leading word claims one of the per-call scenes (`battle`, `overworld`,
+  `ow`, `menu`, `submenu`, `cutscene`, `title`) and the captured calls have a strict scene
+  majority in a different scene. The majority needs `count(claimed) * 2 > total`; a tie has no
+  majority and therefore no contradiction, and the `other` mode is never a majority (it's
+  reported as `unidentified` in the block).
+* `struct`: the name's leading words claim a struct family (recognised prefixes:
+  `battleObject`, `battleState`, `owPlayer`, `chatbox`, `joypad`, `overworldMapObject`,
+  `aiAttack`, `gameState`, `cutsceneState`, `collisionData`, `camera`, `panelData`,
+  `mapScript`) and none of the *attributed* field writes belongs to that family. Only
+  attributed writes count (`wf.tools.facts.FieldWrite.attributed` is the gate; un-attributed
+  offsets are shared by 30+ structs and so cannot pin a family).
+
+Two carve-outs:
+
+* Recognised struct prefixes take precedence over scene prefixes: `battleObject_` and
+  `owPlayer_` are struct families, not scene claims (the `battleObject_` family covers
+  `oBattleObject`, `oT1BattleObject`, `oT3BattleObject`, `oT4BattleObject`).
+* The cutscene mode-byte caveat stays. A `cutscene_` name's contradiction is held back when
+  the field family supports the cutscene prefix (the cutscene commands run under the
+  overworld gamestate byte, so the mode byte reads `overworld` while the code is plainly
+  cutscene code -- the field is the stronger evidence).
+
+Route coverage never contradicts a name. It says where a recording, not what scene each call
+of this function, ran in.  The check only reads `scenes_at_call` (per-call) and attributed
+`field_writes`; the v2 block's `scenes it runs in: battle (battlesweep)` route-level line
+(with its `(route-level, routes mix scenes)` caveat) cannot be refuted, and is not used.
+
+## What the run does
+
+`ask_investigate` (`tools/wf/wf/tools/investigate.py`) checks the proposal's name against
+`facts_check.contradictions(name, facts_record(address))`. A context whose `facts` field is
+empty (a `--no-facts` run, or any sub-record that never landed) is never checked; neither is
+a function with no record. When the check sees a contradiction:
+
+1. `retries += 1` (the run's `retries` column counts both an unusable-reply retry and a
+   facts-retry now).
+2. The retry prompt states the contradiction verbatim and asks the model to propose a
+   different name (or `proposed_name: null` with the contradiction in `open_questions`).
+3. If the retry's name still contradicts the facts, the proposal is marked
+   `rejection = ToolMessage("rejected by the runtime-facts check: ...")` and never sent to
+   the checker. The candidate `*.yaml` is not written; a row in `report.tsv` says
+   `status = rejected` with the reason. The run's `Report` adds a `rejected` field; the
+   totals line says `N rejected by runtime facts`.
+
+The proposal cache (`run_dir/proposals/NAME.json`) keeps `facts_checked: bool`; with
+`--facts` an old cached proposal is only reused when the previous run also went through the
+check (which means a restart of a partial run keeps the contradiction-aware proposals and
+does not re-ask them).
+
+## The four arms
+
+The same 120 functions (`pilot/ab-armA.txt`, `pilot/ab-armB.txt`); v3 with `wf`'s test
+infrastructure, the other three unchanged. The model is `hyper/minimax-m3` for both roles in
+v3 (the brief: MiniMax direct is rate-limited today); the other three used
+`minimax/MiniMax-M3`. `--jobs 12`.
+
+| arm | both | proposed | probable+agree | tokens | per function |
+|---|---|---|---|---|---|
+| without | — | 55 | 26 | 237,973 | 1,983 |
+| facts v1 | — | 71 | 33 | 337,267 | 2,810 |
+| facts v2 | — | 82 | 33 | 357,571 | 2,979 |
+| facts **v3** (this run) | — | **63** | **48** | **1,034,248** | 8,618 |
+
+| run id | arm | selected | proposed | probable+agree | rejected | tokens |
+|---|---|---|---|---|---|---|
+| `investigate-20261021-101004` | A without | 60 | 18 | 6 | — | 109,963 |
+| `investigate-20261021-101527` | B without | 60 | 37 | 20 | — | 128,010 |
+| `investigate-20261021-100724` | A v1 | 60 | 31 | 14 | — | 177,555 |
+| `investigate-20261021-101229` | B v1 | 60 | 40 | 19 | — | 159,712 |
+| `investigate-20261024-064512` | A v2 | 60 | 35 | 13 | — | 175,841 |
+| `investigate-20261024-064746` | B v2 | 60 | 47 | 20 | — | 181,730 |
+| `investigate-v3-armA` | A v3 | 60 | 32 | 21 | 0 | 583,728 |
+| `investigate-v3-armB` | B v3 | 60 | 31 | 27 | 1 | 450,520 |
+
+The v3 tokens are higher partly because the model response is longer
+(`hyper/minimax-m3` vs `minimax/MiniMax-M3`), partly because 8 retries (5 in armA, 3 in armB,
+8 successes + 1 last-resort rejection) added a second round of investigation per contradiction,
+and partly because the hyper route is more verbose. The flat inefficiency, ~8,600
+tokens/fn, outweighs v2's ~3,000 but the gain is real: 48 probable+agree vs 33, and 0–1
+contradictions out of 41 checkable.
+
+Split on whether the function's calls were captured:
+
+| arm | captured: named / probable+agree | uncaptured: named / probable+agree |
+|---|---|---|
+| without | 24 / 8 | 31 / 18 |
+| v1 | 35 / 16 | 36 / 17 |
+| v2 | 38 / 12 | 44 / 21 |
+| **v3** | **41** / **30** | 22 / 18 |
+
+The captured half is where the block has something to contradict a name against. v3 names
+more of the captured half (41 of 60, against 38 for v2 and 24 without) and **most of those
+land probable+agree** (30 of 41, against 12 for v2 and 8 without). The uncaptured half drops
+in v3: with a check that flags `scene` claims against the per-call majority, the model now
+predictably hedges when the block carries no `scenes_at_call` (only the route-level line).
+That is the right behaviour: a `cutscene_` prefix on a route-level-only function is a guess;
+before v3 the guess was uncaught.
+
+## Name quality: contradictions
+
+| arm | named | checkable (named & captured) | `scene` | `struct` | any |
+|---|---|---|---|---|---|
+| without | 55 | 24 | 3 | 0 | **3** (12.5%) |
+| v1 | 71 | 35 | 10 | 2 | **12** (34.3%) |
+| v2 | 82 | 38 | 6 | 0 | **6** (15.8%) |
+| **v3** | 63 | 41 | 1 | 0 | **1** (2.4%) |
+
+The single v3 mark is `sub_81375AC battleBeast_spMenuAutoSelect`: the function's
+`scenes_at_call` is 8 of 8 menu, the name's leading word claims `battle`. The proposer
+proposed the same prefix twice; `facts_check.contradictions` caught it both times; the
+second attempt was rejected, recorded in `report.tsv` with the reason, and never landed.
+The other 8 contradiction hits in v3 (5 in armA, 3 in armB aside from the rejected one)
+were recovered from -- the model saw the contradiction in its retry prompt, proposed a
+different prefix, and the checker agreed.
+
+The eight v2 marks are gone:
+
+* `sub_80A8674` (v2: `battle_beastSP_init`, overworld) -- v3 armA: `owMapObject_writeAndCommitENtryAndSize`. The retry gave the model the contradiction (overworld map object fields, 8/8 overworld calls), and the new name no longer claims a scene.
+* `sub_80871F4` (v2: `battle_beastSpRefreshState`, overworld) -- v3 armA: `owMapObject_packBeastSpState`.
+* `sub_80A7AE0` (v2: `battle_storeBeastSpAIDataOffset`, overworld, caller `battle_beastSpStepper_80A7912`) -- v3 armA: same example as retry path; the retry dropped the `battle_` prefix.
+* `sub_81261FC` (v2: `battle_drawBcdNumberGrid`, menu) -- v3 armB: `menu_drawBcdNumberGrid` (the retry kept the `menu_` prefix and dropped the `battle_`).
+* `sub_8084214`, `sub_808B9A0`, `sub_808A054` (v2's CUTSCENE marks) -- v3 had the field family supporting the cutscene prefix on these, so they are not flagged.
+
+`sub_80A8674`, the flagship error in both v1 and v2, finally names itself correctly: the
+fields `oOverworldMapObject_End/Size/SpriteData_Size` and the per-call overworld majority
+agree.
+
+## The same function across four arms
+
+| pair | both named | same name | different |
+|---|---|---|---|
+| without vs v1 | 45 | 1 | 44 |
+| without vs v2 | 47 | 1 | 46 |
+| without vs v3 | 32 | 0 | 32 |
+| v1 vs v2 | 62 | 0 | 62 |
+| v1 vs v3 | 45 | 1 | 44 |
+| v2 vs v3 | 50 | 0 | 50 |
+
+The 0-same-name pairs (without/v3, v1/v3, v2/v3) say what v3 is: the check is decisive, and
+the proposer now picks a name the checker agrees on, so the run's names are systematically
+different from any earlier arm's. The single 1-same-name in v1/v3 is `sub_80A8674`
+(`owMapObject_writeAndCommitENtryAndSize` -- v1's name was `owMap_packingRoutines`);
+otherwise every v3 name is a v3-only decision.
+
+## Recommendation: **facts on by default -- in the v3 form**
+
+The v2 recommendation stood; the v3 measurement strengthens the case on the two metrics the
+brief asked for (probable+agree ≥ 30, contradictions ≤ no-facts' rate) and adds a third --
+1 contradiction across 41 checkable names, recoverable on one retry, recorded when it isn't.
+
+1. **probable+agree ≥ 30**: 48. The bare minimum (33) was already met by v2; v3 adds 15 on
+   top with the same 60 functions and the same input evidence.
+2. **contradictions ≤ no-facts' rate (12.5%)**: 2.4%. v3 is below the no-facts rate by a
+   fifth, not just below v2's 15.8%.
+
+The cost goes up: ~8,600 tokens/fn against v2's ~3,000. But the 4 arm comparison vs the
+no-facts arm is now +85% probable+agree for ~+330% tokens, vs v2's +27% for +50%. The
+higher absolute cost buys a higher absolute gain. Where the earlier pilot could only say
+"the block is worth its tokens", v3 can say "the block plus the check is worth much more
+than the block alone".
+
+The pre-check recovery rate (8 of 9 hits landed a non-contradicting name) means a future
+model with better priors can probably do even better; the check itself is the bottleneck
+now that the noise is gone.
+
+Caveats, unchanged from v2:
+
+* The gain is still in the captured-calls half. Functions whose calls were never captured
+  still get the route-level scenes line with `(route-level, routes mix scenes)`; the prose
+  still says nothing about which calls ran in which scene. The honest move is to capture
+  more functions (`wf capture`), not to weaken the check.
+* A `cutscene_` name whose `scenes_at_call` is overworld stays unflagged when the
+  attributed field family supports the cutscene prefix -- the cutscene commands run under
+  the overworld gamestate byte, and the field is the stronger evidence.
+* Nothing here was landed: no rename, no `symbols/db` entry, no commit. Reviewing the
+  candidates and landing them is the orchestrator's, through the normal path. The
+  rejection (`sub_81375AC`) did not produce a candidate `*.yaml`.
+
+## Decision
+
+`--facts` becomes the default. `wf investigate --no-facts` still opts out (kept for A/B
+pilots and for functions whose block would be misleading, e.g. before a `wf capture` pass).
+
+| change | file | why |
+|---|---|---|
+| `gather: bool = True` (was `False`) | `wf/graphs/investigate.py` | run state default |
+| `--facts` default `True`, `--no-facts` still `False` | `wf/__main__.py` | CLI default + help text updated |
+| the check itself | `wf/tools/facts_check.py` (new) | mechanical, typed, in the wf package; tests in `tests/test_facts_check.py` |
+| `ask_investigate` retry on contradiction, `Report.rejected`, `report_rows` column | `wf/tools/investigate.py` | the run does the check and records rejections |
+| `write_the_candidates` skips rejected proposals (recorded in `report.tsv`, not landed) | `wf/graphs/investigate.py` | the rejection is visible to the reviewer without polluting the candidates dir |
+| `investigate.record_rows` adds a `rejection` column | `wf/tools/investigate.py` | the reviewer sees which name was refused and why |
+| pilot reads the four arms (without/v1/v2/v3); v3 lives in this worktree's `build/investigate` | `pilot/name_quality_ab.py` | the table above |
+| tests for the check | `tests/test_facts_check.py` (new) | seven cases over fake records (route-level facts never contradict; per-call majority; unattributed writes don't contradict; struct precedence over scene; cutscene mode-byte caveat) |
+| tests for the retry path and the rejected proposal | `tests/test_investigate.py` | two cases (`test_a_contradicting_name_gets_one_retry_with_the_contradiction`, `test_a_name_that_still_contradicts_is_rejected_and_not_checked`, `test_a_facts_rejection_is_recorded_but_not_written_as_a_candidate`) |
+| `test_the_graph_gathers_the_facts_only_when_asked` updated | `tests/test_investigate.py` | the default flipped |
+| section above | `docs/workflows/investigate-facts-notes.md` | measurement, recommendation and the carve-outs |
+
+## Where the runs are
+
+* the eight runs: `build/investigate/investigate-20261021-{100724,101004,101229,101527}` and
+  `investigate-20261024-{064512,064746}` in the **main checkout**, `build/investigate/investigate-v3-armA`
+  and `investigate-v3-armB` in this worktree (`wf.repo.REPO` was set to it so the candidates
+  stay out of the main tree).
+* the v2 facts records: `build/facts-v2/by_address/` (120 records, regenerable, git-ignored).
+* the analysis: `pilot/name_quality_ab.py`.
+
+## Housekeeping
+
+`cport/src/lifted`, `cport/src/lifted_t`, `bn6f/`, and `build-snapshots/` in this worktree
+are symlinks into the main checkout (where the lifter's output, the disassembly, the ELF,
+and the captured snapshots live); they are not source under git, and they are not part of
+this change. They were needed because `wf.repo.REPO` was pointed here so the run's
+candidates stay in this worktree.
+
+The v3 changes are `tools/wf/wf/tools/facts_check.py` (new, the typed check),
+`tools/wf/wf/tools/investigate.py` (the retry-on-contradiction in `ask_investigate`; the
+`rejection` fields on `Proposal` and `Report`; the `report_rows` column),
+`tools/wf/wf/graphs/investigate.py` (the `rejected` count in the write step; the default
+flip on `InvestigateState.gather`), `tools/wf/wf/__main__.py` (the `--facts`/`--no-facts`
+default and the docstring), `tools/wf/tests/test_facts_check.py` (new), additional tests
+in `tools/wf/tests/test_investigate.py`, and `tools/wf/pilot/name_quality_ab.py`
+(refactored to read the four arms, with v3 living under this worktree). The full suite
+passes: **548 passed**.

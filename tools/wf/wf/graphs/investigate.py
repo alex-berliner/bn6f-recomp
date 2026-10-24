@@ -47,7 +47,9 @@ class InvestigateState(BaseModel):
     count: int = DEFAULT_COUNT
     only: tuple[FunctionName, ...] = ()
     retry_unnamed: str | None = None                     # an earlier run's ID: re-ask its unnamed ones
-    gather: bool = False                                 # --facts: show what the original game did
+    gather: bool = True                                  # --facts: show what the original game did
+                                                          # (default since v3: the contradiction check
+                                                          # rejects names that contradict the facts)
     model: ModelSpec = DEFAULT_MODEL
     checker: ModelSpec = DEFAULT_CHECKER
     jobs: int = DEFAULT_JOBS
@@ -177,7 +179,7 @@ def write_the_candidates(given: WriteInput) -> WriteOutput:
     by_name = {context.target.name: context for context in given.contexts}
     verdict_of = {verdict.name: verdict for verdict in given.verdicts}
     syms = investigate.elf_symbols(frozenset(proposal.name for proposal in given.proposals))
-    written = agreed = revised = disagreed = nulls = invalid = retries = stragglers = 0
+    written = agreed = revised = disagreed = nulls = invalid = retries = stragglers = rejected = 0
     problems: list[ToolMessage] = list(given.notes)
     pairs: list[tuple[Proposal, Verdict]] = []
     for proposal in given.proposals:
@@ -194,6 +196,9 @@ def write_the_candidates(given: WriteInput) -> WriteOutput:
         if investigate.out_of_credits(proposal.problem) or investigate.out_of_credits(verdict.problem):
             problems.append(ToolMessage(f"{proposal.name}: {verdict.problem or proposal.problem}"))
             continue
+        if proposal.rejection is not None:
+            rejected += 1
+            continue                    # recorded in report.tsv, but not landed as a candidate
         if proposal.answer is None or proposal.answer.proposed_name is None:
             nulls += 1
         else:
@@ -222,7 +227,7 @@ def write_the_candidates(given: WriteInput) -> WriteOutput:
                               f"what was done and stopped cleanly ({stopped})")
     return WriteOutput(report=Report(selected=len(given.proposals), written=written, agreed=agreed,
                                      revised=revised, disagreed=disagreed, nulls=nulls, invalid=invalid,
-                                     retries=retries, stragglers=stragglers,
+                                     retries=retries, stragglers=stragglers, rejected=rejected,
                                      tokens=sum(proposal.tokens for proposal in given.proposals)
                                      + sum(verdict.tokens for verdict in given.verdicts),
                                      problems=tuple(problems), stopped=stopped))
