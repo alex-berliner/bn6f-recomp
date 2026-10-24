@@ -75,6 +75,7 @@ build-wf-runs/RUN_ID; what all runs share (locks, provider outages, the install
 freeze) is in build-wf-state.
 """
 import argparse
+import hashlib
 import json
 import signal
 import time
@@ -218,9 +219,12 @@ class InterveneCommand(BaseModel):
 
 class IntervenePilotCommand(BaseModel):
     command: Literal["intervene-pilot"]
-    route: str = "battles1"
+    route: str = "auto"
     frames: int = 120
-    random: int = 12
+    random: int = 24
+    only: list[str] = Field(default_factory=list)
+    jobs: int = 8
+    seed: int | None = None
 
 
 class RuntimeEvidenceCommand(BaseModel):
@@ -564,31 +568,51 @@ def start_intervene(command: InterveneCommand) -> None:
     print(f"per-run json: {run_dir / command.function / 'result.json'}")
 
 
+# How many candidates the random half is drawn from per function wanted. The facts'
+# `reached` flag is generous, so a draw of exactly `--random` names can come up short
+# of functions a route really enters; the pilot step walks the pool until it has
+# `--random` it can run.
+RANDOM_POOL_FACTOR = 6
+
+
 def start_intervene_pilot(command: IntervenePilotCommand) -> None:
-    """`wf intervene-pilot`: 12 named functions + 12 random functions, null + skip each."""
-    from wf.graphs.intervene import (PILOT_NAMED, PROJECT_PILOT, PilotState, intervene_pilot_graph,
-                                       run_pilot_trials, select_pilot_targets)
+    """`wf intervene-pilot`: 24 named functions + N random *reached* functions, each run
+    as null + skip + return:0 + return:1 on the shortest route whose facts execute it."""
+    from wf.graphs.intervene import (PILOT_INTERVENTIONS, PILOT_NAMED, PilotState,
+                                     intervene_pilot_graph)
+    from wf.tools.intervene import reached_function_names, select_intervene_targets
     run_id, run_dir = new_run("intervene-pilot")
-    rng = list(PILOT_NAMED)
     selected_named = tuple(PILOT_NAMED)
     selected_random: tuple[FunctionName, ...] = tuple()
+    if command.only:
+        selected_named = tuple(name for name in command.only if name in PILOT_NAMED)
+    random_pool: tuple[FunctionName, ...] = ()
+    seed = command.seed
+    if seed is None:
+        # A stable draw per run: Python's hash() is salted per process, so the same
+        # run_id would give a different set of functions on every invocation. The seed
+        # is printed with the run, so a table in the notes can be re-drawn exactly.
+        seed = int(hashlib.sha256(f"{run_id}|{command.route}".encode()).hexdigest()[:8], 16)
     if command.random:
-        # Pick the random tail from lifted function names matching draw/OAM/etc. keywords.
-        from wf.tools.intervene import select_intervene_targets
-        chosen = select_intervene_targets(count=12 + command.random,
-                                            named=selected_named,
-                                            rng_seed=hash((run_id, command.route)) & 0xFFFFFFFF)
-        selected_named = tuple(chosen[:12])
-        selected_random = tuple(chosen[12: 12 + command.random])
-    start = PilotState(run_dir=run_dir, named=selected_named,
-                        random=selected_random, route=command.route,
-                        frames=command.frames)
+        # The random tail is drawn from the facts layer's reached set, but as a POOL
+        # several times longer than asked for: the facts' `reached` flag is generous, so
+        # some draws turn out to have no route that enters them, and the pilot step walks
+        # the pool until it has `--random` functions it can really run.
+        chosen = select_intervene_targets(
+            count=len(selected_named) + command.random * RANDOM_POOL_FACTOR, named=selected_named,
+            rng_seed=seed,
+            reached=reached_function_names())
+        random_pool = tuple(chosen[len(selected_named):])
+    start = PilotState(run_dir=run_dir, named=selected_named, random=random_pool,
+                       random_pool=random_pool, random_want=command.random,
+                       route=command.route, frames=command.frames, jobs=command.jobs)
     state = intervene_pilot_graph().start(start, run_id, tracked=False)
-    from wf.burr_typed import Finished
     if isinstance(state, Finished):
         state = state.state
-    print(f"{run_id}  ({len(selected_named)} named + {len(selected_random)} random, {command.route}, "
-          f"{command.frames} frames)")
+    interventions = " ".join(kind + (f":{k}" if k is not None else "")
+                             for kind, k in PILOT_INTERVENTIONS)
+    print(f"{run_id}  ({len(selected_named)} named + {len(random_pool)} random candidates, "
+          f"{interventions}, {command.frames} frames, seed {seed})")
     print(f"artifacts: {run_dir / 'pilot.tsv'}")
     for note in state.notes:
         print(f"  {note}")
@@ -816,6 +840,69 @@ def show_archive(dry_run: bool) -> None:
 
 # ── arguments ──────────────────────────────────────────────────────────
 
+def _intervention_arg(text: str) -> str:
+    """argparse `type` for --intervention: one free-form string, validated here.
+
+    The option used to spell its choices out as `["skip", "null"] + [f"return:{k}" for k
+    in range(256)]`, which put 258 entries in `--help` for what is three kinds of
+    argument. `InterventionKind.parse` is the one validator, so it is what argparse
+    calls: a bad value is a usage error naming the three forms, not a wall of choices.
+    """
+    from wf.tools.intervene import InterventionKind
+    text = text.strip()
+    try:
+        InterventionKind.parse(text)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            f"{error} (three forms: 'skip', 'null', 'return:K' with K in 0..255)") from error
+    return text
+
+
+def build_intervene_parser(commands: argparse._SubParsersAction) -> argparse.ArgumentParser:
+    """`wf intervene`: one function, one intervention. Split out of parse_command() so a
+    test can read the help text -- `--intervention` used to list all 258 `return:K`
+    values there."""
+    interv = commands.add_parser("intervene",
+                                   help="wf intervene: mGBA intervention runner for causal "
+                                        "checks of function names (no model calls)")
+    interv.add_argument("--function", required=True,
+                         help="a function name or hex address to patch (the THUMB bit is accepted)")
+    interv.add_argument("--intervention", type=_intervention_arg, default="skip",
+                         metavar="KIND",
+                         help="skip | null | return:K (K is 0..255). skip = entry->push {lr}; "
+                              "pop {pc} (returns the way the function's own epilogue does, "
+                              "so the CPU's instruction set is unchanged); null = rewrite "
+                              "the entry with its own bytes (determinism control)")
+    interv.add_argument("--route", default="auto",
+                         help="a recorded route in tools/traces, or `auto` (default) = the "
+                              "shortest recorded route whose facts execute this function")
+    interv.add_argument("--frames", type=int, default=120,
+                         help="how many game frames to replay baseline+patched from the cached state")
+    return interv
+
+
+def build_intervene_pilot_parser(commands: argparse._SubParsersAction) -> argparse.ArgumentParser:
+    """`wf intervene-pilot`: 24 named + N random reached functions, four interventions each."""
+    intpilot = commands.add_parser("intervene-pilot",
+                                    help="24 named + N random reached functions, null+skip+return:0+"
+                                         "return:1 each, each on the shortest route that reaches it")
+    intpilot.add_argument("--route", default="auto",
+                           help="a recorded route in tools/traces, or `auto` (default) = the "
+                                "shortest recorded route whose facts execute each function")
+    intpilot.add_argument("--frames", type=int, default=120,
+                           help="how many game frames to replay per run (default 120)")
+    intpilot.add_argument("--random", type=int, default=24,
+                           help="how many random reached functions to add (default 24)")
+    intpilot.add_argument("--only", action="append", default=[],
+                           help="run only these named functions (repeatable)")
+    intpilot.add_argument("--jobs", type=int, default=8,
+                           help="how many functions to run at a time (default 8)")
+    intpilot.add_argument("--seed", type=int, default=None,
+                           help="the seed the random half is drawn with (default: one per "
+                                "run id; the seed is printed with the run)")
+    return intpilot
+
+
 def parse_command() -> Command:
     parser = argparse.ArgumentParser(prog="wf", description="The recomp project's workflows.")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -900,29 +987,8 @@ def parse_command() -> Command:
                       help=f"who cross-checks (default {DEFAULT_INVESTIGATE_DATA_CHECKER})")
     data.add_argument("--jobs", type=int, default=DEFAULT_INVESTIGATE_DATA_JOBS)
 
-    interv = commands.add_parser("intervene",
-                                   help="wf intervene: mGBA intervention runner for causal "
-                                        "checks of function names (no model calls)")
-    interv.add_argument("--function", required=True,
-                         help="a function name or hex address to patch (the THUMB bit is accepted)")
-    interv.add_argument("--intervention", choices=["skip", "null"] + [
-                            f"return:{k}" for k in range(256)], default="skip",
-                         help="skip = entry->bx lr; return:K = entry->movs r0,#K ; bx lr; "
-                              "null = rewrite entry with its own bytes (determinism control)")
-    interv.add_argument("--route", default="auto",
-                         help="a recorded route in tools/traces, or `auto` = the shortest "
-                              "one whose edges file calls this function")
-    interv.add_argument("--frames", type=int, default=120,
-                         help="how many game frames to replay baseline+patched from the cached state")
-
-    intpilot = commands.add_parser("intervene-pilot",
-                                    help="12 named + N random functions, null+skip each on a route")
-    intpilot.add_argument("--route", default="battles1",
-                           help="a recorded route in tools/traces (default battles1)")
-    intpilot.add_argument("--frames", type=int, default=120,
-                           help="how many game frames to replay per run (default 120)")
-    intpilot.add_argument("--random", type=int, default=12,
-                           help="how many random functions to add (default 12)")
+    build_intervene_parser(commands)
+    build_intervene_pilot_parser(commands)
 
     runtime = commands.add_parser("runtime-evidence",
                                   help="gather runtime evidence for the names `wf investigate` proposed "

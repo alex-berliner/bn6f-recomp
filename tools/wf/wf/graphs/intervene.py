@@ -11,13 +11,18 @@ targets it cannot patch honestly), bisect mgba_run for the first frame the route
 it, cache a state just before that frame, then patch and observe. Every verdict is gated
 on a `null` run: it must show zero differences, or the route/window is nondeterministic
 and the run proves nothing. `wf intervene` does one function; `wf intervene-pilot` runs
-12 named plus 12 random functions as skip+null and writes one table. Nothing under
-symbols/db or bn6f is touched; the orchestrator (`wf record`) applies what a human
-accepts from the table.
+24 named plus 24 random reached functions as null + skip + return:0 + return:1 and writes
+one table. Nothing under symbols/db or bn6f is touched; the orchestrator (`wf record`)
+applies what a human accepts from the table.
 
-  python -m wf intervene --function NAME_OR_ADDR [--intervention skip|return:K|null]
+  python -m wf intervene --function NAME_OR_ADDR --intervention skip|null|return:K
                          [--route R|auto] [--frames N]
-  python -m wf intervene-pilot [--route R] [--frames N] [--random N]
+  python -m wf intervene-pilot [--route R|auto] [--frames N] [--random N] [--jobs J]
+
+`--route auto` reads the facts layer (build/facts/by_address/0xADDR.json), which records
+for every function which routes execute it, and takes the shortest one. The first-frame
+search then covers the whole route from cached states, so a function that first runs 900
+frames in is found instead of being reported "not reached".
 
 Interventions are ROM patching only — no emulator C changes, no savestate editing.
 See docs/workflows/intervene-notes.md for the anchors, the predicate language, the
@@ -161,7 +166,13 @@ def find_and_cache(given: FindCacheInput) -> FindCacheOutput:
                                   "in the bisect window; nothing to do"))
         return FindCacheOutput(notes=tuple(notes), address=finfo.address)
     start = max(1, ff - given.lead_in_frames)
-    state_path = it.STATES_DIR / f"{route.name}_{start:06d}.state"
+    # Snap down to the cached grid (the search's own states): saving a state at an
+    # arbitrary frame means replaying the route from its first frame, which on `beastsp`
+    # is fifteen minutes for a state the grid already has.
+    snapped = it.nearest_cached_state(route, start)
+    if snapped is not None:
+        start = snapped
+    state_path = it.state_path_at(route, start)
     try:
         save_state_at(route, at_frame=start, mgba_run=mgba_run, bios=bios, out=state_path)
     except Exception as err:                                                            # noqa: BLE001
@@ -325,9 +336,16 @@ def write_artifacts(given: WriteInput) -> WriteOutput:
     return WriteOutput()
 
 
-# ── pilot: 12 named + 12 random skip + null runs ──────────────────────
+# ── pilot: 24 named + 24 random reached functions x 4 interventions ───
 
 PROJECT_PILOT = "recomp-intervene-pilot"
+
+# The four interventions the pilot runs on every function. `null` is the determinism
+# control (it rewrites the entry with its own bytes, so a difference there means the
+# route/window is noisy and the other three rows prove nothing).
+PILOT_INTERVENTIONS: tuple[tuple[str, int | None], ...] = (
+    ("null", None), ("skip", None), ("return", 0), ("return", 1),
+)
 
 
 def intervene_pilot_graph() -> Graph["PilotState"]:
@@ -348,16 +366,32 @@ class PilotState(BaseModel):
     run_dir: Path
     named: tuple[FunctionName, ...] = ()
     random: tuple[FunctionName, ...] = ()
-    route: RouteName = "battles1"
+    random_pool: tuple[FunctionName, ...] = ()    # candidates in draw order, more than `random`
+    random_want: int = 24                        # how many of the pool a route really enters
+    route: RouteName = "auto"
     frames: int = DEFAULT_FRAMES
+    jobs: int = 8
     selected_named: tuple[FunctionName, ...] = ()
     selected_random: tuple[FunctionName, ...] = ()
-    results: dict[str, RunRecord] = {}
+    results: dict[str, RunRecord] = {}          # "NAME\tINTERVENTION" -> the record
     null_results: dict[str, RunRecord] = {}
     notes: tuple[ToolMessage, ...] = ()
 
 
 workflow_pilot = Workflow[PilotState](PilotState, project=PROJECT_PILOT)
+
+
+def pilot_key(name: str, intervention: str, k: int | None = None) -> str:
+    """The table key for a pilot result -- `name\tKIND[?K]`. `return` and `return:K`
+    are different rows (PILOT_INTERVENTIONS carries both K=0 and K=1), so the key
+    has to disambiguate; skipping the K collapses both rows to one. null/skip
+    never have a K so the suffix is empty.
+
+    Storage and lookup both use this form so 'return:0' and 'return:1' each get
+    their own slot."""
+    if k is None:
+        return f"{name}\t{intervention}"
+    return f"{name}\t{intervention}:{k}"
 
 
 class PilotSelectInput(Result):
@@ -372,78 +406,176 @@ class PilotSelectOutput(Result):
 
 @workflow_pilot.step
 def select_pilot_targets(given: PilotSelectInput) -> PilotSelectOutput:
-    """Pick the named functions in order, then add the random tail from the lifted set
-    whose names hint at drawing / OAM / palette / fade / sound / sprite effects."""
-    named = list(given.named) if given.named else list(PILOT_NAMED)
-    rng_pool = list(named)
-    extras = list(given.random)
-    return PilotSelectOutput(selected_named=tuple(named),
-                              selected_random=tuple(extras))
+    """The named functions in order, then the random tail (already drawn from the
+    reached set by the caller, so every pilot row is a function some recording runs)."""
+    return PilotSelectOutput(selected_named=tuple(given.named),
+                             selected_random=tuple(given.random))
 
 
 class PilotRunInput(Result):
     run_dir: Path
     selected_named: tuple[FunctionName, ...]
-    selected_random: tuple[FunctionName, ...]
+    random_pool: tuple[FunctionName, ...]
+    random_want: int
     route: RouteName
     frames: int
+    jobs: int
 
 
 class PilotRunOutput(Result):
     results: dict[str, RunRecord]
     null_results: dict[str, RunRecord]
+    selected_random: tuple[FunctionName, ...] = ()
     notes: tuple[ToolMessage, ...]
 
 
 @workflow_pilot.step
 def run_pilot_trials(given: PilotRunInput) -> PilotRunOutput:
-    """For each selected function: run null + skip on `route`. One JSON per row; a
-    pilot.tsv summarises deterministic/hung/first_executed/anchor differences.
+    """For each selected function: find the first frame it executes on the shortest
+    route that reaches it (once), then run null + skip + return:0 + return:1 from the
+    same cached state. One JSON per (function, intervention); pilot.tsv summarises
+    deterministic / hung / first_executed / anchor differences.
 
-    The trials are independent subprocess runs (each its own mgba_run invocation with
-    its own patched ROM copy and its own artifact directory), so they fan out across a
+    The random half is drawn from `random_pool` in order and stops at the first
+    `random_want` the routes actually enter -- the facts layer's `reached` flag is
+    generous (it credits a function's whole range, so a symbol whose tail runs as a
+    shared tail of something else reads as reached although nothing branches to its
+    entry), and a row with no route to run on is not a row.
+
+    The route's states are cached once, up front, per route in play, because the
+    whole-route first-frame search and every run of every function on that route share
+    them (caching them from several threads at once would race and duplicate a
+    20-minute pass over `beastsp`).
+
+    The trials are independent (each its own mgba_run invocation, its own patched ROM
+    in its own temp directory, its own artifact directory), so they fan out across a
     thread pool. Results are re-ordered to the selection order before returning, so
-    pilot.tsv is deterministic regardless of completion order."""
+    pilot.tsv does not depend on completion order."""
     import gamepaths  # noqa: PLC0415
+    import time  # noqa: PLC0415
     from concurrent.futures import ThreadPoolExecutor                          # noqa: PLC0415
     mgba_run = Path(gamepaths.MGBA_RUN)
     bios = Path(gamepaths.GBA_BIOS)
-    from wf.routes import route_named                                          # noqa: PLC0415
-    route = route_named(given.route)
     anchors = load_anchors()
-    selected = list(given.selected_named) + list(given.selected_random)
     notes: list[ToolMessage] = []
-    jobs: list[tuple[str, str]] = [(name, kind) for name in selected for kind in ("null", "skip")]
 
-    def _one(job: tuple[str, str]) -> tuple[str, str, RunRecord | None, str | None]:
-        name, kind = job
+    # 1. which route does each function run on? The named set is fixed; the random half
+    #    walks its candidate pool and stops at the first `random_want` that some route
+    #    actually enters, so a draw the facts oversold costs a note, not a table row.
+    from wf.routes import route_named                                          # noqa: PLC0415
+    fixed_route = None
+    if given.route != "auto":
+        fixed_route = route_named(given.route)
+    routes: dict[str, Route] = {}
+    first_frames: dict[str, int | None] = {}
+    todo: list[str] = []
+    queue: list[str] = list(given.selected_named)
+    random_picked: list[str] = []
+    for name in queue + list(given.random_pool):
+        is_random = name in given.random_pool
+        if is_random and len(random_picked) >= given.random_want:
+            break
+        try:
+            finfo = find_function(name)
+        except ValueError as err:
+            notes.append(ToolMessage(f"{name}: {err}"))
+            continue
+        candidates = [fixed_route] if fixed_route is not None else list(it.routes_executing(finfo))
+        if not candidates:
+            notes.append(ToolMessage(f"{name}: no recorded route lists it; skipped"))
+            continue
+        # The facts pick the order, the route's execution map confirms it (the facts are
+        # loose about `executed`: a symbol reached by a jump into its middle reads as
+        # executed although nothing branches to its entry).
+        picked: Route | None = None
+        for route in candidates:
+            grid = it.ensure_route_states(route, mgba_run=mgba_run, bios=bios)
+            known, segment = it.first_execution_segment(
+                finfo.address, route, grid=grid, last=int(route.length),
+                mgba_run=mgba_run, bios=bios)
+            if not known or segment is not None:
+                picked = route
+                break
+            notes.append(ToolMessage(
+                f"{name}: the facts list {route.name}, but the route's execution map says "
+                f"nothing ever enters it; trying the next route"))
+        if picked is None:
+            notes.append(ToolMessage(
+                f"{name}: no recorded route enters it (the facts list "
+                f"{', '.join(str(r.name) for r in candidates)})"))
+            continue
+        routes[name] = picked
+        todo.append(name)
+        if is_random:
+            random_picked.append(name)
+
+    # 2. cache each route's states (and its execution map) once, then search + run.
+    #    Both are shared by every function on that route and both are one whole-route
+    #    pass, so building them from several trial threads would duplicate the work
+    #    (and race on the same files).
+    for route in sorted({str(r.name): r for r in routes.values()}.values(), key=lambda r: str(r.name)):
+        try:
+            cached = it.ensure_route_states(route, mgba_run=mgba_run, bios=bios)
+        except Exception as err:                                                    # noqa: BLE001
+            notes.append(ToolMessage(f"{route.name}: caching states failed: {err}"))
+            continue
+        notes.append(ToolMessage(f"{route.name}: {len(cached)} cached states "
+                                 f"(stride {it.state_stride(route)} frames)"))
+        started = time.time()
+        try:
+            mapping = it.ensure_route_exec_map(route, grid=cached, last=int(route.length),
+                                               mgba_run=mgba_run, bios=bios)
+        except Exception as err:                                                    # noqa: BLE001
+            notes.append(ToolMessage(f"{route.name}: execution map failed: {err}"))
+            continue
+        notes.append(ToolMessage(f"{route.name}: execution map of {len(mapping or ())} "
+                                 f"addresses ({time.time() - started:.0f}s)"))
+
+    def _one(job: tuple[str, str, int | None]) -> tuple[str, str, int | None, RunRecord | None, str | None]:
+        name, kind, k = job
+        route = routes[name]
         try:
             finfo = find_function(name, on=route)
         except ValueError as err:
-            return name, kind, None, f"{name}: {err}"
+            return name, kind, k, None, f"{name}: {err}"
+        ff = first_frames.get(name)
+        if ff is None and name not in first_frames:
+            try:
+                ff = first_game_frame(finfo, route, mgba_run=mgba_run, bios=bios)
+            except Exception as err:                                                # noqa: BLE001
+                return name, kind, k, None, f"{name}: first-frame search failed: {err}"
+            first_frames[name] = ff
         try:
-            rec = run_intervene_one(function=finfo, intervention=kind, k=None,
+            rec = run_intervene_one(function=finfo, intervention=kind, k=k,
                                      route=route, frames=given.frames, mgba_run=mgba_run,
-                                     bios=bios, out_dir=given.run_dir, anchors=anchors)
+                                     bios=bios, out_dir=given.run_dir, anchors=anchors,
+                                     first_frame=ff)
         except Exception as err:                                                    # noqa: BLE001
-            return name, kind, None, f"{name} {kind}: {err}"
-        return name, kind, rec, None
+            return name, kind, k, None, f"{name} {kind}: {err}"
+        return name, kind, k, rec, None
 
-    workers = min(8, max(1, len(jobs)))
+    jobs = [(name, kind, k) for name in todo for kind, k in PILOT_INTERVENTIONS]
+    workers = min(max(1, given.jobs), max(1, len(jobs)))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         done = list(pool.map(_one, jobs))
 
     results: dict[str, RunRecord] = {}
     nulls: dict[str, RunRecord] = {}
-    for name, kind, rec, err in done:
+    for name, kind, k, rec, err in done:
         if err is not None:
             notes.append(ToolMessage(err))
             continue
         assert rec is not None
-        (results if kind == "skip" else nulls)[rec.function] = rec
-    notes.append(ToolMessage(f"{len(results)} skip runs, {len(nulls)} null runs "
-                             f"over {len(selected)} functions ({workers} workers)"))
-    return PilotRunOutput(results=results, null_results=nulls, notes=tuple(notes))
+        # PILOT_INTERVENTIONS uses kinds 'skip' / 'return' (no K); the record's
+        # `intervention` field carries the full 'return:K'. Store by KIND+K so
+        # 'return:0' and 'return:1' each get their own slot in `results` -- a
+        # bare `kind` collapses them both to one row in pilot.tsv.
+        (nulls if kind == "null" else results)[pilot_key(name, kind, k)] = rec
+    notes.append(ToolMessage(f"{len(results)} intervention runs, {len(nulls)} null runs "
+                             f"over {len(todo)} functions x {len(PILOT_INTERVENTIONS)} "
+                             f"interventions ({workers} workers)"))
+    return PilotRunOutput(results=results, null_results=nulls,
+                          selected_random=tuple(random_picked), notes=tuple(notes))
 
 
 class PilotWriteInput(Result):
@@ -463,30 +595,39 @@ class PilotWriteOutput(Result):
 
 @workflow_pilot.step
 def write_pilot_artifacts(given: PilotWriteInput) -> PilotWriteOutput:
-    """A pilot.md table (24 rows: name, source, intervention, deterministic, hung,
-    first_executed, anchor diffs) and a pilot.tsv next to it."""
+    """A pilot.tsv with one row per (function, intervention): the route the facts layer
+    chose, whether the run was deterministic, whether it hung and *which side* hung,
+    mGBA's illegal-opcode count on each side (the crash evidence), the first frame the
+    function executed, and the first anchor that differed."""
     given.run_dir.mkdir(parents=True, exist_ok=True)
     selected = list(given.selected_named) + list(given.selected_random)
     is_named = {n: True for n in given.selected_named}
     is_named.update({n: False for n in given.selected_random})
     rows: list[str] = []
-    rows.append(("name\tsource\tintervention\tdeterministic\thung\t"
-                 "first_frame_executed\tanchors_diff\tdiffering_frames\t"
-                 "first_anchor_diff\troute"))
+    rows.append(("name\tsource\tintervention\troute\tdeterministic\thung\thung_side\t"
+                 "illegal_ops_base\tillegal_ops_patched\tpatch_bytes\tfirst_frame_executed\t"
+                 "anchors_diff\tdiffering_frames\tfirst_anchor_diff\tnote"))
     for name in selected:
         src = "named" if is_named.get(name) else "random"
-        for intervention, table in (("skip", given.results), ("null", given.null_results)):
-            rec = table.get(name)
+        for kind, k in PILOT_INTERVENTIONS:
+            table = given.null_results if kind == "null" else given.results
+            rec = table.get(pilot_key(name, kind, k))
+            display_kind = f"{kind}:{k}" if kind == "return" else kind
             if rec is None:
-                rows.append(f"{name}\t{src}\t{intervention}\t-\t-\t-\t-\t-\t-\t{given.route}")
+                # `null` rows may legitimately be missing when only a real run completed
+                rows.append(f"{name}\t{src}\t{display_kind}\t-\t-\t-\t-\t-\t-\t-\t-\t-\t0\t-\t-")
                 continue
             differing = sum(d.differing_frames for d in rec.anchor_diffs)
             f0 = rec.first_frame_executed if rec.first_frame_executed is not None else "-"
             first = next((d for d in rec.anchor_diffs if d.differing_frames), None)
             fad = "-" if first is None else f"{first.name}@{first.first_frame}"
-            rows.append(f"{rec.function}\t{src}\t{rec.intervention}\t"
-                        f"{rec.deterministic}\t{rec.hung}\t{f0}\t{len(rec.anchor_diffs)}\t"
-                        f"{differing}\t{fad}\t{rec.route}")
+            note = next((str(n) for n in rec.notes if "hung" in str(n)), "-")
+            note = note.replace("\t", " ").replace("\n", " ")
+            rows.append(f"{rec.function}\t{src}\t{display_kind}\t{rec.route}\t"
+                        f"{rec.deterministic}\t{rec.hung}\t{rec.hung_side or '-'}\t"
+                        f"{rec.illegal_opcodes[0]}\t{rec.illegal_opcodes[1]}\t"
+                        f"{rec.patch_bytes or '-'}\t{f0}\t{len(rec.anchor_diffs)}\t"
+                        f"{differing}\t{fad}\t{note}")
     (given.run_dir / "pilot.tsv").write_text("\n".join(rows) + "\n")
     return PilotWriteOutput()
 
