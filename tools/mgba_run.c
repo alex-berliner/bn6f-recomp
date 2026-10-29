@@ -329,21 +329,29 @@ static void do_handoff(struct mCore *core, const char *dir) {
             free(buf); fclose(f); continue;
         }
         fclose(f);
-        /* IWRAM is shared with the destination's IWRAM code/state: two
+        /* IWRAM is shared with the destination's IWRAM code/state: three
          * portions must NOT be overwritten:
          *   0x03005700-0x030079CF: the port's runtime code & globals
          *                           (cport/gba.ld: iwram 0x03005700, size 0x22D0)
-         *   0x03007FFC-0x03007FFF: the port's BIOS IRQ vector (4 bytes, set
-         *                           by gba_boot to the lifted irq_entry)
-         * The IRQ/SYS stacks at 0x030079D0-0x03007DFF are port-owned but
-         * the destination never takes an IRQ before the handoff fires, and
-         * falling back to its own stack pattern is fine; we leave them too.
-         * The game stack lives between 0x03007E00 and where SP sits, so
-         * those bytes ride with the handoff (real game's last SP we're
-         * about to resume from). */
+         *   0x030079D0-0x03007DFF: the port's IRQ and SYS stacks (kept by the
+         *                           IRQ entry's mode switch)
+         *   0x03007E00-0x03007FFB: the game's user-mode stack. The port's CPU
+         *                           registers (SP, LR, pc) are NOT overwritten,
+         *                           so its current call chain points at the
+         *                           port's own frames. Copying the original's
+         *                           bytes here would inject ROM-relative return
+         *                           addresses from the original bn6f into the
+         *                           lifted port's pop {pc} targets, plus destroy
+         *                           the port's saved regs from main_ and its
+         *                           callees: it must run to the next VBlank on
+         *                           its own stack pattern, and continue with
+         *                           EWRAM/IWRAM-game/VRAM/PAL/OAM/SAVE writes
+         *                           that match the original from now on.
+         * 0x03007FFC-0x03007FFF (the BIOS IRQ vector) is part of the stack
+         * range above and is skipped with it. */
         static const struct { unsigned lo, hi; } iwram_skip[] = {
             { 0x03005700u, 0x03007E00u },
-            { 0x03007FFCu, 0x03008000u },
+            { 0x03007E00u, 0x03008000u },
         };
         for (unsigned a = 0; a < rg[r].size; a++) {
             unsigned addr = rg[r].base + a;
@@ -354,27 +362,83 @@ static void do_handoff(struct mCore *core, const char *dir) {
             }
             if (skip) continue;
             unsigned char prev = core->busRead8(core, addr);
-            if (prev != buf[a]) n_skew++;
-            core->busWrite8(core, addr, buf[a]);
+            int changed = (prev != buf[a]);
+            if (changed) {
+                if (n_skew < 10) {
+                    fprintf(stderr, "handoff: diff %s[0x%08x] prev=0x%02x buf=0x%02x\n", rg[r].suffix, addr, prev, buf[a]);
+                }
+                n_skew++;
+            }
+            if (!changed) continue;
+            /* GBA VRAM/PAL/OAM are 16-bit wide: byte stores BROADCAST the
+             * value to both bytes of the halfword.  For example,
+             * busWrite8(VRAM+1, 0x24) sets the 16-bit slot [VRAM+0..VRAM+1]
+             * to 0x2424 (00 24 00 24 in the halfword pair), not 0x00XX.
+             * Use 16-bit stores aligned to halfwords.  EWRAM, IWRAM and
+             * SRAM are 8-bit wide and busWrite8 works there, but most of
+             * the destination's bytes equal the buffer anyway so we
+             * wasted no uop on those.  Use the wider write so we don't
+             * corrupt neighbouring bytes. */
+            if (rg[r].base == 0x06000000u || rg[r].base == 0x05000000u || rg[r].base == 0x07000000u) {
+                /* VRAM/PAL/OAM: 16-bit write.  The 16-bit slot at addr & ~1
+                 * holds buf[addr & ~1] (low) and buf[(addr & ~1) + 1] (high).
+                 * If only one of them differs from prev, that's still fine:
+                 * we read both, mask in the new value, write back the slot,
+                 * and leave the other byte along. */
+                unsigned hi = (addr & 0x1FFFEu);  /* halfword-aligned byte offset 0..0x1FFFC */
+                uint16_t slot;
+                if (hi < rg[r].size - 1) {
+                    slot = (uint16_t)buf[hi] | ((uint16_t)buf[hi + 1] << 8);
+                    core->busWrite16(core, rg[r].base + hi, slot);
+                } else {
+                    /* Tail byte: busWrite8 broadcasts (same as the upper
+                     * case); write the matching low byte from the buffer
+                     * and trust broadcast symmetry. */
+                    core->busWrite8(core, addr, buf[a]);
+                }
+            } else {
+                core->busWrite8(core, addr, buf[a]);
+            }
         }
         free(buf);
         fprintf(stderr, "handoff: %s wrote %lu bytes from %s\n", rg[r].suffix,
                 (unsigned long)rg[r].size, path);
     }
-    /* Last: a few I/O registers the destination needs (LCD status, KEYINPUT,
-     * IF/IE/IME). */
+    /* Last: the destination's I/O registers. Only the 5 critical to
+     * staying in sync with the original need to be restored (VBlank flag
+     * in DISPSTAT, KEYINPUT, plus the interrupt dispatch state in
+     * IF/IE/IME). Writing the full 0x04000000..0x04000400 block —
+     * including the DMA, sound FIFO, BG scroll and timer registers —
+     * left the destination with subtle sub-instruction timing errors
+     * that made the port's VRAM start diverging later in the section
+     * (e.g. game=6200 in the story1 trace). The rest of the I/O space
+     * is reset on the emulator to the same value both sides already,
+     * so we let the destination keep its pre-handoff values there. */
     char path[512];
     if (handoff_open(dir, "ior", path, sizeof path) == 0) {
         FILE *f = fopen(path, "rb");
         if (f) {
-            unsigned char buf[20];
-            if (fread(buf, 1, sizeof buf, f) == sizeof buf) {
-                static const unsigned rs[] = { 0x04000004u, 0x04000130u, 0x04000202u, 0x04000200u, 0x04000208u };
-                for (unsigned r = 0; r < sizeof rs / sizeof rs[0]; r++)
+            /* File is the "full I/O block" format (paths//ior.bin) where
+             * the byte at offset o holds the value at I/O address
+             * 0x04000000 + o. */
+            const struct { unsigned gba; unsigned off; } regs[] = {
+                { 0x04000004u, 0x0004u },   /* DISPSTAT */
+                { 0x04000130u, 0x0130u },   /* KEYINPUT */
+                { 0x04000202u, 0x0202u },   /* IF */
+                { 0x04000200u, 0x0200u },   /* IE */
+                { 0x04000208u, 0x0208u },   /* IME */
+            };
+            /* Need at least offset 0x020B+4 = 0x020C bytes. */
+            unsigned char buf[0x020C];
+            if (fread(buf, 1, sizeof buf, f) == sizeof buf)
+                for (unsigned r = 0; r < sizeof regs / sizeof regs[0]; r++)
                     for (unsigned b = 0; b < 4; b++)
-                        core->busWrite8(core, rs[r] + b, buf[r * 4 + b]);
-            }
+                        core->busWrite8(core, regs[r].gba + b, buf[regs[r].off + b]);
+            else
+                fprintf(stderr, "handoff: ior file too short, skipping IOR restores\n");
             fclose(f);
+        } else {
+            fprintf(stderr, "handoff: cannot read %s\n", path);
         }
     }
     fprintf(stderr, "handoff: %lu bytes changed across all regions\n", n_skew);
@@ -979,23 +1043,25 @@ int main(int argc, char **argv) {
                 }
                 fclose(o);
             }
-            /* I/O registers a port needs to see the same way the original
-             * had them: LCD status (VBlank flag), KEYINPUT, IF (pending),
-             * IE (enabled), IME (master). The other I/O is reset on the
-             * emulator to the same value both ways; their layout is fixed
-             * for one frame's worth of state. Packed little-endian so an
-             * ad-hoc diff sees the same bytes either side. */
+            /* Full I/O register block (0x04000000-0x04000400) so a port can be
+             * restored to the original's machine state at this game
+             * frame. The next block (the IOR restore in --handoff) writes
+             * back, with care around DMA enable bits and FIFO sound
+             * registers. */
             {
                 char path[512];
                 snprintf(path, sizeof path, "%s_%lu.ior.bin", dump_mem_at_prefix, g);
                 FILE *o = fopen(path, "wb");
                 if (o) {
-                    const struct { unsigned a; } rs[] = {
-                        { 0x04000004 }, { 0x04000130 }, { 0x04000202 }, { 0x04000200 }, { 0x04000208 },
-                    };
-                    for (unsigned r = 0; r < sizeof rs / sizeof rs[0]; r++)
-                        for (unsigned b = 0; b < 4; b++)
-                            fputc(core->busRead8(core, rs[r].a + b), o);
+                    for (unsigned a = 0; a < 0x400; a++) {
+                        uint8_t v = core->busRead8(core, 0x04000000 + a);
+                        fputc(v, o);
+                        /* IF (0x202), reading IF on real hardware is the
+                         * same as before; on libmgba it does NOT clear
+                         * pending flags. The handoff restores IF by
+                         * writing it back byte-by-byte anyway, but a
+                         * defensive reset is fine if it disagrees. */
+                    }
                     fclose(o);
                 }
             }
