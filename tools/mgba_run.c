@@ -272,12 +272,142 @@ static unsigned game_counter_peek(struct mCore *core, unsigned long addr) {
     return c < gc_last ? gc_base + gc_last + 1 : gc_base + c;
 }
 
+/* --handoff DIR G: load a game's full state (the same format as
+ * --dump-mem-at-when writes) into CORE at game frame G.  GAME memory
+ * regions are overwritten from DIR; IWRAM skips the destination's own
+ * runtime (0x03005700-0x03007FFE) and its BIOS IRQ vector (0x03007FFC),
+ * so a port started cold can be resumed without the BIOS clear wiping
+ * its variables.  The DIR is read in two layouts:
+ *   1. DIR/<region>.bin (consolidated, useful for tests / scripts)
+ *   2. DIR/<prefix>_<g>.<region>.bin (the form --dump-mem-at-when writes)
+ * The first file that opens wins; missing files are skipped (a region
+ * may have been left out of a partial handoff). See main_:
+ * main_awaitFrame is the "end of frame G's work just happened" mark,
+ * the counter increments to G+1 once frame G finishes.  When the
+ * trace's --input resumes with the same key for G+1, both ROMs see
+ * it at the same point and continue on the same timeline. */
+static int handoff_open(const char *dir, const char *region, char *path, size_t pl) {
+    snprintf(path, pl, "%s/%s.bin", dir, region);
+    if (access(path, F_OK) == 0) return 0;
+    /* try to find a <prefix>_<g>.<region>.bin in the same dir (the form
+     * --dump-mem-at-when writes); name ends in "." + region + ".bin" */
+    char tail[64];
+    snprintf(tail, sizeof tail, ".%s.bin", region);
+    size_t tl = strlen(tail);
+    DIR *dh = opendir(dir);
+    if (!dh) return -1;
+    struct dirent *de;
+    while ((de = readdir(dh))) {
+        const char *nm = de->d_name;
+        size_t l = strlen(nm);
+        if (l < tl || strcmp(nm + l - tl, tail)) continue;
+        snprintf(path, pl, "%s/%s", dir, nm);
+        closedir(dh);
+        return 0;
+    }
+    closedir(dh);
+    return -1;
+}
+static void do_handoff(struct mCore *core, const char *dir) {
+    static const struct { const char *suffix; unsigned base, size; } rg[] = {
+        { "ewram", 0x02000000, 0x40000 }, { "iwram", 0x03000000, 0x8000 },
+        { "vram", 0x06000000, 0x18000 }, { "pal", 0x05000000, 0x400 },
+        { "oam", 0x07000000, 0x400 }, { "save", 0x0E000000, 0x8000 },
+    };
+    unsigned long n_skew = 0;
+    for (unsigned r = 0; r < sizeof rg / sizeof rg[0]; r++) {
+        char path[512];
+        if (handoff_open(dir, rg[r].suffix, path, sizeof path) != 0) {
+            fprintf(stderr, "handoff: %s not found in %s\n", rg[r].suffix, dir);
+            continue;
+        }
+        FILE *f = fopen(path, "rb");
+        if (!f) { fprintf(stderr, "handoff: cannot read %s\n", path); continue; }
+        unsigned char *buf = malloc(rg[r].size);
+        if (fread(buf, 1, rg[r].size, f) != rg[r].size) {
+            fprintf(stderr, "handoff: short read %s\n", path);
+            free(buf); fclose(f); continue;
+        }
+        fclose(f);
+        /* IWRAM is shared with the destination's IWRAM code/state: two
+         * portions must NOT be overwritten:
+         *   0x03005700-0x030079CF: the port's runtime code & globals
+         *                           (cport/gba.ld: iwram 0x03005700, size 0x22D0)
+         *   0x03007FFC-0x03007FFF: the port's BIOS IRQ vector (4 bytes, set
+         *                           by gba_boot to the lifted irq_entry)
+         * The IRQ/SYS stacks at 0x030079D0-0x03007DFF are port-owned but
+         * the destination never takes an IRQ before the handoff fires, and
+         * falling back to its own stack pattern is fine; we leave them too.
+         * The game stack lives between 0x03007E00 and where SP sits, so
+         * those bytes ride with the handoff (real game's last SP we're
+         * about to resume from). */
+        static const struct { unsigned lo, hi; } iwram_skip[] = {
+            { 0x03005700u, 0x03007E00u },
+            { 0x03007FFCu, 0x03008000u },
+        };
+        for (unsigned a = 0; a < rg[r].size; a++) {
+            unsigned addr = rg[r].base + a;
+            int skip = 0;
+            if (rg[r].base == 0x03000000) {
+                for (unsigned s = 0; s < sizeof iwram_skip / sizeof iwram_skip[0]; s++)
+                    if (iwram_skip[s].lo <= addr && addr < iwram_skip[s].hi) { skip = 1; break; }
+            }
+            if (skip) continue;
+            unsigned char prev = core->busRead8(core, addr);
+            if (prev != buf[a]) n_skew++;
+            core->busWrite8(core, addr, buf[a]);
+        }
+        free(buf);
+        fprintf(stderr, "handoff: %s wrote %lu bytes from %s\n", rg[r].suffix,
+                (unsigned long)rg[r].size, path);
+    }
+    /* Last: a few I/O registers the destination needs (LCD status, KEYINPUT,
+     * IF/IE/IME). */
+    char path[512];
+    if (handoff_open(dir, "ior", path, sizeof path) == 0) {
+        FILE *f = fopen(path, "rb");
+        if (f) {
+            unsigned char buf[20];
+            if (fread(buf, 1, sizeof buf, f) == sizeof buf) {
+                static const unsigned rs[] = { 0x04000004u, 0x04000130u, 0x04000202u, 0x04000200u, 0x04000208u };
+                for (unsigned r = 0; r < sizeof rs / sizeof rs[0]; r++)
+                    for (unsigned b = 0; b < 4; b++)
+                        core->busWrite8(core, rs[r] + b, buf[r * 4 + b]);
+            }
+            fclose(f);
+        }
+    }
+    fprintf(stderr, "handoff: %lu bytes changed across all regions\n", n_skew);
+}
+
 int main(int argc, char **argv) {
     const char *rom = NULL, *input = NULL, *shots = NULL, *bios = NULL, *dump = NULL;
     unsigned frames = 600, every = 0, bios_intro = 0;
     unsigned long marker = 0, guest = 0, game_frame_addr = 0, until_game_frame = 0, digest_every = 0;
     unsigned long stall_frames = 3600;   /* with --until-game-frame: stop after a minute without a game frame */
     unsigned long dump_at[64]; unsigned ndump_at = 0; unsigned long long dumped_at = 0; const char *dump_at_prefix = NULL;
+    /* --dump-mem-at-when G1,G2,... PREFIX: at those game frames (start of HW
+     * frame where when == G), write the game's full state (EWRAM, IWRAM,
+     * VRAM, palette, OAM, SRAM, and a small block of key I/O registers)
+     * as PREFIX_<g>.{ewram,iwram,vram,pal,oam,save,ior}.bin, so a
+     * pair-replay diff (tools/handoff_diff.py) can list differing addresses
+     * with bn6f symbols and classify them.  Same file naming the --handoff
+     * source reads, so one run on the original produces the dir the port
+     * reads. */
+    unsigned long dump_mem_at[64]; unsigned ndump_mem_at = 0; unsigned long long dumped_mem_at = 0; const char *dump_mem_at_prefix = NULL;
+    /* --handoff DIR G: pre-load the original's full state from the same file
+     * format --dump-mem-at-when writes (DIR/<...>.bin), at game frame G
+     * (start of HW frame where when == G): GAME memory regions only
+     * (EWRAM, game's IWRAM, game stack, VRAM, palette, OAM, SRAM) are
+     * overwritten.  The port's runtime IWRAM (0x03005700-0x03007EFE) and
+     * its BIOS IRQ vector (0x03007FFC) are left alone.  Any --poke-at
+     * writes whose game frame is < G are skipped (the original's poke_gs
+     * are "the trace replay's frame counter when pc == poke_pc", and the
+     * counter at --handoff G is exactly G).  Used to start a long route
+     * mid-way from the original. */
+    const char *handoff_dir = NULL;
+    unsigned long handoff_g = 0;
+    int handoff_done = 0;
     /* --profile-game G0 G1: cycle profile from game frame G0 to G1 (needs
      * --game-frame-addr); input keeps following the trace while profiling. */
     unsigned long pg_from = 0, pg_to = 0;
@@ -393,6 +523,15 @@ int main(int argc, char **argv) {
             for (char *t = strtok(argv[++i], ","); t && ndump_at < 64; t = strtok(NULL, ","))
                 dump_at[ndump_at++] = strtoul(t, 0, 0);
             dump_at_prefix = argv[++i];
+        }
+        else if (!strcmp(argv[i], "--dump-mem-at-when")) {   /* G1,G2,... PREFIX: full game state at those game frames */
+            for (char *t = strtok(argv[++i], ","); t && ndump_mem_at < 64; t = strtok(NULL, ","))
+                dump_mem_at[ndump_mem_at++] = strtoul(t, 0, 0);
+            dump_mem_at_prefix = argv[++i];
+        }
+        else if (!strcmp(argv[i], "--handoff")) {            /* DIR G: write into the game state at game frame G */
+            handoff_dir = argv[++i];
+            handoff_g = strtoul(argv[++i], 0, 0);
         }
         else if (!strcmp(argv[i], "--quiet")) g_verbose_log = 0;
         else if (!strcmp(argv[i], "--game-frame-addr")) game_frame_addr = strtoul(argv[++i], 0, 0);
@@ -814,6 +953,66 @@ int main(int argc, char **argv) {
                     fwrite(&v, 4, 1, o);
                 }
             fclose(o);
+        }
+        /* --dump-mem-at-when: the same moment as a digest (G at start of HW
+         * frame), but the full game state, keyed by game frame for
+         * tools/handoff_diff.py to name differing addresses with bn6f
+         * symbols and --handoff to load into a port. */
+        for (unsigned k = 0; k < ndump_mem_at && game_frame_addr; k++) {
+            if ((dumped_mem_at >> k) & 1 || when < dump_mem_at[k])
+                continue;
+            dumped_mem_at |= 1ull << k;
+            unsigned long g = dump_mem_at[k];
+            static const struct { const char *suffix; unsigned base, size; } rg[] = {
+                { "ewram", 0x02000000, 0x40000 }, { "iwram", 0x03000000, 0x8000 },
+                { "vram", 0x06000000, 0x18000 }, { "pal", 0x05000000, 0x400 },
+                { "oam", 0x07000000, 0x400 }, { "save", 0x0E000000, 0x8000 },
+            };
+            for (unsigned r = 0; r < sizeof rg / sizeof rg[0]; r++) {
+                char path[512];
+                snprintf(path, sizeof path, "%s_%lu.%s.bin", dump_mem_at_prefix, g, rg[r].suffix);
+                FILE *o = fopen(path, "wb");
+                if (!o) { perror(path); break; }
+                for (unsigned a = 0; a < rg[r].size; a += 4) {
+                    uint32_t v = core->busRead32(core, rg[r].base + a);
+                    fwrite(&v, 4, 1, o);
+                }
+                fclose(o);
+            }
+            /* I/O registers a port needs to see the same way the original
+             * had them: LCD status (VBlank flag), KEYINPUT, IF (pending),
+             * IE (enabled), IME (master). The other I/O is reset on the
+             * emulator to the same value both ways; their layout is fixed
+             * for one frame's worth of state. Packed little-endian so an
+             * ad-hoc diff sees the same bytes either side. */
+            {
+                char path[512];
+                snprintf(path, sizeof path, "%s_%lu.ior.bin", dump_mem_at_prefix, g);
+                FILE *o = fopen(path, "wb");
+                if (o) {
+                    const struct { unsigned a; } rs[] = {
+                        { 0x04000004 }, { 0x04000130 }, { 0x04000202 }, { 0x04000200 }, { 0x04000208 },
+                    };
+                    for (unsigned r = 0; r < sizeof rs / sizeof rs[0]; r++)
+                        for (unsigned b = 0; b < 4; b++)
+                            fputc(core->busRead8(core, rs[r].a + b), o);
+                    fclose(o);
+                }
+            }
+            printf("dump-mem-at-when game=%lu hw=%u -> %s_%lu.*.bin\n", g, fr, dump_mem_at_prefix, g);
+            fflush(stdout);
+        }
+        /* --handoff G: at the start of the first HW frame whose game counter
+         * reads G, overwrite the game's regions from handoff_dir.  Pokes
+         * before G are skipped from here on (next_poke is advanced). */
+        if (handoff_dir && !handoff_done && when == handoff_g && game_frame_addr) {
+            fprintf(stderr, "handoff: applying at game=%u hw=%u from %s\n", when, fr, handoff_dir);
+            do_handoff(core, handoff_dir);
+            handoff_done = 1;
+            while (next_poke < npokes && poke_gs[next_poke] < handoff_g) {
+                fprintf(stderr, "handoff: skip poke game=%lu spec=%s\n", poke_gs[next_poke], poke_specs[next_poke]);
+                next_poke++;
+            }
         }
         core->setKeys(core, ~keyinput & 0x3FF);
         if (prof_steps && fr == prof_from) {
