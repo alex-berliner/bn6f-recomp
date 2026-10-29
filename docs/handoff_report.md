@@ -176,7 +176,7 @@ tools/mgba_run.c    +~60 lines   (--dump-mem-at-when, --handoff, do_handoff, 16-
 tools/lockstep.sh   +88 lines    (--from/--to section mode)
 tools/ramdump.sh    new          (host-agnostic orig+port dumper)
 tools/handoff_diff.py new       (per-region diff with bn6f symbol classify)
-tools/summarize.py  new          (cross-route compact totals)
+tools/handoff_summary.py new          (cross-route compact totals)
 ```
 
 ## Round 3 — deeper diagnosis (this commit)

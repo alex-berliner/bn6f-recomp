@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""summarize.py — print a comparison table of orig-vs-port at every captured
+"""handoff_summary.py — print a comparison table of orig-vs-port at every captured
 game frame across multiple routes.
 
-Usage: summarize.py DIR_PREFIX ROUTE1 [ROUTE2 ...]
+Usage: handoff_summary.py DIR_PREFIX ROUTE1 [ROUTE2 ...]
   Each DIR is a ramdump.sh output dir like /tmp/ramdump_story1/.
   Each ROUTE is a label chosen for printing.
 
