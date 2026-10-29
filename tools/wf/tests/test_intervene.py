@@ -14,6 +14,7 @@ from wf.tools.intervene import (AnchorDiff, FunctionInfo, InterventionKind, OamE
                                  Route, RouteName, evaluate_predicate, find_function, load_anchors,
                                  make_predicate, patch_bytes, patch_for, patch_rom, return_k_bytes,
                                  select_intervene_targets)
+from wf.types import FrameCount
 
 ROM = Path("/home/alex/Code/recomp/bn6f/bn6f.gba")
 BIOS = Path("/home/alex/Code/recomp/roms/gba_bios.bin")
@@ -666,11 +667,72 @@ def test_state_stride_keeps_the_state_count_bounded() -> None:
 
 
 def test_state_paths_are_per_route() -> None:
+    """Cache path is keyed by both route name AND a fingerprint of the route's recording
+    files: `build/intervene/states/ROUTE/FINGERPRINT/ROUTE_%07d.state`. Two routes never
+    share a fingerprint, so states from one cannot replace the other's; a route whose
+    recording is re-imported (beastsp on 2026-10-24) gets a fresh sub-directory."""
     from wf.routes import route_named
     a = it.state_path_at(route_named(RouteName("battles1")), 32)
     b = it.state_path_at(route_named(RouteName("wander")), 32)
-    assert a.parent.name == "battles1" and b.parent.name == "wander"
+    assert a.parent.parent.name == "battles1" and b.parent.parent.name == "wander"
+    # the sub-directory is the 12-hex fingerprint
+    assert len(a.parent.name) == 12 and len(b.parent.name) == 12
+    assert a.parent.name != b.parent.name
     assert a != b
+
+
+def test_route_fingerprint_is_stable_for_an_unchanged_recording() -> None:
+    """A route whose recording files do not change keeps the same fingerprint across
+    calls; `build/intervene/states/ROUTE/<fingerprint>/` is reused."""
+    from wf.routes import route_named
+    route = route_named(RouteName("battles1"))
+    same1 = it.route_fingerprint(route)
+    same2 = it.route_fingerprint(route)
+    assert same1 == same2
+    assert len(same1) == it.FINGERPRINT_LEN
+    assert all(ch in "0123456789abcdef" for ch in same1)
+    assert it.route_states_dir(route).name == same1
+
+
+def test_route_fingerprint_changes_when_a_recording_changes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The whole point of the fingerprint: a re-imported route (beastsp was rebuilt on
+    2026-10-24) gets a fresh cache directory, so `ensure_route_states` does not silently
+    replay against the OLD recording's states. Driven by two fingerprinted runs on the
+    same named route, with a fake fingerprint function returning different hashes."""
+    from wf.routes import route_named
+    route = route_named(RouteName("battles1"))
+    original = "aabbccddeeff"
+    revised = "001122334455"
+    monkeypatch.setattr(it, "route_fingerprint", lambda r: original)
+    same_dir = it.route_states_dir(route)
+    monkeypatch.setattr(it, "route_fingerprint", lambda r: revised)
+    other_dir = it.route_states_dir(route)
+    assert same_dir.name == original and other_dir.name == revised
+    # the parent (route-named) is the same; the leaf (fingerprint) is different
+    assert same_dir.parent == other_dir.parent == it.STATES_DIR / "battles1"
+
+
+def test_cached_frames_is_invisible_to_a_recording_change(monkeypatch: pytest.MonkeyPatch,
+                                                          tmp_path: Path) -> None:
+    """`cached_frames` is a glob over `STATES_DIR/ROUTE/FINGERPRINT/*.state`: a state
+    written under one recording's fingerprint is never picked by a re-imported route
+    whose fingerprint differs. The state file stays on disk (it is the previous
+    recording's; nothing reads it any more), but the live route will not see it."""
+    from wf.routes import route_named
+    route = route_named(RouteName("wander"))
+    monkeypatch.setattr(it, "route_fingerprint", lambda r: "v1-old-record")
+    v1_dir = it.STATES_DIR / "wander" / "v1-old-record"
+    v1_dir.mkdir(parents=True, exist_ok=True)
+    (v1_dir / "wander_0000064.state").write_bytes(b"fake-state-bytes")
+    frames_v1 = it.cached_frames(route)
+    # the recording is rebuilt; new fingerprint -> new (empty) directory
+    monkeypatch.setattr(it, "route_fingerprint", lambda r: "v2-new-record")
+    frames_v2 = it.cached_frames(route)
+    assert 64 in frames_v1
+    assert frames_v2 == ()
+    # cleanup of the fake dir so future tests are not disturbed
+    import shutil                                               # noqa: PLC0415
+    shutil.rmtree(v1_dir, ignore_errors=True)
 
 
 # ── hang evidence ──────────────────────────────────────────────────────────

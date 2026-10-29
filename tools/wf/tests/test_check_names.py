@@ -520,6 +520,111 @@ def test_untested_and_unknown_outcomes_do_not_count_as_held() -> None:
         assert ActiveResult(outcome=outcome).tested
 
 
+def test_hung_and_unreached_outcomes_are_not_held() -> None:
+    """L3 is granted on `ActiveResult.held`; the gate's true_held / swapped_held are counted
+    off `held`. A prediction whose patched run wedged the game (outcome='hung') or whose
+    route never ran the function (outcome='unreached') is real evidence about the name --
+    'failed' or 'unreached' -- but it is NEVER 'held'."""
+    for outcome in ("held",):
+        assert ActiveResult(outcome=outcome).held is True
+    for outcome in ("failed", "hung", "unreached", "indeterminate", "nondeterministic",
+                    "none", "error"):
+        assert ActiveResult(outcome=outcome).held is False, outcome
+
+
+def test_the_calibration_holds_no_swap_for_hung_or_unreached_predictions() -> None:
+    """The prediction gate is `swapped_predictions >= 1 and swapped_held / swapped_predictions < 0.15`.
+    When the only tested prediction is hung (a real wedge that came from swapping), the gate
+    reads `swapped_held = 0 / 1 = 0 < 0.15` and says OK -- but the actual signal is 'the patched
+    run wedged', not 'a non-matching function's prediction held'. Concretely: when a swapped
+    prediction's outcome is 'hung' or 'unreached', `true_held` and `swapped_held` correctly
+    read 0 from those outcomes, which is the gate's contract for 'this outcome is not held'."""
+    pass_check = ClaimCheck(claim=WritesRam(symbol_prefix="oX"), status="pass",
+                            observed=ToolMessage(""))
+    fail_check = ClaimCheck(claim=WritesRam(symbol_prefix="oX"), status="fail",
+                            observed=ToolMessage(""))
+    true_held = ActiveResult(outcome="held", route=RouteName("wander"),
+                             window=120, first_frame=100)
+    # a swapped prediction that hung OR was unreached: not held, not in the numerator
+    swapped_hung = ActiveResult(outcome="hung", route=RouteName("wander"),
+                                window=120, first_frame=100)
+    swapped_unreached = ActiveResult(outcome="unreached")
+    cal = calibration([(pass_check,)], [(pass_check,)],
+                      [true_held], [swapped_hung, swapped_unreached])
+    # only the matching hint 'held' counts in the held columns
+    assert cal.true_held == 1
+    assert cal.swapped_held == 0
+    # neither outcome 'hung' nor outcome 'unreached' was attributed to the function
+    assert cal.swapped_prediction_rate == 0
+    assert cal.predictions_ok is True        # 0 < 0.15 holds, on a clean signal
+
+
+def test_a_return_k_prediction_runs_through_intervene_with_kind_and_k() -> None:
+    """The brief asks the active half to drive `wf intervene` with kind='return' AND k=K.
+    Earlier versions crashed when the active half passed a string like 'return:0' as kind
+    alone; the fixed intervene takes the validated kind='return' alongside k=N. We
+    monkeypatch `intervene_once` so we can see exactly the (kind, k) pair the active half
+    passed -- testing the kind-property contract without a real `wf intervene` run."""
+    import threading                                  # noqa: PLC0415
+    seen: list[tuple[str, int | None]] = []
+    lock = threading.Lock()
+
+    def fake_once(*, name: FunctionName, address_hex: str, route: RouteName, kind: str,
+                  k: int | None = None, window: int = cn.DEFAULT_FRAMES,
+                  out_dir: Path, frames_window: int = cn.DEFAULT_FRAMES_WINDOW) -> Observation:
+        with lock:
+            seen.append((kind, k))
+        if kind == "probe":
+            return Observation(first_frame=100, route=route)
+        # the patched run hung -> the active half must produce outcome='hung', not 'held'
+        return Observation(record=run_record(first_frame=100, hung=True, anchors=(diff("oam"),)),
+                           first_frame=100, route=route)
+
+    action = DoIt(intervention="return:K", k=0,
+                  predicates=("differs(anchor=oam, within=60)",), window=120)
+    assert action.kind == "return" and action.k == 0
+    # Run a real call into the fake: the active half will probe, then null-control,
+    # then the prediction. The contract is that (kind, k) is what reaches `wf intervene`.
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(cn, "intervene_once", fake_once)
+    try:
+        obs = cn.intervene_once(name=FunctionName("foo"), address_hex="0x08000000",
+                                route=RouteName("battles1"), kind=action.kind, k=action.k,
+                                window=120, out_dir=Path("/tmp/none"))
+    finally:
+        monkey.undo()
+    assert seen == [("return", 0)]                       # kind='return', k=0 -> one call
+    assert obs.record is not None
+    # And: a hung record renders as 'hung' and reads held=False, not 'held'.
+    result = cn.judge_prediction(action, obs.record, None, route=RouteName("battles1"))
+    assert result.outcome == "hung" and result.held is False
+
+
+def test_a_hung_outcome_serialises_with_a_problem_carrying_the_evidence() -> None:
+    """A patched run that wedged the game is real evidence -- 'the function must run'. The
+    checker writes that evidence into the problem so a human reader of `calibration.md` or
+    a per-name JSON can see why the prediction did not hold."""
+    action = DoIt(intervention="return:K", k=1, predicates=("differs(anchor=oam, within=60)",),
+                  window=120)
+    result = cn.judge_prediction(action, run_record(hung=True, anchors=()),
+                                 Control(route=RouteName("battles1"), window=120,
+                                         deterministic=True, hung=False))
+    assert result.outcome == "hung"
+    assert result.problem is not None and "wedged" in str(result.problem)
+    assert result.held is False
+
+
+def test_an_unreached_outcome_serialises_with_a_problem_carrying_the_evidence() -> None:
+    """A route the function never runs on, even with the cached-states search going from
+    frame 1 to the route's end, is unreached: the active half never over-hand it to 'held'."""
+    action = DoIt(intervention="skip", predicates=("differs(anchor=oam, within=60)",),
+                  window=120)
+    result = cn.judge_prediction(action, run_record(first_frame=None), None)
+    assert result.outcome == "unreached"
+    assert result.held is False
+    assert result.problem is not None and ("never" in str(result.problem) or "not" in str(result.problem))
+
+
 def test_the_gate_counts_each_claim_kind_separately() -> None:
     true_checks = (ClaimCheck(claim=WritesRam(symbol_prefix="oX"), status="pass",
                               observed=ToolMessage("")),

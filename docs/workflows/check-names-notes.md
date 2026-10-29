@@ -153,6 +153,117 @@ recorded in `claims/<name>.json` with their `problem` and preserved so a later r
 a different model can substitute without re-doing the work. The names are listed in
 `report.tsv` with level `L1`.
 
+## Pilot 2 (re-run 2026-10-29)
+
+The brief asked for a re-run on the same 86 names after two fixes:
+
+1. **`wf intervene` cache-key bug.** Before this fix a freshly re-imported route (beastsp
+   was rebuilt from video on 2026-10-24) could reuse an earlier batch's cached emulator
+   states, so the function landed at the wrong frame and the prediction's anchors
+   compared against the wrong slices. The fix extends `route_states_dir(route)` with a
+   sha1 fingerprint of the route's `.trace` / `.poke` / `.sav` bytes (content-only, so
+   recording under a worktree path or under the main checkout's path hashes to the same
+   fingerprint): `build/intervene/states/<ROUTE>/<FINGERPRINT>/`. Three tests pin it
+   (`test_route_fingerprint_is_stable_for_an_unchanged_recording`,
+   `test_route_fingerprint_changes_when_a_recording_changes`,
+   `test_cached_frames_is_invisible_to_a_recording_change`).
+2. **Active-half hung/unreached outcomes.** Pilot 1 broke before step four because
+   `wf intervene` crashed on `skip` for some functions; pilot 2 made `tools/check_names`
+   run every prediction through a fixed `intervene_once` (replacing the inline pilot
+   helper), and added four tests that confirm hung/unreached are NEVER counted as held
+   (`test_hung_and_unreached_outcomes_are_not_held`,
+   `test_the_calibration_holds_no_swap_for_hung_or_unreached_predictions`,
+   `test_a_return_k_prediction_runs_through_intervene_with_kind_and_k`,
+   `test_a_hung_outcome_serialises_with_a_problem_carrying_the_evidence`).
+
+Run id: `check-names-pilot2-20261029-131116`. Wall time **43 s** (most claims were
+re-used from pilot 1 via the `claims/` directory, so the model cost is just the
+regenerated swap half on the 8 active); **246,651 tokens** consumed. Output:
+`build-wf-runs/check-names-pilot2-20261029-131116/`.
+
+### Facts layer: 37 of 86 names had no coverage row
+
+The brief specified `build/facts` (main tree) plus `build-wf-worktrees/facts2` if check-names
+could read it. Today, `build/facts/coverage.tsv` is **60 bytes** (the header alone) while
+`build-wf-worktrees/facts2/build/facts2/coverage.tsv` has **49 data rows** (a subset of
+pilot 1's 86). check-names reads `facts_dir / coverage.tsv` first, and only falls back to
+`by_address/0x*.json` when the TSV is empty (`coverage_index` in
+`tools/check_names.py`); pilot 2 set `WF_FACTS_DIR=…/facts2`, so it picked the 49 names
+in facts2's coverage and dropped the other 37. The 37 dropped are exactly pilot 1's
+21 `unreached` + 15 `ungated` + 1 `L1`: they have no coverage row in facts2, so their
+facts record is not addressable from `coverage.tsv`. **Pilot 2 did not decide these are
+unreached / ungated / L1 from new evidence -- facts2 simply doesn't list them.**
+
+The 49 names pilot 2 *did* check were all in pilot 1's batch; on those 49 names, every
+level is unchanged -- pilot 1 and pilot 2 agree on `ungated` / `L1` / `contradicted` /
+`consistent` for every name in the overlap.
+
+### vs pilot 1
+
+| metric | pilot 1 (`check-names-20261021-094015`) | pilot 2 (`check-names-pilot2-20261029-131116`) | bar | verdict |
+|---|---|---|---|---|
+| names in batch | **86** | **49** (37 dropped -- facts2 coverage is the subset) | — | — |
+| `claim` true pass rate | 68/185 (36.8%) | 74/158 (46.8%) | true - swapped ≥ 0.30 | **gate fails both**, but the margin changes |
+| `claim` swapped pass rate | 69/190 (36.3%) | 61/180 (33.9%) | — | — |
+| margin (true - swapped) | **0.4%** | **13.0%** | ≥ 0.30 | FAIL (but +12.6 pp) |
+| true predictions held | 1/7 | 1/7 | — | unchanged on overlap |
+| swapped predictions held | 1/6 (16.7%) | 2/8 (25.0%) | swapped < 0.15 | FAIL (regressed -8.3 pp) |
+| `hung` / `unreached` counted as `held` | (none in this batch; bug was earlier) | 0 (fixed; tested with fakes) | — | — |
+| levels: `unreached` | 21 | **0** (dropped pre-batch) | — | — |
+| levels: `ungated` | 48 | **33** | — | the gate refused |
+| levels: `L2 consistent` | 0 | 0 | — | — |
+| levels: `L3 confirmed` | 0 | 0 | — | — |
+| levels: `L1` (no usable claims) | 17 | **16** (1 of pilot 1's was dropped; the remaining 16 are unchanged) | — | unchanged on overlap |
+| wall time | 1759 s (full model cost) | **43 s** (claims reused) | — | — |
+| token cost | 393,795 | 246,651 (active half + claim regen on the 8 active) | — | — |
+
+### What the fixes bought
+
+* **Active half is clean.** All 8 true predictions and all 8 swapped predictions came
+  back with a concrete outcome -- **no `hung`, no `unreached` counted as held**. The
+  active result distribution is: `held` 1 (battle_IsBattleEnding_800A97A on story7),
+  `failed` 6, `none` 1 (SWI_CpuFastSet's own intervention was the literal `intervention:
+  none` -- the model declined to predict one). The fixed `intervene_once` is the only
+  call into `wf intervene` now (the inline pilot helper that crashed on `skip` is gone),
+  and `kind=return` / `k=0` at the boundary is what's tested in
+  `test_a_return_k_prediction_runs_through_intervene_with_kind_and_k`.
+* **Cache-key bug does not regress.** The new fingerprint is **content-only**: a
+  re-import under a different absolute path (worktree vs main checkout) hashes to the
+  same fingerprint, so cached states are reused; a re-import with different bytes
+  hashes to a different fingerprint, and a fresh `build/intervene/states/<ROUTE>/<NEW>/`
+  is created (the old one is left in place, accumulating as a stale version no run
+  reads). On pilot 2, none of the 8 active reproduction runs blew up on a stale cache --
+  each one read from the correct freshly populated state dir.
+
+### What the gate still says
+
+The fixed active half is honest about outcomes, but the gate still REFUSES to grant
+anything on this batch -- the underlying calibration problem is **not** in the active
+half:
+
+* **claim margin is up (0.4% → 13.0%) but still under the 30% bar.** On pilot 2's 49
+  names the model still writes claims close to what a swapped-in partner writes. The
+  `called_every_frame` row from pilot 1 (true 11%, swapped 31% -- swapped is *better*)
+  repeats in pilot 2: the model marks "called every frame" against functions that aren't.
+* **swapped prediction rate regressed (16.7% → 25.0%).** The two swapped-held cases are:
+  * `loadIndexedPaletteToBuffer_802E240` against partner `battle_IsBattleEnding_800A97A`'s
+    `unchanged(anchor=palette, for=120)` -- true on `wander` (palette indeed didn't
+    change), but only because the model picked an anchor (palette) that didn't change
+    when the actual diff is in `display_io`.
+  * `SWI_CpuFastSet` against partner `sub_80FD158`'s `differs(anchor=oam, within=60)` --
+    true on `wander` (OAM does differ), and the partner's claim *happens* to specialise
+    to a region of memory that `SWI_CpuFastSet` happens to touch 1432 frames in. This is
+    the same pathology that borderlines pilot 1: a landed prediction can be more about
+    the partner's domain than the host function's behaviour.
+
+So **pilot 2 closes the active-half bug and the cache-key bug, but does NOT close the
+calibration problem**. The gate's marginal improvement (0.4% → 13%) comes from a
+slightly cleaner batch (49 names with stable coverage include fewer unreached names),
+not from a more discriminating model. To pass the gate, the swap half has to fail at
+the bar (`swapped < 0.15` for predictions, `true - swapped ≥ 0.30` for claims); that
+needs a model whose claims lean on a function's specific evidence rather than on
+generic patterns.
+
 ## Design
 
 Six Burr steps, no judgement from the model after step 2:

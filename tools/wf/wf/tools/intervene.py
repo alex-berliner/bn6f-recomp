@@ -790,14 +790,56 @@ def state_stride(route: Route) -> int:
     return stride
 
 
+FINGERPRINT_LEN = 12                                          # sha1-prefix length used as the cache-key suffix
+
+
+def route_fingerprint(route: Route) -> str:
+    """A short, stable fingerprint of the route's recording files (`build/traces/ROUTE.trace`,
+    `ROUTE.poke`, `ROUTE.sav`). The cache directory below uses it so a freshly re-imported
+    route (beastsp was rebuilt from video on 2026-10-24) cannot reuse the previous batch's
+    cached emulator states -- those states were taken against the OLD route's bytes, and
+    replaying them against the NEW route can land the function at the wrong frame.
+
+    Files are hashed in a fixed order with a sentinel between them so the same route cannot
+    end up with the same fingerprint as a different one. Missing files contribute nothing
+    (so a re-import that lacks the optional `.sav` still hashes the recording). The hash
+    covers file CONTENTS, not absolute paths: the same recording under a worktree's path
+    or under the main checkout's path must hash to the same fingerprint, so a re-import
+    of the same bytes does not invalidate cached states. The route NAME is mixed in as a
+    domain separator so two routes can never share a fingerprint even on identical bytes."""
+    import gamepaths                                                     # noqa: PLC0415
+    import hashlib                                                       # noqa: PLC0415
+    h = hashlib.sha1()
+    h.update(route.name.encode("utf-8"))
+    h.update(b"\0")
+    files = (route.trace,
+             Path(gamepaths.TRACES) / f"{route.name}.poke",
+             Path(gamepaths.TRACES) / f"{route.name}.sav")
+    for path in files:
+        h.update(path.name.encode("utf-8"))
+        h.update(b"\0")
+        if path.exists():
+            with path.open("rb") as fh:
+                while True:
+                    chunk = fh.read(1 << 20)
+                    if not chunk:
+                        break
+                    h.update(chunk)
+            h.update(b"\xff")
+    return h.hexdigest()[:FINGERPRINT_LEN]
+
+
 def route_states_dir(route: Route) -> Path:
-    """build/intervene/states/ROUTE/ -- one directory per recorded route, shared by
-    every function, every intervention and every run of that route."""
-    return STATES_DIR / str(route.name)
+    """`build/intervene/states/ROUTE/FINGERPRINT/` -- one directory per recorded route *version*,
+    shared by every function, every intervention and every run on that version. The version
+    is `route_fingerprint(route)`: re-importing a route under the same name produces a
+    different fingerprint, so a different set of cached states is used (the old directory
+    is left alone, accumulating as a stale version that nothing reads)."""
+    return STATES_DIR / str(route.name) / route_fingerprint(route)
 
 
 def state_path_at(route: Route, frame: int) -> Path:
-    """`.../states/ROUTE/ROUTE_%07d.state`. Seven digits, because that is what
+    """`.../states/ROUTE/FINGERPRINT/ROUTE_%07d.state`. Seven digits, because that is what
     `mgba_run --save-state-every` writes (`"%s_%07u.state"`, tools/mgba_run.c) -- the
     name has to agree with the bulk pass's output or nothing is reused."""
     return route_states_dir(route) / f"{route.name}_{int(frame):07d}.state"
