@@ -310,3 +310,64 @@ cycle budget to the original's; that's a `cport/runtime` task
 (measure cycle delta in `main_awaitFrame`, hold an off-by-N for
 the VBlank-end window). The symptom for the user was already
 visible in the round-2 trace and hasn't changed.
+
+## Round 5 — dump and handoff fire at the same program point
+
+**Cause (round 4):** both fired at the top of the per-HW-frame loop, i.e.
+wherever the main loop happened to be at a hardware frame boundary. The
+original and the port are there at different points of the game loop (port:
+sprites for the frame already built, records allocated; original: not yet).
+
+**Fix (`tools/mgba_run.c`):** when the counter reads G-1 at the top of a HW
+frame and a `--dump-mem-at-when G` / `--handoff DIR G` is pending, that
+frame is stepped one instruction at a time and left right after the
+instruction that made the counter read G; dump / handoff run there, then the
+frame is finished with the keys and poke timeline of frame G-1.
+
+**Where the counter is written:** GAME_FRAME_ADDR 0x020093D4 points to the
+u16 at 0x0200A210. It is incremented in `main_` (bn6f 0x08000306..08000308:
+`ldrh/adds/strh`), in the main loop (cpsr mode 0x1f), once per game step,
+right after `main_updateJoypad` and before `CapIncrementGameTimeFrames`, the
+game-state update and the sprite building. It is not written by the VBlank
+IRQ (that one counts 0x0200A870). The port runs the same statement of the
+same `main_` loop, so "counter just became G" is the same program point on
+both sides: after joypad update, before this step's game logic. Measured
+trigger: original pc=0800030a sp=03007e00; port pc=08a186fa sp=03007920
+(lr=0800031c), both user/system mode, main loop.
+
+**IWRAM skip list:** unchanged and still right. It skips 0x03005700..0x03008000
+(port runtime, its stacks, BIOS IRQ vector). The port's sp at the handoff is
+0x03007920, inside the skipped range, so the port's live stack is not
+written. (The original's sp is 0x03007e00 and grows down through the same
+range, which is also not copied.)
+
+**Pre-handoff diff, story5 G=30000** (`tools/pre_handoff.sh` + `pre_handoff_diff.py`,
+original dump vs port memory before the handoff writes anything):
+
+| region | differing bytes |
+|---|---|
+| VRAM, PAL, OAM, SAVE | 0 |
+| IWRAM game (outside sound) | 0 |
+| EWRAM game | 0 |
+| EWRAM sound (0x02007E00..0x02033600) | 63 (m4a state) |
+| IWRAM sound (0x030045C0..0x03005700: iSoundInfo, mix buffer, iCgbChannels) | 3221 |
+| IWRAM port runtime/stack/vector (skipped by the handoff) | 9038 / 33 / 2 |
+
+All game-state differences of round 4 (sprite pool, records, counters,
+0x03001xxx..0x0300258x) are gone. What still differs is the sound engine
+(m4a), which runs from the VBlank/timer-DMA schedule, not the main loop.
+
+**Section results** (germandell, ROM check/beastfix.gba, fresh LOCKSTEP_CACHE
+cache-v6-*):
+
+| route | section | checkpoints | mismatches | save |
+|---|---|---|---|---|
+| story5 | 30000..52712 | 1136 | 0 | no FAIL |
+| story1 | 5000..9700 | 236 | 0 | no FAIL |
+| battles1 | 5000..15000 | 501 | 0 | no FAIL |
+| beastsp | 140000..160000 | 1001 | 2 (g=141200 and g=142640, vram only) | no FAIL |
+
+beastsp: the two mismatching checkpoints are identical to the cold run (the
+same two g, checked with a cold port replay against the same original
+digests: `[141200, 142640]`). 142640 is a second one-frame blip of the same
+kind as 141200, not caused by the handoff.

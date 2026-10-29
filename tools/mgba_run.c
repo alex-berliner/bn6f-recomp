@@ -485,6 +485,13 @@ int main(int argc, char **argv) {
      * source reads, so one run on the original produces the dir the port
      * reads. */
     unsigned long dump_mem_at[64]; unsigned ndump_mem_at = 0; unsigned long long dumped_mem_at = 0; const char *dump_mem_at_prefix = NULL;
+    /* --dump-pre-handoff PREFIX: at the START of frame G (when == handoff_g),
+     * BEFORE do_handoff writes anything, dump the destination's bus state to
+     * PREFIX_<G>.{ewram,iwram,vram,pal,oam,save,ior}.bin.  Combine with
+     * --handoff DIR G to compare the destination's own cold-accumulated
+     * state against the original's dump at the same moment, region by
+     * region. */
+    const char *dump_pre_handoff_prefix = NULL;
     /* --handoff DIR G: pre-load the original's full state from the same file
      * format --dump-mem-at-when writes (DIR/<...>.bin), at game frame G
      * (start of HW frame where when == G): GAME memory regions only
@@ -622,6 +629,9 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--handoff")) {            /* DIR G: write into the game state at game frame G */
             handoff_dir = argv[++i];
             handoff_g = strtoul(argv[++i], 0, 0);
+        }
+        else if (!strcmp(argv[i], "--dump-pre-handoff")) {  /* PREFIX: dump the destination's bus state at the moment do_handoff fires, BEFORE the overwrite */
+            dump_pre_handoff_prefix = argv[++i];
         }
         else if (!strcmp(argv[i], "--quiet")) g_verbose_log = 0;
         else if (!strcmp(argv[i], "--game-frame-addr")) game_frame_addr = strtoul(argv[++i], 0, 0);
@@ -953,6 +963,13 @@ int main(int argc, char **argv) {
 
     unsigned keyinput = 0x3FF;
     unsigned stall_game = ~0u, stall_since = 0;
+    /* Mid-frame trigger for --dump-mem-at-when / --handoff: the frame in
+     * which the game counter goes G-1 -> G is stepped one instruction at a
+     * time and the loop is left right after the instruction that made the
+     * counter read G; the next iteration then runs the dump/handoff blocks
+     * at that program point (trig_resume), and the rest of the frame is run
+     * on, still with the keys and poke timeline of frame G-1. */
+    int trig_resume = 0;
     for (unsigned fr = 0; fr < frames; fr++) {
         /* Input timeline: hardware frames, or (with --game-frame-addr) the
          * game's own frame counter, so builds of different speed see the
@@ -1007,7 +1024,9 @@ int main(int argc, char **argv) {
                 printf(" %02x", core->busRead8(core, watch_addr + k));
             printf("\n");
         }
-        while (evi < nev && evs[evi].frame <= when)
+        int resumed = trig_resume;
+        trig_resume = 0;
+        while (!resumed && evi < nev && evs[evi].frame <= when)
             keyinput = evs[evi++].keyinput;
         /* At each checkpoint game frame (start of the frame, before input is
          * read), print a digest of EWRAM, palette, VRAM and OAM. */
@@ -1044,8 +1063,10 @@ int main(int argc, char **argv) {
                 }
             fclose(o);
         }
-        /* --dump-mem-at-when: the same moment as a digest (G at start of HW
-         * frame), but the full game state, keyed by game frame for
+        /* --dump-mem-at-when: taken in the main loop right after the game
+         * counter was incremented to G (see the trig_t stepping below: the
+         * strh at 0x08000308 in main_, before CapIncrementGameTimeFrames), the
+         * same program point --handoff uses; the full game state, keyed by game frame for
          * tools/handoff_diff.py to name differing addresses with bn6f
          * symbols and --handoff to load into a port. */
         for (unsigned k = 0; k < ndump_mem_at && game_frame_addr; k++) {
@@ -1098,6 +1119,42 @@ int main(int argc, char **argv) {
          * reads G, overwrite the game's regions from handoff_dir.  Pokes
          * before G are skipped from here on (next_poke is advanced). */
         if (handoff_dir && !handoff_done && when == handoff_g && game_frame_addr) {
+            /* --dump-pre-handoff PREFIX: write the destination's bus state to
+             * PREFIX_<G>.region.bin BEFORE do_handoff modifies anything, so we
+             * can diff the destination's own state against what handoff is
+             * about to write into it.  Same program point as the
+             * --dump-mem-at-when path above (counter just became G). */
+            if (dump_pre_handoff_prefix) {
+                static const struct { const char *suffix; unsigned base, size; } rg[] = {
+                    { "ewram", 0x02000000, 0x40000 }, { "iwram", 0x03000000, 0x8000 },
+                    { "vram", 0x06000000, 0x18000 }, { "pal", 0x05000000, 0x400 },
+                    { "oam", 0x07000000, 0x400 }, { "save", 0x0E000000, 0x8000 },
+                };
+                for (unsigned r = 0; r < sizeof rg / sizeof rg[0]; r++) {
+                    char path[512];
+                    snprintf(path, sizeof path, "%s_%lu.%s.bin", dump_pre_handoff_prefix, (unsigned long)handoff_g, rg[r].suffix);
+                    FILE *o = fopen(path, "wb");
+                    if (!o) { perror(path); break; }
+                    for (unsigned a = 0; a < rg[r].size; a += 4) {
+                        uint32_t v = core->busRead32(core, rg[r].base + a);
+                        fwrite(&v, 4, 1, o);
+                    }
+                    fclose(o);
+                }
+                {
+                    char path[512];
+                    snprintf(path, sizeof path, "%s_%lu.ior.bin", dump_pre_handoff_prefix, (unsigned long)handoff_g);
+                    FILE *o = fopen(path, "wb");
+                    if (o) {
+                        for (unsigned a = 0; a < 0x400; a++)
+                            fputc(core->busRead8(core, 0x04000000 + a), o);
+                        fclose(o);
+                    }
+                }
+                fprintf(stderr, "dump-pre-handoff game=%u hw=%u -> %s_%lu.*.bin\n",
+                        when, fr, dump_pre_handoff_prefix, (unsigned long)handoff_g);
+                fflush(stderr);
+            }
             fprintf(stderr, "handoff: applying at game=%u hw=%u from %s\n", when, fr, handoff_dir);
             do_handoff(core, handoff_dir);
             handoff_done = 1;
@@ -1106,6 +1163,7 @@ int main(int argc, char **argv) {
                 next_poke++;
             }
         }
+        if (resumed) when--;    /* the rest of frame G-1: keys and pokes as in the cold run */
         core->setKeys(core, ~keyinput & 0x3FF);
         if (prof_steps && fr == prof_from) {
             /* Cycle profile: attribute every instruction's cycles (wait
@@ -1186,7 +1244,13 @@ int main(int argc, char **argv) {
         }
         /* a pending --poke-at steps its frame on its own */
         int poke_step = next_poke < npokes && game_frame_addr && when + 1 + 2 * poke_live >= poke_gs[next_poke];
-        if (pg_active || poke_step || ce_out || cnt_active) {
+        unsigned trig_t = 0;
+        if (game_frame_addr) {
+            for (unsigned k = 0; k < ndump_mem_at; k++)
+                if (!((dumped_mem_at >> k) & 1) && dump_mem_at[k] == when + 1) trig_t = when + 1;
+            if (handoff_dir && !handoff_done && handoff_g == when + 1) trig_t = when + 1;
+        }
+        if (pg_active || poke_step || ce_out || cnt_active || trig_t) {
             /* step one hardware frame, attributing cycles to the PC */
             uint32_t f0 = core->frameCounter(core);
             uint64_t t0 = mTimingGlobalTime(core->timing);
@@ -1195,6 +1259,15 @@ int main(int argc, char **argv) {
                 core->readRegister(core, "pc", &pc);
                 core->readRegister(core, "cpsr", &cpsr);
                 pc -= (cpsr & 0x20) ? 2 : 4;      /* mGBA pipeline PC -> next instruction to execute */
+                if (trig_t && game_counter_peek(core, game_frame_addr) >= trig_t) {
+                    int32_t sp = 0, lr = 0;
+                    core->readRegister(core, "sp", &sp);
+                    core->readRegister(core, "lr", &lr);
+                    fprintf(stderr, "trigger: game counter reads %u before pc=%08x cpsr=%08x sp=%08x lr=%08x\n",
+                            trig_t, (uint32_t)pc, (uint32_t)cpsr, (uint32_t)sp, (uint32_t)lr);
+                    trig_resume = 1;
+                    break;
+                }
                 if (ce_out) {
                     uint32_t u = (uint32_t)pc;
                     if (ce_pending) {
