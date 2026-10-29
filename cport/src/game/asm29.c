@@ -2128,15 +2128,21 @@ static void check_beast_sp_trigger(u32 toolkit)
     if (rel_y > (s32)LD32(A_dword_80A7C50))
         return;
 
-    /* 5. Resolve map-group id from trigger byte id, set the event flag. */
-    call_beast_getMapGroupIdBase(LD8(trigger + 4));
-    call_SetEventFlag_battle_checkBeastSpTrigger_80A7BC0(0);
+    /* 5. Resolve map-group id from trigger byte id, set the event flag.
+     *    The original's `mov r0, r0` is a no-op in register terms: SetEventFlag
+     *    receives beast_getMapGroupIdBase's returned r0, not a constant. */
+    call_beast_getMapGroupIdBase_result group_id
+        = call_beast_getMapGroupIdBase(LD8(trigger + 4));
+    call_SetEventFlag_battle_checkBeastSpTrigger_80A7BC0(group_id.r0);
 
     /* 6. Mark trigger as fired. */
     ST8(trigger + 8, 8);
 
-    /* 7. Activation sound (r2 is whatever the preceding calls left). */
-    call_PlaySoundEffect_battle_checkBeastSpTrigger_80A7BC0(SOUND_UNK_73, 0);
+    /* 7. Activation sound. The original reaches PlaySoundEffect with r2 still
+     *    holding rel_x from the bounding-box check (beast_getMapGroupIdBase and
+     *    SetEventFlag never touch r2), and sound_8000808 stores r0-r3 into the
+     *    new task record, so the value is carried through verbatim. */
+    call_PlaySoundEffect_battle_checkBeastSpTrigger_80A7BC0(SOUND_UNK_73, (u32)rel_x);
 
     /* 8. Validate AI-data version fields against the number of set flags. */
     call_sub_81418F0();
@@ -2148,9 +2154,12 @@ static void check_beast_sp_trigger(u32 toolkit)
      *    r4 flow (mov r4, r2 before the call, preserved by getSetFlagCount). */
     u32 field_count = ai_ver.r2;
 
-    call_battle_getEnemyIndexFromMapGroup_8142080();
+    call_battle_getEnemyIndexFromMapGroup_8142080_result enemy_idx
+        = call_battle_getEnemyIndexFromMapGroup_8142080();
 
-    call_getSetFlagCount_result set_cnt = call_getSetFlagCount(0);
+    /*    getSetFlagCount receives the enemy-index call's returned r0 (an index
+     *    into the flag-group table byte_8142120), not a constant. */
+    call_getSetFlagCount_result set_cnt = call_getSetFlagCount(enemy_idx.r0);
     if (set_cnt.r0 != field_count)
         return;
 
