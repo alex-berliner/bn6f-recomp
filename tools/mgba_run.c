@@ -329,6 +329,32 @@ static void do_handoff(struct mCore *core, const char *dir) {
             free(buf); fclose(f); continue;
         }
         fclose(f);
+        /* For SAVE (0x0E000000..) the cart's storage is FLASH (BN6 uses
+         * FLASH1M, 128 KB).  libmgba routes every byte written through
+         * GBASavedataWriteFlash's command state machine: a 32-KB byte-by-byte
+         * busWrite8 stream from this dump will see any 0xAA / 0x55 / 0xA0 /
+         * 0x10 / 0x30 / 0x90 / 0xB0 / 0xF0 byte trigger unlock / erase /
+         * program commands, corrupting the underlying buffer before all of
+         * the 32 KB is written.  Use core->savedataRestore, which copies the
+         * raw buffer in directly and leaves the FSM idle, so the game's
+         * normal 0xAA/0x55/byte write sequence works correctly from this
+         * point on. (libmgba 0.10 returns false on cold boot because the
+         * cart's savedata struct isn't allocated yet; we then fall back to
+         * byte-by-byte busWrite8 which works for sections whose game state
+         * doesn't diverge strongly enough to drive the FSM differently.) */
+        if (rg[r].base == 0x0E000000u && core->savedataRestore) {
+            if (core->savedataRestore(core, buf, rg[r].size, 0)) {
+                fprintf(stderr, "handoff: %s restored %lu bytes via savedataRestore\n",
+                        rg[r].suffix, (unsigned long)rg[r].size);
+            } else {
+                fprintf(stderr, "handoff: %s savedataRestore(%lu) failed, falling back\n",
+                        rg[r].suffix, (unsigned long)rg[r].size);
+                for (unsigned a = 0; a < rg[r].size; a++)
+                    core->busWrite8(core, rg[r].base + a, buf[a]);
+            }
+            free(buf);
+            continue;
+        }
         /* IWRAM is shared with the destination's IWRAM code/state: three
          * portions must NOT be overwritten:
          *   0x03005700-0x030079CF: the port's runtime code & globals
