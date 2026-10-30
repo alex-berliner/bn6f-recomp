@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Find code the disassembly treats as data: Thumb code pointers in the ROM
-(odd words, 0x08000000-0x08800000) that point outside every lifted unit and
+(odd words at any byte offset, 0x08000000-0x08800000) that point outside every lifted unit and
 at a function prologue (push {..., lr}). Such code is never lifted, so the
 port stops with "dispatch miss" when the game calls it.
 
@@ -30,7 +30,11 @@ def label(t):
     a = sym_addrs[i]
     return syms[a] + (f"+{t - a:#x}" if t != a else "")
 found = {}
-for off in range(0, len(rom) - 3, 2):     # literal pools and tables are word aligned; halfword for safety
+unaligned = set()
+# Pointers are not always word aligned: map-script data (ms_* macros) is packed
+# bytes, so its pointers sit at any address (unk_804CD3D was only referenced from
+# 0x806a2ff and friends). Scan every byte offset; unaligned hits are marked "(unaligned)".
+for off in range(0, len(rom) - 3):
     v = int.from_bytes(rom[off:off + 4], "little")
     if not (v & 1) or not (0x08000000 <= v < 0x08800000):
         continue
@@ -40,7 +44,9 @@ for off in range(0, len(rom) - 3, 2):     # literal pools and tables are word al
     hw = int.from_bytes(rom[t - 0x08000000:t - 0x08000000 + 2], "little")
     if hw & 0xFF00 == 0xB500:             # push {..., lr}
         found.setdefault(t, []).append(0x08000000 + off)
+        if off & 3:
+            unaligned.add(t)
 for t, refs in sorted(found.items()):
-    print(f"{t:#010x} {label(t):40s} referenced from {', '.join(hex(r) for r in refs[:4])}"
+    print(f"{t:#010x} {label(t):40s}{' (unaligned)' if t in unaligned else ''} referenced from {', '.join(hex(r) for r in refs[:4])}"
           f"{' ...' if len(refs) > 4 else ''}")
 print(f"{len(found)} candidate functions hidden as data")
