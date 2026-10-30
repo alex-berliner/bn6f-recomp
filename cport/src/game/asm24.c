@@ -303,6 +303,10 @@ typedef struct { u32 r2, r3, r10, r11; } EncounterStepResult;
 static EncounterStepResult pet_tryStartRandomEncounterStep(u32 r10, u32 r11) {
     /* Local data-pointer slot (caller's r5 is restored by pop; this is the working copy) */
     u32 dataPtr = LD32(A_dword_808CA44);
+    /* The original does `ldr r5, [dword_808CA44]` and keeps it in r5 for the whole routine;
+     * callees that take r5 implicitly (jackIn_attemptJackInCheck, battle_pickBattleStateInitPtr,
+     * which tests [r5+4] == 2) must see it, not the caller's r5. */
+    R5 = dataPtr;
 
     u32 r2 = 0, r3 = 0;
 
@@ -428,7 +432,13 @@ static EncounterStepResult pet_tryStartRandomEncounterStep(u32 r10, u32 r11) {
 }
 
 Next pet_tryStartRandomEncounterStep_808CB0C(void) {
+    /* push {r4-r7,lr} ... pop {r4-r7,pc}: r4-r7 reach the caller as they arrived */
+    u32 savedR4 = R4, savedR5 = R5, savedR6 = R6, savedR7 = R7;
     EncounterStepResult out = pet_tryStartRandomEncounterStep(R10, R11);
+    R4 = savedR4;
+    R5 = savedR5;
+    R6 = savedR6;
+    R7 = savedR7;
     R2 = out.r2;
     R3 = out.r3;
     R10 = out.r10;
