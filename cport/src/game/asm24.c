@@ -161,6 +161,11 @@ static u32 init_beastSpScenario_impl(u32 saved_r5) {
 /* init_beastSpScenario (0x0808CA68): r10 lr in; r2 r3 r5 r7 r10 out. */
 Next init_beastSpScenario(void) {
     R5 = init_beastSpScenario_impl(R5);
+    /* The asm ends `mov r0, #0` (movs: r0 = 0, Z set): its caller
+     * CutsceneCmd_call_native_with_return_value branches on that Z (bne .halt),
+     * so without it the script stopped here instead of advancing. */
+    R0 = 0;
+    SET_FLAGS_NZ(0);
     RETURN_TO_CALLER();
 }
 
