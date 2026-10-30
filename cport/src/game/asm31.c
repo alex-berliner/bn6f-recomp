@@ -3422,7 +3422,7 @@ static u32 battleObject_updateSpriteMosaicAndExitIfNotScaled(u32 self)
     /* Bit 1 of the battle state word decides whether we bail out early
      * (lsr #2 puts that bit into the carry flag; bcc exits when it is clear). */
     u32 state = call_battle_getStateUnk5c_800139A_battleObject_updateSpriteMosaicAndExitIfNotScaled_80C461C();
-    if (((state >> 2) & 1u) == 0u)
+    if (((state >> 1) & 1u) == 0u)
         return self;
 
     /* While acting, clear the object's "active" flag if Param3 says so. */
