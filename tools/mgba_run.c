@@ -598,6 +598,11 @@ int main(int argc, char **argv) {
     int pending = 0;
     unsigned long snapf_off = 0, snapf_mask = 0, snapf_val = 0;
     int pg_active = 0, pg_continue = 0, pg_done = 0;
+    /* --watch-writes ADDR LEN FROM TO: single-step the game frames FROM..TO and
+     * print every change of the LEN bytes at ADDR with the pc that did it */
+    uint32_t ww_addr = 0, ww_len = 0;
+    unsigned long ww_from = 1, ww_to = 0;
+    uint8_t ww_prev[64];
     const char *ce_out_cnt = NULL;
     int cnt_active = 0, cnt_dumped = 0;
     uint64_t pg_total = 0;
@@ -625,6 +630,13 @@ int main(int argc, char **argv) {
             for (char *t = strtok(argv[++i], ","); t && ndump_mem_at < 64; t = strtok(NULL, ","))
                 dump_mem_at[ndump_mem_at++] = strtoul(t, 0, 0);
             dump_mem_at_prefix = argv[++i];
+        }
+        else if (!strcmp(argv[i], "--watch-writes")) {      /* ADDR LEN FROM_GAME TO_GAME: who wrote these bytes (LEN <= 64) */
+            ww_addr = strtoul(argv[++i], 0, 0);
+            ww_len = strtoul(argv[++i], 0, 0);
+            if (ww_len > 64) ww_len = 64;
+            ww_from = strtoul(argv[++i], 0, 0);
+            ww_to = strtoul(argv[++i], 0, 0);
         }
         else if (!strcmp(argv[i], "--handoff")) {            /* DIR G: write into the game state at game frame G */
             handoff_dir = argv[++i];
@@ -1250,7 +1262,8 @@ int main(int argc, char **argv) {
                 if (!((dumped_mem_at >> k) & 1) && dump_mem_at[k] == when + 1) trig_t = when + 1;
             if (handoff_dir && !handoff_done && handoff_g == when + 1) trig_t = when + 1;
         }
-        if (pg_active || poke_step || ce_out || cnt_active || trig_t) {
+        int ww_step = ww_len && game_frame_addr && when >= ww_from && when <= ww_to;
+        if (pg_active || poke_step || ce_out || cnt_active || trig_t || ww_step) {
             /* step one hardware frame, attributing cycles to the PC */
             uint32_t f0 = core->frameCounter(core);
             uint64_t t0 = mTimingGlobalTime(core->timing);
@@ -1404,7 +1417,24 @@ int main(int argc, char **argv) {
                     core->readRegister(core, "lr", &lr);
                     count_hit((uint32_t)r0, (uint32_t)lr);
                 }
-                core->step(core);
+                if (ww_step) {
+                    /* the watched bytes before the step, then who changed them */
+                    for (uint32_t k = 0; k < ww_len; k++) ww_prev[k] = core->busRead8(core, ww_addr + k);
+                    int32_t lr = 0;
+                    core->readRegister(core, "lr", &lr);
+                    int dma = 0;
+                    for (uint32_t a = 0x040000BA; a <= 0x040000DE; a += 12)
+                        if (core->busRead16(core, a) & 0x8000) dma = 1;
+                    core->step(core);
+                    for (uint32_t k = 0; k < ww_len; k++) {
+                        uint8_t nv = core->busRead8(core, ww_addr + k);
+                        if (nv != ww_prev[k])
+                            printf("watch game=%u hw=%u pc=%08x lr=%08x cpsr=%08x addr=%08x %02x->%02x%s\n",
+                                   when, fr, (uint32_t)pc, (uint32_t)lr, (uint32_t)cpsr,
+                                   ww_addr + k, ww_prev[k], nv, dma ? " dma?" : "");
+                    }
+                } else
+                    core->step(core);
                 uint64_t t1 = mTimingGlobalTime(core->timing);
                 uint32_t d = (uint32_t)(t1 - t0);
                 t0 = t1;
