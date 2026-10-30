@@ -40,6 +40,7 @@ class ElfInfo:
     line_paths: dict[int, str] = field(default_factory=dict)
     src_root: str = ""
     _src_cache: dict[str, list[str]] = field(default_factory=dict)
+    global_labels: set = field(default_factory=set)   # addresses of GLOBAL symbols (`name::` in the source)
     _src_paths: dict[str, str] = field(default_factory=dict)
 
     # ── bytes ──────────────────────────────────────────────────────────
@@ -172,4 +173,12 @@ def load(bn6f_dir: str) -> ElfInfo:
         for f in files:
             if f.endswith(".s"):
                 info._src_paths.setdefault(f, os.path.join(root, f))
+    # `name::` labels (global in the source): the ELF marks many other symbols GLOBAL too.
+    dcolon = re.compile(r"^([A-Za-z_.$][\w.$]*)::", re.M)
+    for path in sorted(set(info._src_paths.values())):
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for nm in dcolon.findall(fh.read()):
+                v = info.label_names.get(nm)
+                if v is not None:
+                    info.global_labels.add(v)
     return info

@@ -472,6 +472,16 @@ def build(info: ElfInfo, copies: list[CodeCopy], extra_seeds=()) -> Program:
                 # They sit next to their code, so only words inside .text
                 # count (data blobs contain such values by coincidence).
                 datarefs.add((w, True))
+    # Secondary entries: every global (`name::`) label that sits on code. Another file may
+    # jump or call to it, also through a pointer packed unaligned into script bytes
+    # (cs_call_native_with_return_value ptr+1), which the word scan above cannot see. An
+    # unaligned scan of the whole ROM is not an option: compressed data holds thousands of
+    # chance matches. Each becomes a lifted entry even in the middle of a function.
+    for a in info.global_labels:
+        if a in label_addrs and a in info.lines:
+            k = region_kind(a)
+            if k in ("t", "a"):
+                datarefs.add((a, k == "t"))
     for a, t in datarefs:
         seeds.append((a, t))
         p.data_refs.add(a)
