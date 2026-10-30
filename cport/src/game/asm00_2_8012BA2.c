@@ -3581,9 +3581,11 @@ static int attemptShiftPanel(u32 *obj) {
 
     *obj = chk.r5;
     ST8(*obj + oBattleObject_MoveToFuturePanelStepTimer, MOVE_STEP_TIMER);
-    ST8(*obj + oBattleObject_FuturePanelX, chk.r6);
-    ST8(*obj + oBattleObject_FuturePanelY, chk.r7);
-    call_object_reservePanel_battleObject_stepMoveToFuturePanel_8016730(chk.r6, chk.r7, *obj);
+    /* The original keeps nextX/nextY in r6/r7 across the check (mov r6, r0; mov r7, r1) and the callee
+     * restores them; chk.r6/r7 would be the caller's stale R6/R7, since the C never sets them. */
+    ST8(*obj + oBattleObject_FuturePanelX, nextX);
+    ST8(*obj + oBattleObject_FuturePanelY, nextY);
+    call_object_reservePanel_battleObject_stepMoveToFuturePanel_8016730(nextX, nextY, *obj);
     return 1;
 }
 

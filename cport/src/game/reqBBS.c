@@ -1005,6 +1005,7 @@ static void reqBBS_8140358_impl(u32 input_r2, u32 input_r5, u32 input_r10) {
  * do not SYNC_SNAP R4/R7); reproduce the protection without stack writes. */
 Next reqBBS_8140358(void) {
     u32 saved_r4 = R4, saved_r5 = R5, saved_r6 = R6, saved_r7 = R7;
+    R8 = R0;  /* mov r8, r0 at entry; r8 is not restored, and the callees (reqBBS_81403C0 ... renderTextGfx) save/restore it */
     reqBBS_8140358_impl(R2, R5, R10);
     R4 = saved_r4; R5 = saved_r5; R6 = saved_r6; R7 = saved_r7;
     RETURN_TO_CALLER();

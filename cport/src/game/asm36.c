@@ -3481,10 +3481,9 @@ static u32 folder_moveChipEntry_impl(u32 r5_in) {
                 r2 = r2 - r3;
 
                 if (r2 == 0) {
-                    call_sub_8135244_result s5244 = call_sub_8135244(r5);
-                    r0 = s5244.r0;
-                    r1 = s5244.r1;
-                    r2 = s5244.r2;
+                    /* sub_8135244 does push {r0-r2,lr}/pop {r0-r2,pc}: r0-r2 come back as the caller's locals
+                     * (battle_copyStateSlotsAndZeroNext_813527C reads r1/r2), not the global R0-R2 the wrapper returns. */
+                    (void)call_sub_8135244(r5);
                 }
 
                 call_battle_copyStateSlotsAndZeroNext_813527C_result bc =
@@ -4353,6 +4352,9 @@ static void navicust_board_handle_input(u32 object, u32 toolkit, u32 initial_r2)
     ST16(object + 0x26, LD16(object + 0x24));
 
     bool need_state_check = true;
+    /* The original keeps r4 (push {r4,lr}; mov r4, #0; mov r4, r1 after a cursor move) and
+     * navicust_getMoveDir reads it as r1 (nonzero = skip the cursor-delta computation). */
+    u32 moveFlag = 0;
 
     if (LD8(object + 0xD) != 0) {
         /* Object is busy (awaiting animation) – skip all input. */
@@ -4400,6 +4402,7 @@ static void navicust_board_handle_input(u32 object, u32 toolkit, u32 initial_r2)
                         call_menu_adjustCursorOrValue_811F7F8(
                             LD16(joypad + oJoypad_LowSensitivityHeld), 4, 0, 0, object);
                     if (cur.r0 != 0) {
+                        moveFlag = cur.r1;  /* mov r4, r1: navicust_getMoveDir reads it as r1 */
                         /* Cursor moved – mark object busy and refresh program ID. */
                         call_navicust_getCellProgramId_navicust_handleBoardInput(cur.r5);
                         ST8(object + 0xD, 0x7F);
@@ -4412,7 +4415,7 @@ static void navicust_board_handle_input(u32 object, u32 toolkit, u32 initial_r2)
 
     if (need_state_check && LD8(object + 0xC) != 0xC) {
         /* Advance the board state machine unless it is already at state 0xC. */
-        ST8(object + 0xC, (u8)call_navicust_getMoveDir(0, object));
+        ST8(object + 0xC, (u8)call_navicust_getMoveDir(moveFlag, object));
     }
 
     /* Commit: write latest (x, y) into the draw back-buffer and clear flag 0x13. */

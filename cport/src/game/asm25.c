@@ -1025,7 +1025,9 @@ static u32 orb_trail_logic(u32 battle_ptr, u32 toolkit) {
     if (sub_res.z)
         return 0;                        /* sub_8090308 signalled failure */
 
-    u32 result = sub_res.r4;
+    /* r4 is the original's result register (mov r4, #0 at entry, mov r4, #1 on completion);
+     * sub_8090308 restores it, so sub_res.r4 would be the caller's stale R4. */
+    u32 result = 0;
 
     u32 decremented = LD8(battle_ptr + 8) - 1;
     ST8(battle_ptr + 8, decremented);

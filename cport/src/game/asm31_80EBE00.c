@@ -8090,9 +8090,9 @@ static ForwardPanelResult find_forward_usable_attack_panel(u32 self) {
     /* Second check: the original re-reads r4/r6 after the first callee.
      * checkPanelParameters outputs r4 (and preserves r6 = panel_y). */
     call_object_checkPanelParameters_result_battle_findForwardUsableAttackPanel chk_dn =
-        call_object_checkPanelParameters_battle_findForwardUsableAttackPanel(chk_up.r4, panel_y - 1, cf2, cf3);
+        call_object_checkPanelParameters_battle_findForwardUsableAttackPanel(panel_x, panel_y - 1, cf2, cf3);  /* asm: mov r0, r4 (= panel_x); the callee restores r4, so chk_up.r4 is the stale R4 */
     if (chk_dn.r0 != 0)
-        return (ForwardPanelResult){ chk_up.r4, panel_y - 1, chk_dn.r2, self };
+        return (ForwardPanelResult){ panel_x, panel_y - 1, chk_dn.r2, self };
 
     /* Both adjacent rows clear → usable attack panel found. */
     return (ForwardPanelResult){ 0, panel_y - 1, chk_dn.r2, self };
