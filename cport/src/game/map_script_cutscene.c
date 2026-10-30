@@ -790,7 +790,8 @@ Next MapScriptCutsceneCmd_set_event_flag_range(void) {
     R7 = scriptPos + 4;
     SET_FLAGS_ADD(scriptPos, 4);
 
-    R0 = 1; /* mov without S: flags stay as the ADDS left them */
+    R0 = 1;
+    SET_FLAGS_NZ(1); /* `movs r0, #1`: the dispatch loop's `bne` reads Z, not scriptPos + 4 */
     RETURN_TO_CALLER();
 }
 
@@ -3747,6 +3748,7 @@ Next MapScriptCutsceneCmd_play_sound(void) {
     R7 = cursor + 3;                 /* skip opcode word + halfword */
     SET_FLAGS_ADD(cursor, 3);
     R0 = 1;                          /* tell the interpreter to keep running */
+    SET_FLAGS_NZ(1);                 /* `movs r0, #1`: the dispatch loop's `bne` reads Z, not cursor + 3 */
     RETURN_TO_CALLER();
 }
 
@@ -4135,11 +4137,16 @@ Next CutsceneCmd_do_camera_shake(void) {
     /* Start the camera shake with the magnitude (R0) and duration (R1). */
     GUEST_CALL(camera_initShakeEffect_80302a8);
 
-    /* Consume the two bytes that were just read. */
-    R7 = R7 + 4;
+    /* Consume the two bytes that were just read (`adds r7, #4`: c/v). */
+    u32 scriptPos = R7;
+    R7 = scriptPos + 4;
+    SET_FLAGS_ADD(scriptPos, 4);
 
     /* Return 1 to indicate the cutscene step was handled. */
     R0 = 1;
+    /* `mov r0, #1` is movs (Z clear): RunCutscene's `bne .cutsceneCommandLoop` branches on it,
+     * so without this it saw the stale flags of camera_initShakeEffect_80302a8. */
+    SET_FLAGS_NZ(1);
 
     LR = saved_lr;
     RETURN_TO_CALLER();
