@@ -2156,7 +2156,7 @@ static void beast_transformation_ai_step(u32 battle_obj, u32 attack_vars) {
     if (actor_type >= 0x17) {
         table_base = A_off_8014AF0;
     } else if (actor_type >= 0x0D) {
-        u32 stat_val = call_GetBattleNaviStatsByte_AllianceFromBattleObject(0x2C, alliance).r0;
+        u32 stat_val = call_GetBattleNaviStatsByte_AllianceFromBattleObject(0x2C, battle_obj).r0; /* asm: r5 stays the battle object (callee reads its Alliance); passing the alliance byte read the wrong navi's stat */
         table_base = ((s32)stat_val > 0x0A) ? A_off_8014B04 : A_off_8014ADC;
     } else if (actor_type >= 0x0B) {
         table_base = A_off_8014AC8;
